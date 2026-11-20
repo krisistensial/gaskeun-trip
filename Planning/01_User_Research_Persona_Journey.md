@@ -2,7 +2,7 @@
 
 > **Metadata Dokumen**
 > * **Nama Produk:** GASKEUN! (`gaskeun-trip`) — *Multi-Trip Group Travel Hub*
-> * **Versi Dokumen:** `v1.0.0` (Tahap 1: Discover & Research)
+> * **Versi Dokumen:** `v1.1.0` (Tahap 1: Discover & Research + Addendum Arsitektur & Lapangan)
 > * **Status:** *Living Document* (Terbuka untuk iterasi & penambahan *use-case* trip baru)
 > * **Studi Kasus Pilot:** *Goes to Solo–Jogja* (11–14 Februari 2027, 4H3M, 9–10 Peserta)
 > * **Target Platform:** *Mobile-First Web App* (PWA — *Offline-First*, Responsif di Desktop)
@@ -142,3 +142,14 @@ Untuk menjaga agar pengembangan tetap fokus dan tidak melebar di luar kendali:
 
 * Setiap kali ada kebutuhan baru dari rombongan (atau saat aplikasi dipakai untuk *trip* baru di luar Solo–Jogja), tambahkan poin baru di bagian **Persona / Pain Points / MoSCoW** dan naikkan nomor versi (`v1.0.0` → `v1.1.0`).
 * Tidak ada data spesifik *Solo–Jogja* yang boleh dikunci mati sebagai aturan sistem; seluruh data Solo–Jogja di dokumen ini hanya bertindak sebagai **Studi Kasus Pilot**.
+
+---
+
+## 8. Addendum `v1.1.0`: Aturan Kritis Arsitektur & Lapangan
+
+* **Aturan 1 — Pemisahan *Shared Trip Data* vs *Local Personal Data*:** Proses *Import JSON* dari WhatsApp hanya menimpa *Shared Trip Data* (jadwal, kas wajib, dana usaha, formasi motor/kamar) dan **dilarang keras** menimpa *Local Personal Data* (To-Do Pribadi, foto sampul lokal, catatan pengeluaran pribadi). Foto sampul lokal wajib dikompresi otomatis (atau disimpan di `IndexedDB`) agar tidak menabrak batas `localStorage` (~5 MB).
+* **Aturan 2 — Log Pengeluaran Lapangan (*Kas Keluar & Talangan*):** Tab Keuangan di MoSCoW (*Must Have*) diperluas mencakup **Log Kas Keluar** yang mengurangi saldo Kantong 1/Kantong 2 secara otomatis, lengkap dengan kolom *siapa yang menalangi* (untuk bensin 5 motor, parkir, makan bersama, atau donasi).
+* **Aturan 3 — Bank Referensi (*Wishlist*) & Validasi Hari Tutup:** Memisahkan **Bank Referensi Destinasi** (berstatus `Masuk Rundown`, `Cadangan`, atau `Di Luar Rute` seperti #1 Gua Maria Sendangrejo Blitar) dari *Rundown Final*, dilengkapi peringatan otomatis jika destinasi bertabrakan dengan hari tutupnya (misal: Warung Pojok Mbak Yuni tutup Sabtu–Minggu, Warung Lotek Pak Mul tutup Minggu, atau Pasar Mustokoweni yang hanya buka Sabtu minggu ke-2 & ke-4).
+* **Aturan 4 — *Offline Fallback* untuk *Road Captain*:** Kartu agenda pada Mode Hari-H wajib menampilkan alamat singkat, patokan lokasi, dan catatan parkir motor secara *offline* sebagai cadangan jika sinyal hilang di lembah/perjalanan (seperti jalur menuju Gua Maria Jurang Metes) dan Google Maps gagal memuat rute.
+* **Aturan 5 — *View Mode* vs *Edit Mode*:** Tampilan *default* adalah **View Mode** (bersih, aman dari salah sentuh saat di jalan). Perubahan jadwal, penambahan baris kas, atau edit formasi hanya aktif saat pengguna menyalakan **Edit Mode Toggle**.
+
