@@ -1,0 +1,18 @@
+# Dependencies & Build
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Env files
+.env
+.env.*
+
+# Editor & OS
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+
+# Scratch / local reference folder
+UI UX Ref/

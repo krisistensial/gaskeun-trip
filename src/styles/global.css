@@ -1,0 +1,147 @@
+/* ==========================================================================
+   Global Mobile-First Shell (360px–430px, centered cleanly on desktop)
+   Zero Top Bar · Liquid Glass Primitives
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100dvh;
+  background-color: var(--canvas-base);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--brand-matcha);
+  outline-offset: 2px;
+}
+
+.app-viewport {
+  position: relative;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.app-shell {
+  position: relative;
+  z-index: var(--z-base);
+  width: 100%;
+  max-width: var(--shell-max-w);
+  min-width: 0;
+  min-height: 100dvh;
+  padding: calc(var(--safe-top) + 20px) 16px var(--dock-clearance);
+}
+
+@media (min-width: 520px) {
+  .app-viewport {
+    padding: 20px 16px;
+  }
+
+  .app-shell {
+    min-height: calc(100dvh - 40px);
+    border-radius: 36px;
+    background: rgba(246, 248, 245, 0.42);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 28px 80px -24px rgba(31, 45, 39, 0.16);
+  }
+}
+
+/* Typography helpers */
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-ui {
+  font-family: var(--font-ui);
+}
+
+.tactile {
+  transition:
+    transform var(--dur-fast) var(--ease-spring),
+    background-color var(--dur-fast) var(--ease-spring),
+    border-color var(--dur-fast) var(--ease-spring),
+    box-shadow var(--dur-fast) var(--ease-spring),
+    opacity var(--dur-fast) ease;
+}
+
+.tactile:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Horizontal snap peek utility */
+.snap-peek-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+
+.snap-peek-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* Animations */
+@keyframes gaskeun-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.45);
+    opacity: 0.45;
+  }
+}
+
+@keyframes gaskeun-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

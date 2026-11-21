@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice" fill="none">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="800" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#D6E8DB"/>
+      <stop offset="50%" stop-color="#EFF5EC"/>
+      <stop offset="100%" stop-color="#F6F2DF"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="620" cy="140" r="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFDF5" stop-opacity="0.95"/>
+      <stop offset="55%" stop-color="#F5E9C8" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#F5E9C8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hill1" x1="0" y1="280" x2="800" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8AB1A2" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#4A7468" stop-opacity="0.72"/>
+    </linearGradient>
+    <linearGradient id="hill2" x1="0" y1="360" x2="800" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5D897B" stop-opacity="0.78"/>
+      <stop offset="100%" stop-color="#2D4A42" stop-opacity="0.88"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="320" x2="0" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F6F8F5" stop-opacity="0"/>
+      <stop offset="68%" stop-color="#F6F8F5" stop-opacity="0.72"/>
+      <stop offset="100%" stop-color="#F6F8F5" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#sky)"/>
+  <circle cx="620" cy="140" r="170" fill="url(#sun)"/>
+  <path d="M0 365C120 310 250 300 375 340C510 383 645 315 800 350V600H0V365Z" fill="url(#hill1)"/>
+  <path d="M0 430C170 385 305 450 475 405C620 366 710 415 800 398V600H0V430Z" fill="url(#hill2)"/>
+  <path d="M160 540C280 480 410 488 530 432C585 406 645 412 715 390" stroke="#F6F8F5" stroke-opacity="0.55" stroke-width="5" stroke-linecap="round" stroke-dasharray="10 14"/>
+  <rect y="320" width="800" height="280" fill="url(#fade)"/>
+</svg>

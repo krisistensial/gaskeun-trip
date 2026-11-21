@@ -1,0 +1,629 @@
+{
+  "schemaVersion": 1,
+  "id": "trip-solo-jogja-2027",
+  "code": "SOLO-27",
+  "title": "Solo – Jogja",
+  "subtitle": "Feb 11–14, 2027 · 4D3N Motorbike Convoy",
+  "startDate": "2027-02-11",
+  "endDate": "2027-02-14",
+  "departureAt": "2027-02-11T09:14:00+07:00",
+  "crewPinHash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+  "albumUrl": "https://photos.google.com/",
+  "trainPass": {
+    "trainName": "KA Bengawan (Economy)",
+    "outboundCode": "KA 246",
+    "outboundRoute": "PSE → PWS",
+    "outboundTime": "09:14 – 18:20 WIB",
+    "outboundDate": "Thu, Feb 11, 2027",
+    "returnRoute": "LPN → PSE",
+    "returnTime": "00:26 – 08:20 WIB",
+    "returnDate": "Mon, Feb 15, 2027"
+  },
+  "financeConfig": {
+    "poolTargetPerPerson": 700000,
+    "fundraiseTarget": 1200000,
+    "includeTentative": false,
+    "currency": "IDR",
+    "minimumDpPerPerson": 200000
+  },
+  "members": [
+    {
+      "id": "m-kris",
+      "name": "Kris",
+      "initials": "K",
+      "avatarBg": "#E3EDE6",
+      "avatarColor": "#2D4A42",
+      "role": "driver",
+      "status": "confirmed",
+      "isCreator": true
+    },
+    {
+      "id": "m-rani",
+      "name": "Rani",
+      "initials": "R",
+      "avatarBg": "#E9DFD3",
+      "avatarColor": "#6C4E31",
+      "role": "driver",
+      "status": "confirmed"
+    },
+    {
+      "id": "m-chika",
+      "name": "Chika",
+      "initials": "C",
+      "avatarBg": "#F2DEE2",
+      "avatarColor": "#8B3646",
+      "role": "driver",
+      "status": "confirmed"
+    },
+    {
+      "id": "m-dora",
+      "name": "Dora",
+      "initials": "D",
+      "avatarBg": "#E1ECE6",
+      "avatarColor": "#2D4A42",
+      "role": "passenger",
+      "status": "confirmed"
+    },
+    {
+      "id": "m-anggi",
+      "name": "Anggi",
+      "initials": "A",
+      "avatarBg": "#F4EAD5",
+      "avatarColor": "#8C5D18",
+      "role": "passenger",
+      "status": "confirmed"
+    },
+    {
+      "id": "m-mayang",
+      "name": "Mayang",
+      "initials": "M",
+      "avatarBg": "#E2E8F2",
+      "avatarColor": "#354F73",
+      "role": "driver",
+      "status": "confirmed"
+    },
+    {
+      "id": "m-jason",
+      "name": "Jason",
+      "initials": "J",
+      "avatarBg": "#DCECE7",
+      "avatarColor": "#226451",
+      "role": "driver",
+      "status": "confirmed"
+    },
+    {
+      "id": "m-elano",
+      "name": "Elano",
+      "initials": "E",
+      "avatarBg": "#EDE4F2",
+      "avatarColor": "#5D3E78",
+      "role": "driver",
+      "status": "confirmed"
+    },
+    {
+      "id": "m-louis",
+      "name": "Louis",
+      "initials": "L",
+      "avatarBg": "#E8EFE2",
+      "avatarColor": "#3E6230",
+      "role": "driver",
+      "status": "confirmed"
+    },
+    {
+      "id": "m-valen",
+      "name": "Valen",
+      "initials": "V",
+      "avatarBg": "#F2EBE1",
+      "avatarColor": "#826B53",
+      "role": "driver",
+      "status": "tentative"
+    }
+  ],
+  "days": [
+    { "id": "day-1", "date": "2027-02-11", "dayLabel": "Thu", "dateNum": "11", "city": "Solo" },
+    { "id": "day-2", "date": "2027-02-12", "dayLabel": "Fri", "dateNum": "12", "city": "Solo → Jogja" },
+    { "id": "day-3", "date": "2027-02-13", "dayLabel": "Sat", "dateNum": "13", "city": "Jogja" },
+    { "id": "day-4", "date": "2027-02-14", "dayLabel": "Sun", "dateNum": "14", "city": "Jogja → Home" },
+    { "id": "day-ideas", "date": "", "dayLabel": "Ideas", "dateNum": "", "city": "Wishlist", "isIdeas": true }
+  ],
+  "itinerary": [
+    {
+      "id": "it-1",
+      "dayId": "day-1",
+      "type": "transit",
+      "title": "KA Bengawan to Solo",
+      "startTime": "09:14",
+      "endTime": "18:20",
+      "locationHint": "Pasar Senen → Purwosari · 9h 6m",
+      "address": "Stasiun Pasar Senen, Jakarta Pusat → Stasiun Purwosari, Surakarta",
+      "mapsUrl": "https://maps.app.goo.gl/purwosari-station",
+      "mapsVerified": true,
+      "coords": [-7.5594, 110.8012],
+      "costEstimate": 74000,
+      "status": "upcoming",
+      "notes": [
+        { "id": "n1", "kind": "paragraph", "text": "Meet at Pasar Senen South Gate by 08:30 sharp." },
+        { "id": "n2", "kind": "checklist", "text": "Download offline maps for Solo & Jogja", "checked": true }
+      ]
+    },
+    {
+      "id": "it-2",
+      "dayId": "day-1",
+      "type": "activity",
+      "title": "Check-in Sans Stay Sheva Solo",
+      "startTime": "19:00",
+      "locationHint": "2 rooms + extra bed · Pick up 5 motorbikes",
+      "address": "Sans Stay Sheva, Surakarta, Jawa Tengah",
+      "parkingNote": "Shared courtyard fits 5 motorbikes",
+      "mapsUrl": "https://maps.app.goo.gl/sans-stay-sheva-solo",
+      "mapsVerified": true,
+      "coords": [-7.5658, 110.8165],
+      "status": "upcoming",
+      "notes": [
+        { "id": "n3", "kind": "bullet", "text": "Confirm helmet count (10) & phone holders with rental" }
+      ]
+    },
+    {
+      "id": "it-3",
+      "dayId": "day-2",
+      "type": "place",
+      "title": "Solo Morning Loop",
+      "startTime": "07:30",
+      "endTime": "11:30",
+      "locationHint": "Soto Triwindu · Pasar Triwindu · Roti Aren",
+      "address": "Jl. Teuku Umar No. 1, Keprabon, Banjarsari, Surakarta",
+      "parkingNote": "Park together at Ngarsopuro lot (Rp 2k–3k/bike)",
+      "mapsUrl": "https://maps.app.goo.gl/triwindu-solo",
+      "mapsVerified": true,
+      "coords": [-7.5692, 110.8226],
+      "costEstimate": 45000,
+      "status": "upcoming",
+      "notes": [
+        { "id": "n4", "kind": "h2", "text": "Morning Food & Market Notes" },
+        { "id": "n5", "kind": "paragraph", "text": "Meet at lobby by 07:15 sharp", "bold": true },
+        { "id": "n6", "kind": "paragraph", "text": "Cash preferred at Pasar Triwindu stalls.", "italic": true },
+        { "id": "n7", "kind": "checklist", "text": "Confirm all 5 bikes topped up", "checked": true },
+        { "id": "n8", "kind": "checklist", "text": "Order Soto Triwindu for 10 riders", "checked": false }
+      ]
+    },
+    {
+      "id": "it-4",
+      "dayId": "day-2",
+      "type": "place",
+      "title": "Gua Maria Ratuning Katentreman",
+      "startTime": "13:30",
+      "endTime": "15:30",
+      "locationHint": "Jogonalan, Klaten · Along Solo–Jogja corridor",
+      "address": "Ngemplak, Prawatan, Jogonalan, Klaten (Jl. Talun)",
+      "parkingNote": "Easy motorbike parking Rp 2k–3k near entrance",
+      "mapsUrl": "https://maps.app.goo.gl/ratuning-katentreman",
+      "mapsVerified": true,
+      "coords": [-7.7438, 110.5567],
+      "costEstimate": 0,
+      "status": "upcoming",
+      "notes": [
+        { "id": "n9", "kind": "paragraph", "text": "Open 24h · Free entry, voluntary donation box." }
+      ]
+    },
+    {
+      "id": "it-5",
+      "dayId": "day-2",
+      "type": "place",
+      "title": "Warung Pojok Mbak Yuni",
+      "startTime": "11:45",
+      "locationHint": "Kotabaru · Closed Sat–Sun",
+      "address": "Jl. I Dewa Nyoman Oka No. 3, Kotabaru, Yogyakarta",
+      "closedDays": [0, 6],
+      "specialScheduleNote": "Open Mon–Fri 06:00–13:00 only",
+      "mapsUrl": "https://maps.app.goo.gl/mbak-yuni-jogja",
+      "mapsVerified": true,
+      "coords": [-7.7878, 110.3712],
+      "costEstimate": 20000,
+      "status": "upcoming",
+      "notes": [
+        { "id": "n10", "kind": "bullet", "text": "QRIS accepted; arrive before 12:30 before dishes sell out." }
+      ]
+    },
+    {
+      "id": "it-6",
+      "dayId": "day-3",
+      "type": "place",
+      "title": "Soto Sapi Pak Parno",
+      "startTime": "06:30",
+      "locationHint": "Prawirotaman · Morning breakfast",
+      "address": "Jl. Prawirotaman 3 No. 711, Brontokusuman, Yogyakarta",
+      "parkingNote": "Narrow alley — park single-file near entrance",
+      "mapsUrl": "https://maps.app.goo.gl/soto-pak-parno",
+      "mapsVerified": true,
+      "coords": [-7.8211, 110.3694],
+      "costEstimate": 20000,
+      "status": "done",
+      "notes": []
+    },
+    {
+      "id": "it-7",
+      "dayId": "day-3",
+      "type": "place",
+      "title": "Goa Maria Ganjuran",
+      "startTime": "08:30",
+      "endTime": "10:30",
+      "locationHint": "Bambanglipuro, Bantul · Free entry",
+      "address": "Jl. Ganjuran, Sumbermulyo, Bambanglipuro, Bantul, DIY",
+      "parkingNote": "Wide shady motorbike lot · Rp 2k–5k",
+      "mapsUrl": "https://maps.app.goo.gl/goa-maria-ganjuran",
+      "mapsVerified": true,
+      "coords": [-7.9261, 110.3193],
+      "costEstimate": 0,
+      "status": "active",
+      "notes": [
+        { "id": "n11", "kind": "paragraph", "text": "Iconic Javanese candi chapel & calm prayer garden." }
+      ]
+    },
+    {
+      "id": "it-8",
+      "dayId": "day-3",
+      "type": "place",
+      "title": "Gua Maria Jurang Metes",
+      "startTime": "11:30",
+      "endTime": "13:30",
+      "locationHint": "Argorejo, Sedayu · Valley trail",
+      "address": "Dusun Metes RT 41, Argorejo, Sedayu, Bantul, DIY",
+      "parkingNote": "Park at upper trailhead · 5-min shaded valley walk",
+      "mapsUrl": "https://maps.app.goo.gl/jurang-metes-sedayu",
+      "mapsVerified": true,
+      "coords": [-7.8186, 110.2584],
+      "costEstimate": 0,
+      "status": "upcoming",
+      "notes": [
+        { "id": "n12", "kind": "bullet", "text": "Wear grippy shoes for valley stairs; visit before dusk." }
+      ]
+    },
+    {
+      "id": "it-9",
+      "dayId": "day-3",
+      "type": "activity",
+      "title": "Natan Art Space & Coffee",
+      "startTime": "16:30",
+      "endTime": "18:30",
+      "locationHint": "Kotagede · Heritage joglo cafe",
+      "address": "Jl. Mondorakan No. 5, Prenggan, Kotagede, Yogyakarta",
+      "mapsUrl": "https://maps.app.goo.gl/natan-art-space",
+      "mapsVerified": true,
+      "coords": [-7.8289, 110.3991],
+      "costEstimate": 45000,
+      "status": "upcoming",
+      "notes": []
+    },
+    {
+      "id": "it-10",
+      "dayId": "day-4",
+      "type": "place",
+      "title": "Pasar Ngasem & Beringharjo",
+      "startTime": "07:30",
+      "endTime": "11:00",
+      "locationHint": "Apem, Dawet Mbah Hari & batik gifts",
+      "address": "Jl. Polowijan No. 11, Patehan, Kraton, Yogyakarta",
+      "mapsUrl": "https://maps.app.goo.gl/pasar-ngasem",
+      "mapsVerified": true,
+      "coords": [-7.8087, 110.3598],
+      "costEstimate": 35000,
+      "status": "upcoming",
+      "notes": []
+    },
+    {
+      "id": "it-11",
+      "dayId": "day-4",
+      "type": "activity",
+      "title": "Pack & Return 5 Motorbikes",
+      "startTime": "20:00",
+      "locationHint": "Lempuyangan drop-off · Train at 00:26",
+      "address": "Stasiun Lempuyangan, Yogyakarta",
+      "mapsUrl": "https://maps.app.goo.gl/lempuyangan",
+      "mapsVerified": true,
+      "coords": [-7.7902, 110.3755],
+      "status": "upcoming",
+      "notes": []
+    },
+    {
+      "id": "it-idea-1",
+      "dayId": "day-ideas",
+      "type": "place",
+      "title": "Pasar Mustokoweni",
+      "startTime": "08:00",
+      "locationHint": "Jetis · 2nd & 4th Saturday only",
+      "address": "Jl. A.M. Sangaji No. 72, Cokrodiningratan, Jetis, Yogyakarta",
+      "specialScheduleNote": "Only open 2nd & 4th Saturday 08:00–13:00 (matches Sat Feb 13!)",
+      "mapsVerified": false,
+      "costEstimate": 30000,
+      "status": "idea",
+      "notes": []
+    },
+    {
+      "id": "it-idea-2",
+      "dayId": "day-ideas",
+      "type": "place",
+      "title": "Warung Lotek Pak Mul",
+      "startTime": "11:00",
+      "locationHint": "Prawirotaman · Closed Sunday",
+      "address": "Jl. Parangtritis No. 34, Brontokusuman, Yogyakarta",
+      "closedDays": [0],
+      "mapsVerified": false,
+      "costEstimate": 15000,
+      "status": "idea",
+      "notes": []
+    },
+    {
+      "id": "it-idea-3",
+      "dayId": "day-ideas",
+      "type": "place",
+      "title": "Gua Maria Sendangrejo (Blitar)",
+      "startTime": "09:00",
+      "locationHint": "Out of route · East Java (~5h away)",
+      "address": "Ngadirejo, Kepanjenkidul, Kota Blitar, Jawa Timur",
+      "mapsVerified": false,
+      "costEstimate": 0,
+      "status": "idea",
+      "notes": [
+        { "id": "n13", "kind": "paragraph", "text": "Saved for a future East Java pilgrimage trip." }
+      ]
+    }
+  ],
+  "transportPods": [
+    {
+      "id": "pod-bike-1",
+      "mode": "bike",
+      "label": "Bike 1",
+      "meta": "Lead · Vario 125",
+      "slots": [
+        { "role": "Driver", "memberId": "m-kris" },
+        { "role": "Passenger", "memberId": "m-anggi", "lockedPassenger": true }
+      ]
+    },
+    {
+      "id": "pod-bike-2",
+      "mode": "bike",
+      "label": "Bike 2",
+      "meta": "Vario 125",
+      "slots": [
+        { "role": "Driver", "memberId": "m-rani" },
+        { "role": "Passenger", "memberId": "m-dora", "lockedPassenger": true }
+      ]
+    },
+    {
+      "id": "pod-bike-3",
+      "mode": "bike",
+      "label": "Bike 3",
+      "meta": "Scoopy",
+      "slots": [
+        { "role": "Driver", "memberId": "m-mayang" },
+        { "role": "Rider", "memberId": "m-jason" }
+      ]
+    },
+    {
+      "id": "pod-bike-4",
+      "mode": "bike",
+      "label": "Bike 4",
+      "meta": "Beat",
+      "slots": [
+        { "role": "Driver", "memberId": "m-elano" },
+        { "role": "Rider", "memberId": "m-louis" }
+      ]
+    },
+    {
+      "id": "pod-bike-5",
+      "mode": "bike",
+      "label": "Bike 5",
+      "meta": "Sweep · Vario 125",
+      "slots": [
+        { "role": "Driver", "memberId": "m-chika" },
+        { "role": "Rider", "memberId": "m-valen" }
+      ]
+    },
+    {
+      "id": "pod-train-1",
+      "mode": "train",
+      "label": "KA Bengawan · Car 3",
+      "meta": "Rows 10–12 (Facing seats)",
+      "slots": [
+        { "role": "10A", "memberId": "m-kris" },
+        { "role": "10B", "memberId": "m-anggi" },
+        { "role": "10C", "memberId": "m-rani" },
+        { "role": "10D", "memberId": "m-dora" },
+        { "role": "11A", "memberId": "m-chika" },
+        { "role": "11B", "memberId": "m-mayang" },
+        { "role": "11C", "memberId": "m-jason" },
+        { "role": "11D", "memberId": "m-elano" },
+        { "role": "12A", "memberId": "m-louis" },
+        { "role": "12B", "memberId": "m-valen" }
+      ]
+    }
+  ],
+  "stays": [
+    {
+      "id": "stay-solo",
+      "name": "Sans Stay Sheva Solo",
+      "city": "Surakarta",
+      "checkIn": "Thu, Feb 11 · 19:00",
+      "checkOut": "Fri, Feb 12 · 11:00",
+      "address": "Laweyan, Surakarta, Jawa Tengah",
+      "mapsUrl": "https://maps.app.goo.gl/sans-stay-sheva-solo",
+      "rooms": [
+        { "id": "sr-1", "label": "Room 1 (Girls)", "memberIds": ["m-rani", "m-chika", "m-dora", "m-anggi", "m-mayang"], "hasExtraBed": true },
+        { "id": "sr-2", "label": "Room 2 (Boys)", "memberIds": ["m-kris", "m-jason", "m-elano", "m-louis", "m-valen"], "hasExtraBed": true }
+      ]
+    },
+    {
+      "id": "stay-jogja",
+      "name": "Bedja Homestay Jogja",
+      "city": "Yogyakarta",
+      "checkIn": "Fri, Feb 12 · 17:00",
+      "checkOut": "Sun, Feb 14 · 12:00",
+      "address": "Prawirotaman Area, Yogyakarta",
+      "mapsUrl": "https://maps.app.goo.gl/bedja-homestay-jogja",
+      "rooms": [
+        { "id": "jr-1", "label": "Room 1 (Girls)", "memberIds": ["m-rani", "m-chika", "m-dora", "m-anggi", "m-mayang"], "hasExtraBed": true },
+        { "id": "jr-2", "label": "Room 2 (Boys)", "memberIds": ["m-kris", "m-jason", "m-elano", "m-louis", "m-valen"], "hasExtraBed": true }
+      ]
+    }
+  ],
+  "transactions": [
+    {
+      "id": "tx-in-kris-1",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "in",
+      "pocket": "pool",
+      "title": "Pool Deposit #1",
+      "amount": 355000,
+      "date": "2026-09-12",
+      "memberId": "m-kris",
+      "createdAt": "2026-09-12T10:00:00+07:00",
+      "updatedAt": "2026-09-12T10:00:00+07:00"
+    },
+    {
+      "id": "tx-in-kris-2",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "in",
+      "pocket": "pool",
+      "title": "Pool Deposit #2",
+      "amount": 200000,
+      "date": "2026-10-18",
+      "memberId": "m-kris",
+      "createdAt": "2026-10-18T11:00:00+07:00",
+      "updatedAt": "2026-10-18T11:00:00+07:00"
+    },
+    {
+      "id": "tx-in-rani-1",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "in",
+      "pocket": "pool",
+      "title": "Pool Deposit #1",
+      "amount": 500000,
+      "date": "2026-10-05",
+      "memberId": "m-rani",
+      "createdAt": "2026-10-05T14:20:00+07:00",
+      "updatedAt": "2026-10-05T14:20:00+07:00"
+    },
+    {
+      "id": "tx-in-chika-1",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "in",
+      "pocket": "pool",
+      "title": "Pool Deposit #1",
+      "amount": 495000,
+      "date": "2026-10-08",
+      "memberId": "m-chika",
+      "createdAt": "2026-10-08T16:00:00+07:00",
+      "updatedAt": "2026-10-08T16:00:00+07:00"
+    },
+    {
+      "id": "tx-in-dora-1",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "in",
+      "pocket": "pool",
+      "title": "Pool Deposit #1",
+      "amount": 350000,
+      "date": "2026-10-12",
+      "memberId": "m-dora",
+      "createdAt": "2026-10-12T09:15:00+07:00",
+      "updatedAt": "2026-10-12T09:15:00+07:00"
+    },
+    {
+      "id": "tx-in-anggi-1",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "in",
+      "pocket": "pool",
+      "title": "Pool Deposit #1",
+      "amount": 225000,
+      "date": "2026-10-15",
+      "memberId": "m-anggi",
+      "createdAt": "2026-10-15T19:00:00+07:00",
+      "updatedAt": "2026-10-15T19:00:00+07:00"
+    },
+    {
+      "id": "tx-in-mayang-1",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "in",
+      "pocket": "pool",
+      "title": "Pool Deposit #1",
+      "amount": 200000,
+      "date": "2026-10-20",
+      "memberId": "m-mayang",
+      "createdAt": "2026-10-20T12:00:00+07:00",
+      "updatedAt": "2026-10-20T12:00:00+07:00"
+    },
+    {
+      "id": "tx-in-jason-1",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "in",
+      "pocket": "pool",
+      "title": "Pool Deposit #1",
+      "amount": 105000,
+      "date": "2026-10-25",
+      "memberId": "m-jason",
+      "createdAt": "2026-10-25T10:30:00+07:00",
+      "updatedAt": "2026-10-25T10:30:00+07:00"
+    },
+    {
+      "id": "tx-in-elano-1",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "in",
+      "pocket": "pool",
+      "title": "Pool Deposit #1",
+      "amount": 50000,
+      "date": "2026-11-01",
+      "memberId": "m-elano",
+      "createdAt": "2026-11-01T18:00:00+07:00",
+      "updatedAt": "2026-11-01T18:00:00+07:00"
+    },
+    {
+      "id": "tx-in-fund-1",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "in",
+      "pocket": "fundraise",
+      "title": "Initial Kas Usaha",
+      "amount": 33500,
+      "date": "2026-10-02",
+      "note": "Opening carryover balance",
+      "createdAt": "2026-10-02T09:00:00+07:00",
+      "updatedAt": "2026-10-02T09:00:00+07:00"
+    },
+    {
+      "id": "tx-out-fuel-solo",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "out",
+      "pocket": "pool",
+      "title": "Fuel 5 Bikes (Solo)",
+      "amount": 100000,
+      "date": "2027-02-12",
+      "paidOutOfPocket": true,
+      "paidByMemberId": "m-kris",
+      "reimbursed": false,
+      "note": "Full tank before Solo–Jogja ride",
+      "createdAt": "2027-02-12T07:20:00+07:00",
+      "updatedAt": "2027-02-12T07:20:00+07:00"
+    },
+    {
+      "id": "tx-out-parking-ganjuran",
+      "tripId": "trip-solo-jogja-2027",
+      "direction": "out",
+      "pocket": "pool",
+      "title": "Parking Ganjuran",
+      "amount": 25000,
+      "date": "2027-02-13",
+      "paidOutOfPocket": true,
+      "paidByMemberId": "m-rani",
+      "reimbursed": true,
+      "note": "5 bikes @ Rp 5k",
+      "createdAt": "2027-02-13T08:40:00+07:00",
+      "updatedAt": "2027-02-13T10:00:00+07:00"
+    }
+  ],
+  "groupPrep": [
+    { "id": "gp-1", "title": "Confirm Valen final seat (early Dec)", "done": false, "assigneeId": "m-chika", "category": "Crew" },
+    { "id": "gp-2", "title": "Book KA Bengawan outbound H-45 (Dec 27, 23:50)", "done": false, "assigneeId": "m-kris", "category": "Tickets" },
+    { "id": "gp-3", "title": "Book KA Bengawan return H-45 (Dec 30, 23:50)", "done": false, "assigneeId": "m-kris", "category": "Tickets" },
+    { "id": "gp-4", "title": "Reserve 5 motorbikes + 10 helmets in Solo", "done": false, "assigneeId": "m-rani", "category": "Transport" },
+    { "id": "gp-5", "title": "Pack compact first-aid kit & rain ponchos", "done": true, "assigneeId": "m-dora", "category": "Safety" }
+  ],
+  "updatedAt": "2026-11-21T12:00:00+07:00"
+}

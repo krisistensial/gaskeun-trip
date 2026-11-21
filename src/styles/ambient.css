@@ -1,0 +1,46 @@
+/* ==========================================================================
+   Ambient Mesh Canvas — Required behind all Liquid Glass surfaces
+   ========================================================================== */
+
+.ambient-mesh {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: var(--canvas-base);
+}
+
+.ambient-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(78px);
+  will-change: transform;
+}
+
+.ambient-blob--matcha {
+  width: 340px;
+  height: 340px;
+  top: -70px;
+  right: -80px;
+  background: var(--blob-matcha);
+  opacity: 0.72;
+}
+
+.ambient-blob--sunlight {
+  width: 320px;
+  height: 320px;
+  top: 34%;
+  left: -95px;
+  background: var(--blob-sunlight);
+  opacity: 0.90;
+}
+
+.ambient-blob--mint {
+  width: 300px;
+  height: 300px;
+  bottom: -60px;
+  right: -50px;
+  background: var(--blob-mint);
+  opacity: 0.80;
+}

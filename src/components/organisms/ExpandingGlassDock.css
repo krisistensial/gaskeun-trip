@@ -1,0 +1,81 @@
+/* ==========================================================================
+   Expanding Glass Dock V4 — 5 Uniform Vector Icons, Safe on 360px Width
+   ========================================================================== */
+
+.gk-dock-wrap {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 16px);
+  transform: translateX(-50%);
+  z-index: var(--z-dock);
+  width: min(calc(100% - 24px), 344px);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.gk-dock {
+  pointer-events: auto;
+  width: 100%;
+  height: var(--dock-height);
+  padding: 6px 10px;
+  border-radius: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  background: var(--glass-elevated-bg);
+  border: 1.5px solid var(--glass-elevated-border);
+  backdrop-filter: var(--glass-elevated-blur);
+  -webkit-backdrop-filter: var(--glass-elevated-blur);
+  box-shadow: var(--glass-elevated-shadow);
+}
+
+.gk-dock__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
+  border-radius: 22px;
+  color: var(--text-secondary);
+  background: transparent;
+  gap: 0;
+  transition:
+    background-color var(--dur-normal) var(--ease-spring),
+    color var(--dur-normal) var(--ease-spring),
+    padding var(--dur-normal) var(--ease-spring),
+    gap var(--dur-normal) var(--ease-spring),
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+.gk-dock__item:active {
+  transform: scale(0.94);
+}
+
+.gk-dock__item--active {
+  background: var(--brand-sage-tint);
+  color: var(--brand-forest);
+  padding: 0 15px;
+  gap: 7px;
+}
+
+.gk-dock__label {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 0;
+  opacity: 0;
+  transition:
+    max-width var(--dur-normal) var(--ease-spring),
+    opacity var(--dur-fast) ease;
+}
+
+.gk-dock__item--active .gk-dock__label {
+  max-width: 64px;
+  opacity: 1;
+}
