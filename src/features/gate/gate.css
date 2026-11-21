@@ -1,0 +1,283 @@
+/* ==========================================================================
+   Access Gate Screens (00a_Landing_Gate, 00b_Who_Are_You, 00c_Create_Trip)
+   ========================================================================== */
+
+.gate-screen {
+  min-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 4px 16px;
+}
+
+.gate-center-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  padding-top: 24px;
+}
+
+.gate-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+}
+
+.gate-emblem {
+  width: 58px;
+  height: 58px;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.5px solid rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 12px 28px -8px rgba(31, 45, 39, 0.14);
+  color: var(--brand-matcha);
+}
+
+.gate-wordmark {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.02;
+  color: var(--text-primary);
+}
+
+.gate-tagline {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--text-secondary);
+}
+
+.gate-code-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gate-code-input-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 58px;
+  padding: 6px 6px 6px 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 20px -10px rgba(31, 45, 39, 0.12);
+}
+
+.gate-code-input-wrap:focus-within {
+  border-color: var(--brand-matcha);
+  box-shadow: 0 0 0 3px rgba(74, 116, 104, 0.14);
+}
+
+.gate-code-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.gate-code-input::placeholder {
+  color: var(--text-muted);
+}
+
+.gate-code-go {
+  width: 46px;
+  height: 46px;
+  border-radius: 18px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-matcha);
+  color: var(--text-inverse);
+  box-shadow: 0 8px 18px -4px rgba(45, 74, 66, 0.36);
+  transition: transform var(--dur-fast) var(--ease-spring), background-color var(--dur-fast) ease;
+}
+
+.gate-code-go:active {
+  transform: scale(0.94);
+}
+
+.gate-code-go:hover {
+  background: #40675c;
+}
+
+.gate-saved-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.gate-saved-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.64);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-forest);
+}
+
+.gate-footer-note {
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* --- 00b_Who_Are_You --- */
+.gate-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gate-page-head {
+  margin: 16px 0 18px;
+}
+
+.gate-page-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.gate-page-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.crew-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.crew-pick-card {
+  height: 92px;
+  padding: 10px 6px;
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.64);
+  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  transition:
+    transform var(--dur-fast) var(--ease-spring),
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease;
+}
+
+.crew-pick-card:active {
+  transform: scale(0.95);
+}
+
+.crew-pick-card--selected {
+  background: var(--brand-matcha);
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 12px 24px -8px rgba(45, 74, 66, 0.4);
+}
+
+.crew-pick-card--tentative {
+  background: rgba(255, 255, 255, 0.48);
+  border: 1.3px dashed var(--text-muted);
+}
+
+.crew-pick-card__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.crew-pick-card--selected .crew-pick-card__name {
+  color: var(--text-inverse);
+}
+
+.crew-pick-card--tentative .crew-pick-card__name {
+  color: var(--text-secondary);
+}
+
+/* --- 00c_Create_Trip --- */
+.create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.create-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.create-optional-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand-forest);
+}
+
+.create-success-code {
+  margin: 8px 0 4px;
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--brand-forest);
+}
+
+.create-link-box {
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(74, 116, 104, 0.16);
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-all;
+}

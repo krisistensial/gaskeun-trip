@@ -1,0 +1,390 @@
+/* ==========================================================================
+   Plan Feature — 03a Trail · 03b Table · 04 Unified Detail/Edit · 05 Route Map
+   ========================================================================== */
+
+.plan-root {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plan-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plan-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.05;
+  color: var(--text-primary);
+}
+
+.plan-view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.25px solid rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.plan-view-btn {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 16px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.plan-view-btn--active {
+  background: var(--brand-matcha);
+  color: var(--text-inverse);
+}
+
+.plan-day-strip {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.plan-day-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.plan-filter-row {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.plan-filter-row::-webkit-scrollbar {
+  display: none;
+}
+
+.plan-chip {
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 15px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.68);
+  border: 1.2px solid rgba(255, 255, 255, 0.92);
+}
+
+.plan-chip--active {
+  background: var(--brand-forest);
+  border-color: var(--brand-forest);
+  color: var(--text-inverse);
+}
+
+/* --- 03a Asymmetric Curved Trail Timeline --- */
+.trail-list {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 30px;
+}
+
+.trail-rail {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 10px;
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    rgba(74, 116, 104, 0.22) 0%,
+    rgba(43, 148, 107, 0.68) 45%,
+    rgba(74, 116, 104, 0.25) 100%
+  );
+  border-radius: 2px;
+}
+
+.trail-item {
+  position: relative;
+}
+
+.trail-item__dot {
+  position: absolute;
+  left: -30px;
+  top: 18px;
+  width: 22px;
+  display: flex;
+  justify-content: center;
+}
+
+.trail-past-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  opacity: 0.72;
+}
+
+.trail-past-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: line-through;
+}
+
+.trail-upcoming-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.trail-upcoming-meta {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.trail-upcoming-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* --- 03b Plan Table View --- */
+.plan-table-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--hairline);
+  width: 100%;
+  text-align: left;
+}
+
+.plan-table-row:last-child {
+  border-bottom: none;
+}
+
+.plan-table-time {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand-forest);
+}
+
+/* --- Floating Glass (+) Button above Dock --- */
+.floating-glass-fab {
+  position: fixed;
+  right: max(16px, calc(50% - 198px));
+  bottom: calc(var(--dock-height) + var(--safe-bottom) + 26px);
+  z-index: var(--z-fab);
+}
+
+/* --- 04_Plan_Detail_Edit --- */
+.detail-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 32px;
+}
+
+.detail-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cover-drop-strip {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 18px;
+  border: 1.3px dashed var(--text-muted);
+  background: rgba(255, 255, 255, 0.52);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  overflow: hidden;
+}
+
+.detail-title-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.detail-title-input::placeholder {
+  color: var(--text-muted);
+}
+
+.datetime-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.glass-pill-input {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1.25px solid rgba(255, 255, 255, 0.94);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.glass-pill-input--time {
+  background: var(--brand-sage-tint);
+  color: var(--brand-forest);
+  font-family: var(--font-display);
+  font-size: 13px;
+}
+
+/* Top-Sticky Formatting Toolbar Pill (pinned ABOVE notes canvas!) */
+.format-toolbar {
+  position: sticky;
+  top: calc(var(--safe-top) + 10px);
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(26px) saturate(190%);
+  -webkit-backdrop-filter: blur(26px) saturate(190%);
+  box-shadow: 0 8px 20px -6px rgba(31, 45, 39, 0.14);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.format-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.fmt-btn {
+  min-width: 26px;
+  height: 28px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.fmt-btn--active {
+  background: var(--brand-sage-tint);
+  color: var(--brand-forest);
+}
+
+.fmt-div {
+  width: 1px;
+  height: 16px;
+  background: rgba(74, 116, 104, 0.2);
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+.notes-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 220px;
+}
+
+.note-block-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.note-checkbox {
+  width: 19px;
+  height: 19px;
+  margin-top: 2px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--brand-matcha);
+  background: rgba(255, 255, 255, 0.8);
+  color: #FFFFFF;
+}
+
+.note-checkbox--checked {
+  background: var(--brand-matcha);
+}
+
+.note-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.note-input--h1 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.note-input--h2 {
+  font-family: var(--font-display);
+  font-size: 16.5px;
+  font-weight: 600;
+}
+
+/* --- 05 Route Map View --- */
+.route-map-frame {
+  width: 100%;
+  height: 260px;
+  border-radius: 26px;
+  overflow: hidden;
+  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  box-shadow: var(--glass-clear-shadow);
+  background: #E3EDE6;
+}

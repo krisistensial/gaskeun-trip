@@ -1,0 +1,307 @@
+/* ==========================================================================
+   Wallet Feature — Pool · Fundraise · Spent · Personal · 06e Add Transaction
+   ========================================================================== */
+
+.wallet-root {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.wallet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wallet-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.05;
+  color: var(--text-primary);
+}
+
+.wallet-subtabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wallet-subtab {
+  height: 34px;
+  border-radius: 17px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.66);
+  border: 1.2px solid rgba(255, 255, 255, 0.92);
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.wallet-subtab--active {
+  background: var(--brand-matcha);
+  border-color: var(--brand-matcha);
+  color: var(--text-inverse);
+}
+
+.wallet-hero-num {
+  margin: 4px 0 2px;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.08;
+  color: var(--text-primary);
+}
+
+.wallet-progress-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--brand-sage-tint);
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+.wallet-progress-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: var(--brand-matcha);
+  transition: width var(--dur-normal) var(--ease-spring);
+}
+
+/* Fluid Row-as-Progress-Bar (Pool Member Rows) */
+.pool-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pool-member-row {
+  position: relative;
+  min-height: 54px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 20px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.64);
+  border: 1.25px solid rgba(255, 255, 255, 0.94);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+}
+
+.pool-member-row__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(227, 237, 230, 0.85);
+  z-index: 0;
+  transition: width var(--dur-normal) var(--ease-spring);
+}
+
+.pool-member-row__left,
+.pool-member-row__right {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Mini Balance Pills (Spent Sub-Tab) */
+.wallet-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.wallet-mini-val {
+  margin-top: 3px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tx-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+}
+
+.tx-card__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.tx-amt {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.tx-amt--in {
+  color: var(--accent-mint);
+}
+
+.tx-amt--out {
+  color: var(--text-primary);
+}
+
+.tx-amt--unpaid {
+  color: var(--accent-coral);
+}
+
+.privacy-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1.2px solid rgba(255, 255, 255, 0.92);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* --- 06e Add / Edit Transaction Sheet --- */
+.tx-seg-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 22px;
+  background: rgba(227, 237, 230, 0.68);
+  margin-bottom: 14px;
+}
+
+.tx-seg-4__btn {
+  height: 36px;
+  border-radius: 18px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.tx-seg-4__btn--active {
+  background: var(--brand-matcha);
+  color: var(--text-inverse);
+}
+
+.tx-amount-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 16px;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  margin-bottom: 14px;
+}
+
+.tx-amount-row {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.tx-amount-input {
+  width: 190px;
+  text-align: center;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tx-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.tx-switch {
+  width: 48px;
+  height: 28px;
+  border-radius: 14px;
+  padding: 3px;
+  background: rgba(136, 155, 147, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  transition: background-color var(--dur-fast) ease;
+}
+
+.tx-switch--on {
+  background: var(--brand-matcha);
+  justify-content: flex-end;
+}
+
+.tx-switch__thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 2px 6px rgba(24, 36, 32, 0.2);
+}
+
+.payer-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px 0;
+}
+
+.payer-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.payer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 12px 0 5px;
+  border-radius: 19px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1.2px solid rgba(255, 255, 255, 0.95);
+  color: var(--text-primary);
+}
+
+.payer-chip--active {
+  background: var(--brand-matcha);
+  border-color: var(--brand-matcha);
+  color: var(--text-inverse);
+}

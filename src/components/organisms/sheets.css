@@ -1,0 +1,177 @@
+/* ==========================================================================
+   Liquid Glass Bottom Sheets (PIN Unlock, Utility Menu, Train Pass, Slot Picker)
+   ========================================================================== */
+
+.gk-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(24, 36, 32, 0.26);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 12px;
+}
+
+.gk-sheet {
+  width: 100%;
+  max-width: 406px;
+  max-height: 86dvh;
+  overflow-y: auto;
+  padding: 20px 20px calc(var(--safe-bottom) + 22px);
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(30px) saturate(200%);
+  -webkit-backdrop-filter: blur(30px) saturate(200%);
+  box-shadow: 0 24px 64px -16px rgba(24, 36, 32, 0.28);
+  animation: gaskeun-fade-up var(--dur-sheet) var(--ease-spring);
+}
+
+.gk-sheet__handle {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(84, 104, 96, 0.24);
+  margin: 0 auto 14px;
+}
+
+.gk-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.gk-sheet__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.gk-sheet__sub {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+/* 4-Digit PIN Boxes */
+.gk-pin-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 18px 0 12px;
+}
+
+.gk-pin-box {
+  height: 58px;
+  width: 100%;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1.5px solid rgba(74, 116, 104, 0.22);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+
+.gk-pin-box:focus {
+  border-color: var(--brand-matcha);
+  box-shadow: 0 0 0 3px rgba(74, 116, 104, 0.16);
+}
+
+.gk-pin-error {
+  margin: 0 0 12px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-coral);
+}
+
+/* Utility Sheet Menu Rows */
+.gk-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gk-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 15px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  text-align: left;
+  transition: transform var(--dur-fast) var(--ease-spring), background-color var(--dur-fast) ease;
+}
+
+.gk-menu-item:active {
+  transform: scale(0.98);
+}
+
+.gk-menu-item__left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gk-menu-item__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 13px;
+  background: var(--brand-sage-tint);
+  color: var(--brand-forest);
+  flex-shrink: 0;
+}
+
+.gk-menu-item__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.gk-menu-item__sub {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+/* Segmented Switch inside Sheet */
+.gk-seg-pill {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border-radius: 22px;
+  background: rgba(227, 237, 230, 0.72);
+  margin-bottom: 14px;
+}
+
+.gk-seg-pill__btn {
+  height: 36px;
+  border-radius: 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.gk-seg-pill__btn--active {
+  background: var(--brand-matcha);
+  color: var(--text-inverse);
+  box-shadow: 0 6px 14px -4px rgba(45, 74, 66, 0.3);
+}

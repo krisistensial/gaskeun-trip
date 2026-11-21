@@ -1,0 +1,513 @@
+/* ==========================================================================
+   Adaptive Editorial Home (01_Home_PreTrip · 02_Home_OnTrip · 01c_Crew)
+   ========================================================================== */
+
+.home-root {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* --- Full-Bleed Editorial Hero (55% top screen, Zero Top Bar) --- */
+.home-hero {
+  position: relative;
+  margin: calc(var(--safe-top) * -1 - 20px) -16px 0;
+  min-height: 410px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: calc(var(--safe-top) + 20px) 16px 14px;
+  overflow: hidden;
+  border-radius: 0 0 32px 32px;
+}
+
+.home-hero--compact {
+  min-height: 290px;
+}
+
+.home-hero__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.home-hero__fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(246, 248, 245, 0.10) 0%,
+    rgba(246, 248, 245, 0.34) 44%,
+    rgba(246, 248, 245, 0.88) 78%,
+    #F6F8F5 100%
+  );
+  z-index: 1;
+}
+
+.home-hero__corners {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.home-hero__bottom {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.home-title-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.home-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+}
+
+.home-subtitle {
+  margin: 3px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* --- Live 4-Capsule Countdown (DD : HH : MM : SS) --- */
+.countdown-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.countdown-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 66px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.5px solid rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(22px) saturate(190%);
+  -webkit-backdrop-filter: blur(22px) saturate(190%);
+  box-shadow: 0 12px 26px -10px rgba(31, 45, 39, 0.14);
+}
+
+.countdown-val {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--text-primary);
+}
+
+.countdown-lbl {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* --- On-Trip Spotlight Now & Up Next --- */
+.spotlight-now {
+  min-height: 184px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.spotlight-now__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.spotlight-live-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-mint);
+}
+
+.spotlight-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent-mint);
+  box-shadow: 0 0 0 4px rgba(43, 148, 107, 0.22);
+  animation: gaskeun-pulse 2.2s var(--ease-spring) infinite;
+}
+
+.spotlight-time {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.spotlight-place {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.spotlight-hint {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.spotlight-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.upnext-connector {
+  width: 2px;
+  height: 16px;
+  margin-left: 26px;
+  background: linear-gradient(180deg, var(--brand-matcha), rgba(74, 116, 104, 0.2));
+  border-radius: 2px;
+}
+
+.upnext-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* --- Bento Quick-Access Duo (Boarding Pass + Photo Stack) --- */
+.bento-duo {
+  display: grid;
+  grid-template-columns: 1.45fr 1fr;
+  gap: 10px;
+}
+
+.train-pass-tile {
+  position: relative;
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: left;
+  overflow: hidden;
+}
+
+.train-pass-notch {
+  position: relative;
+  border-top: 1.5px dashed rgba(74, 116, 104, 0.26);
+  padding-top: 8px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.train-route-code {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+
+.album-stack-tile {
+  position: relative;
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: left;
+  overflow: hidden;
+}
+
+.album-fanned {
+  position: relative;
+  height: 46px;
+  margin-top: 6px;
+}
+
+.album-polaroid {
+  position: absolute;
+  bottom: 0;
+  width: 44px;
+  height: 40px;
+  border-radius: 10px;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 6px 14px -4px rgba(31, 45, 39, 0.18);
+}
+
+.album-polaroid--1 {
+  left: 2px;
+  transform: rotate(-10deg);
+  background: linear-gradient(135deg, #CBE0CE, #7AA697);
+}
+
+.album-polaroid--2 {
+  left: 24px;
+  transform: rotate(2deg);
+  background: linear-gradient(135deg, #F5E8C8, #D9A760);
+}
+
+.album-polaroid--3 {
+  left: 46px;
+  transform: rotate(11deg);
+  background: linear-gradient(135deg, #DFECE6, #4A7468);
+}
+
+/* --- Top Contributors Bar Chart (Top 5 spacious + 6th bar peek) --- */
+.bar-chart-scroller {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  padding: 6px 2px 2px;
+}
+
+.bar-chart-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.bar-col {
+  flex: 0 0 54px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.bar-col__amt {
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.bar-col__track {
+  width: 34px;
+  height: 92px;
+  border-radius: 14px;
+  background: rgba(227, 237, 230, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  display: flex;
+  align-items: flex-end;
+  padding: 3px;
+  overflow: hidden;
+}
+
+.bar-col__fill {
+  width: 100%;
+  min-height: 10px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #74A193, #4A7468);
+  transition: height var(--dur-normal) var(--ease-spring);
+}
+
+.bar-col__fill--crown {
+  background: linear-gradient(180deg, #4A7468, #2D4A42);
+}
+
+.bar-col__name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* --- Crew & Stay Section (01c_Home_CrewSection) --- */
+.crew-section {
+  scroll-margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 6px;
+}
+
+.crew-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.crew-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mode-filter-row {
+  display: flex;
+  gap: 8px;
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 17px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.66);
+  border: 1.25px solid rgba(255, 255, 255, 0.92);
+}
+
+.mode-chip--active {
+  background: var(--brand-matcha);
+  border-color: var(--brand-matcha);
+  color: var(--text-inverse);
+}
+
+.bike-pod-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.bike-pod {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bike-pod__pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bike-slot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.bike-slot-btn--editable {
+  border-color: var(--brand-matcha);
+  border-style: dashed;
+}
+
+.train-seat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.train-seat-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.64);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+}
+
+.stay-room-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.stay-avatars {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* --- Floating Jump Pill (Crew ↓) above Dock --- */
+.floating-crew-jump {
+  position: fixed;
+  right: max(16px, calc(50% - 198px));
+  bottom: calc(var(--dock-height) + var(--safe-bottom) + 26px);
+  z-index: var(--z-fab);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 19px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-forest);
+  background: rgba(255, 255, 255, 0.84);
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  box-shadow: 0 10px 26px -6px rgba(31, 45, 39, 0.18);
+  transition: transform var(--dur-fast) var(--ease-spring), opacity var(--dur-fast) ease;
+}
+
+.floating-crew-jump:active {
+  transform: scale(0.95);
+}
+
+/* Slot Picker Grid inside Sheet */
+.slot-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.slot-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.25px solid rgba(255, 255, 255, 0.95);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
