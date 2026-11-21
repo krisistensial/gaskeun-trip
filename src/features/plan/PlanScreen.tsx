@@ -9,17 +9,32 @@ import {
   GlassCard,
   TrailDot,
 } from '../../components/atoms';
-import type { PlanItem, PlanItemType, SharedTrip, TripDay } from '../../types/trip';
+import { formatCompactIDR } from '../../services/ledger';
+import { isClosedOnDate } from '../../services/planUtils';
+import type {
+  PlanItem,
+  PlanItemType,
+  RichNoteBlock,
+  RouteTarget,
+  SharedTrip,
+  TripDay,
+} from '../../types/trip';
 import { PlanDetailEditScreen } from './PlanDetailEditScreen';
-import { RouteMapView } from './RouteMapView';
 import './plan.css';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function formatEstimate(cost?: number): string {
+  if (cost === undefined) return '—';
+  if (cost === 0) return 'Free';
+  return formatCompactIDR(cost);
+}
 
 export interface PlanScreenProps {
   trip: SharedTrip;
   canEdit: boolean;
   onRequestUnlockPin: () => void;
+  onOpenRoute: (target: RouteTarget) => void;
   onUpdateTrip: (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => void;
 }
 
@@ -27,24 +42,40 @@ export function PlanScreen({
   trip,
   canEdit,
   onRequestUnlockPin,
+  onOpenRoute,
   onUpdateTrip,
 }: PlanScreenProps) {
-  const [viewMode, setViewMode] = useState<'trail' | 'table' | 'map'>('trail');
+  const [viewMode, setViewMode] = useState<'trail' | 'table'>('trail');
   const [selectedDayId, setSelectedDayId] = useState<string>(
     trip.days.find((d) => d.id === 'day-3')?.id ?? trip.days[0]?.id ?? 'day-1',
   );
   const [typeFilter, setTypeFilter] = useState<'all' | PlanItemType>('all');
-  const [editingStop, setEditingStop] = useState<{ item: PlanItem; isNew: boolean } | null>(null);
+  const [editingStopId, setEditingStopId] = useState<string | null>(null);
+  const [draftNewStop, setDraftNewStop] = useState<PlanItem | null>(null);
 
   const selectedDay = trip.days.find((d) => d.id === selectedDayId) ?? trip.days[0];
-  const dayOfWeek = selectedDay?.date ? new Date(`${selectedDay.date}T00:00:00`).getDay() : -1;
+  const dayLabelStr = selectedDay?.isIdeas
+    ? 'Ideas'
+    : `${selectedDay?.dayLabel ?? ''} ${selectedDay?.dateNum ?? ''}`.trim();
 
-  const dayItems = useMemo(() => {
-    return trip.itinerary
-      .filter((item) => item.dayId === selectedDay?.id)
-      .filter((item) => typeFilter === 'all' || item.type === typeFilter)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }, [trip.itinerary, selectedDay?.id, typeFilter]);
+  const allDayItems = useMemo(
+    () =>
+      trip.itinerary
+        .filter((item) => item.dayId === selectedDay?.id)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    [trip.itinerary, selectedDay?.id],
+  );
+
+  const dayItems = useMemo(
+    () => allDayItems.filter((item) => typeFilter === 'all' || item.type === typeFilter),
+    [allDayItems, typeFilter],
+  );
+
+  const activeEditingItem = draftNewStop
+    ? draftNewStop
+    : editingStopId
+      ? trip.itinerary.find((i) => i.id === editingStopId) ?? null
+      : null;
 
   const handleAddDay = () => {
     if (!canEdit) {
@@ -90,7 +121,15 @@ export function PlanScreen({
       status: selectedDay?.isIdeas ? 'idea' : 'upcoming',
       notes: [],
     };
-    setEditingStop({ item: fresh, isNew: true });
+    setDraftNewStop(fresh);
+    setEditingStopId(null);
+  };
+
+  const handleQuickPersistNotes = (itemId: string, notes: RichNoteBlock[]) => {
+    onUpdateTrip((prev) => ({
+      ...prev,
+      itinerary: prev.itinerary.map((i) => (i.id === itemId ? { ...i, notes } : i)),
+    }));
   };
 
   const handleSaveStop = (updated: PlanItem) => {
@@ -104,7 +143,8 @@ export function PlanScreen({
       };
     }, 'Itinerary stop saved');
     setSelectedDayId(updated.dayId);
-    setEditingStop(null);
+    setDraftNewStop(null);
+    setEditingStopId(null);
   };
 
   const handleDeleteStop = (itemId: string) => {
@@ -112,42 +152,70 @@ export function PlanScreen({
       (prev) => ({ ...prev, itinerary: prev.itinerary.filter((i) => i.id !== itemId) }),
       'Stop deleted',
     );
-    setEditingStop(null);
+    setDraftNewStop(null);
+    setEditingStopId(null);
   };
 
-  if (editingStop) {
+  const openStopRoute = (stop: PlanItem) => {
+    onOpenRoute({
+      title: stop.title,
+      subtitle: stop.locationHint,
+      address: stop.address,
+      parkingNote: stop.parkingNote,
+      mapsUrl: stop.mapsUrl,
+      coords: stop.coords,
+      dayLabel: dayLabelStr,
+      dayItems: allDayItems,
+      focusedItemId: stop.id,
+    });
+  };
+
+  if (activeEditingItem) {
     return (
       <PlanDetailEditScreen
-        item={editingStop.item}
+        key={activeEditingItem.id}
+        item={activeEditingItem}
         days={trip.days}
-        isNew={editingStop.isNew}
+        dayItems={allDayItems}
+        isNew={Boolean(draftNewStop)}
         canEdit={canEdit}
         onRequestUnlockPin={onRequestUnlockPin}
+        onOpenRoute={onOpenRoute}
+        onQuickPersistNotes={handleQuickPersistNotes}
         onSave={handleSaveStop}
         onDelete={handleDeleteStop}
-        onBack={() => setEditingStop(null)}
+        onBack={() => {
+          setDraftNewStop(null);
+          setEditingStopId(null);
+        }}
       />
     );
   }
 
   return (
     <div className="plan-root">
-      {/* Header: Plan + Trail | Table | Map Switcher */}
+      {/* Header: Plan + 2-Option V4 Switcher (Trail | Table) */}
       <header className="plan-header">
         <h1 className="plan-title">Plan</h1>
         <div className="plan-view-switch" role="tablist" aria-label="Plan view mode">
-          {(['trail', 'table', 'map'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="tab"
-              aria-selected={viewMode === m}
-              className={`plan-view-btn ${viewMode === m ? 'plan-view-btn--active' : ''}`}
-              onClick={() => setViewMode(m)}
-            >
-              {m === 'trail' ? 'Trail' : m === 'table' ? 'Table' : 'Route'}
-            </button>
-          ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'trail'}
+            className={`plan-view-btn ${viewMode === 'trail' ? 'plan-view-btn--active' : ''}`}
+            onClick={() => setViewMode('trail')}
+          >
+            Trail
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'table'}
+            className={`plan-view-btn ${viewMode === 'table' ? 'plan-view-btn--active' : ''}`}
+            onClick={() => setViewMode('table')}
+          >
+            Table
+          </button>
         </div>
       </header>
 
@@ -180,17 +248,11 @@ export function PlanScreen({
         ))}
       </div>
 
-      {/* View Content */}
-      {viewMode === 'map' ? (
-        <RouteMapView
-          dayLabel={selectedDay?.isIdeas ? 'Ideas' : `${selectedDay?.dayLabel} ${selectedDay?.dateNum}`}
-          items={dayItems}
-          onSelectItem={(item) => setEditingStop({ item, isNew: false })}
-        />
-      ) : dayItems.length === 0 ? (
+      {/* Content: Trail (03a) or Clean 3-Column Table (03b) */}
+      {dayItems.length === 0 ? (
         <EmptyState
           icon={<CalendarPlus size={22} strokeWidth={1.8} />}
-          title={`No stops for ${selectedDay?.isIdeas ? 'Ideas' : `${selectedDay?.dayLabel} ${selectedDay?.dateNum}`}`}
+          title={`No stops for ${dayLabelStr}`}
           description="Tap the floating + button to add a place, transit leg, or group activity."
           action={
             <Button variant="matcha" size="sm" onClick={handleAddNewStop}>
@@ -202,10 +264,7 @@ export function PlanScreen({
         <div className="trail-list">
           <div className="trail-rail" aria-hidden="true" />
           {dayItems.map((stop) => {
-            const isClosedConflict =
-              dayOfWeek >= 0 &&
-              Array.isArray(stop.closedDays) &&
-              stop.closedDays.includes(dayOfWeek);
+            const closedCheck = isClosedOnDate(stop.closedDays, selectedDay?.date);
 
             return (
               <div key={stop.id} className="trail-item">
@@ -227,7 +286,7 @@ export function PlanScreen({
                     padding="sm"
                     interactive
                     className="trail-past-card"
-                    onClick={() => setEditingStop({ item: stop, isNew: false })}
+                    onClick={() => setEditingStopId(stop.id)}
                   >
                     <span className="trail-past-title">
                       {stop.startTime} · {stop.title}
@@ -240,7 +299,7 @@ export function PlanScreen({
                     padding="lg"
                     interactive
                     className="spotlight-now"
-                    onClick={() => setEditingStop({ item: stop, isNew: false })}
+                    onClick={() => setEditingStopId(stop.id)}
                   >
                     <div className="spotlight-now__top">
                       <span className="spotlight-live-tag">
@@ -254,21 +313,21 @@ export function PlanScreen({
                       <p className="spotlight-hint">{stop.locationHint}</p>
                     </div>
                     <div className="spotlight-footer">
-                      {isClosedConflict ? (
+                      {closedCheck.closed ? (
                         <Badge tone="coral" icon={<AlertTriangle size={12} strokeWidth={2} />}>
-                          Closed today
+                          Closed {closedCheck.weekdayName?.slice(0, 3)}
                         </Badge>
                       ) : (
-                        <Badge tone="matcha">{stop.parkingNote ? 'Parking info' : stop.type}</Badge>
+                        <Badge tone="matcha">{stop.type}</Badge>
                       )}
-                      {stop.mapsUrl && (
+                      {(stop.type === 'place' || stop.type === 'transit') && (
                         <Button
                           variant="matcha"
                           size="sm"
                           rightIcon={<ArrowUpRight size={14} strokeWidth={2} />}
                           onClick={(e) => {
                             e.stopPropagation();
-                            window.open(stop.mapsUrl, '_blank', 'noopener,noreferrer');
+                            openStopRoute(stop);
                           }}
                         >
                           Route
@@ -281,18 +340,30 @@ export function PlanScreen({
                     variant="clear"
                     padding="md"
                     interactive
-                    onClick={() => setEditingStop({ item: stop, isNew: false })}
+                    onClick={() => setEditingStopId(stop.id)}
                   >
                     <div className="trail-upcoming-head">
                       <span className="trail-upcoming-meta">
                         {stop.startTime}
                         {stop.endTime ? `–${stop.endTime}` : ''} · {stop.type}
                       </span>
-                      {isClosedConflict && (
+                      {closedCheck.closed ? (
                         <Badge tone="coral" icon={<AlertTriangle size={11} strokeWidth={2} />}>
                           Closed
                         </Badge>
-                      )}
+                      ) : stop.type === 'place' || stop.type === 'transit' ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openStopRoute(stop);
+                          }}
+                        >
+                          Route
+                        </Button>
+                      ) : null}
                     </div>
                     <h3 className="trail-upcoming-title">{stop.title}</h3>
                     {stop.locationHint && (
@@ -312,41 +383,55 @@ export function PlanScreen({
           })}
         </div>
       ) : (
+        /* 03b_Plan_Table — Strictly 3 columns: TIME | AGENDA | EST. (NO TYPE, NO PARKING) */
         <GlassCard variant="clear" padding="none">
+          <div
+            className="plan-table-row"
+            style={{
+              paddingTop: 10,
+              paddingBottom: 8,
+              borderBottom: '1px solid var(--hairline)',
+              cursor: 'default',
+            }}
+          >
+            <span className="gk-field__label">TIME</span>
+            <span className="gk-field__label">AGENDA</span>
+            <span className="gk-field__label" style={{ textAlign: 'right' }}>
+              EST.
+            </span>
+          </div>
           {dayItems.map((stop) => (
             <button
               key={stop.id}
               type="button"
               className="plan-table-row tactile"
-              onClick={() => setEditingStop({ item: stop, isNew: false })}
+              onClick={() => setEditingStopId(stop.id)}
             >
               <span className="plan-table-time">{stop.startTime}</span>
-              <span style={{ minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 13.5,
-                    fontWeight: 600,
-                    color: 'var(--text-primary)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {stop.title}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11.5,
-                    color: 'var(--text-secondary)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {stop.locationHint}
-                </div>
+              <span
+                style={{
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  color: 'var(--text-primary)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {stop.title}
               </span>
-              <Badge tone={stop.status === 'active' ? 'mint' : 'neutral'}>{stop.type}</Badge>
+              <span
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  textAlign: 'right',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {formatEstimate(stop.costEstimate)}
+              </span>
             </button>
           ))}
         </GlassCard>

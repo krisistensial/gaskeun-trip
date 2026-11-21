@@ -1,24 +1,104 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { ArrowUpRight, MapPin } from 'lucide-react';
-import { Badge, Button, EmptyState, GlassCard } from '../../components/atoms';
-import type { PlanItem } from '../../types/trip';
+import { ArrowUpRight, MapPin, Navigation, WifiOff } from 'lucide-react';
+import { Badge, Button, CornerOrb, GlassCard } from '../../components/atoms';
+import { normalizeExternalUrl } from '../../services/planUtils';
+import type { PlanItem, RouteTarget } from '../../types/trip';
 import './plan.css';
 
-export interface RouteMapViewProps {
-  dayLabel: string;
-  items: PlanItem[];
-  onSelectItem: (item: PlanItem) => void;
+// Prevent Leaflet from ever fetching default CDN marker PNGs
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: '',
+  iconRetinaUrl: '',
+  shadowUrl: '',
+});
+
+interface TrailStopPoint {
+  id: string;
+  title: string;
+  time?: string;
+  hint?: string;
+  parkingNote?: string;
+  mapsUrl?: string;
+  coords?: [number, number];
+  isFocused: boolean;
 }
 
-export function RouteMapView({ dayLabel, items, onSelectItem }: RouteMapViewProps) {
+export interface RouteMapViewProps {
+  target: RouteTarget;
+  onBack: () => void;
+  onSelectPlanItem?: (item: PlanItem) => void;
+}
+
+export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewProps) {
   const mapElRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
 
-  const mappable = items.filter((item) => Array.isArray(item.coords) && item.coords.length === 2);
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine,
+  );
+  const [tileFailed, setTileFailed] = useState<boolean>(false);
 
   useEffect(() => {
+    const onOnline = () => {
+      setIsOnline(true);
+      setTileFailed(false);
+    };
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  const stops: TrailStopPoint[] = useMemo(() => {
+    if (target.dayItems && target.dayItems.length > 0) {
+      return target.dayItems.map((item) => ({
+        id: item.id,
+        title: item.title,
+        time: item.startTime,
+        hint: item.locationHint,
+        parkingNote: item.parkingNote,
+        mapsUrl: item.mapsUrl,
+        coords: item.coords,
+        isFocused: target.focusedItemId
+          ? item.id === target.focusedItemId
+          : item.status === 'active',
+      }));
+    }
+    return [
+      {
+        id: 'single-target',
+        title: target.title,
+        hint: target.subtitle || target.address,
+        parkingNote: target.parkingNote,
+        mapsUrl: target.mapsUrl,
+        coords: target.coords,
+        isFocused: true,
+      },
+    ];
+  }, [target]);
+
+  const mappable = useMemo(
+    () => stops.filter((s) => Array.isArray(s.coords) && s.coords.length === 2),
+    [stops],
+  );
+
+  const showSchematic = !isOnline || tileFailed || mappable.length === 0;
+
+  useEffect(() => {
+    if (showSchematic) {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+      return;
+    }
+
     const container = mapElRef.current;
     if (!container) return;
 
@@ -27,33 +107,48 @@ export function RouteMapView({ dayLabel, items, onSelectItem }: RouteMapViewProp
       mapInstanceRef.current = null;
     }
 
-    const center: [number, number] = mappable[0]?.coords ?? [-7.7956, 110.3695];
+    const focused = mappable.find((s) => s.isFocused) ?? mappable[0];
+    const center: [number, number] = focused?.coords ?? [-7.7956, 110.3695];
     const map = L.map(container, {
       center,
-      zoom: 12,
+      zoom: 13,
       zoomControl: false,
       attributionControl: false,
     });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
-    }).addTo(map);
+    });
+    let errorCount = 0;
+    tiles.on('tileerror', () => {
+      errorCount += 1;
+      if (errorCount >= 2) {
+        setTileFailed(true);
+      }
+    });
+    tiles.addTo(map);
 
     const latLngs: [number, number][] = [];
     mappable.forEach((stop, idx) => {
       if (!stop.coords) return;
       latLngs.push(stop.coords);
 
+      const bg = stop.isFocused ? '#2B946B' : '#4A7468';
+      const size = stop.isFocused ? 30 : 24;
       const icon = L.divIcon({
         className: '',
-        html: `<div style="width:26px;height:26px;border-radius:13px;background:#4A7468;color:#fff;font-family:Fredoka,sans-serif;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 4px 10px rgba(24,36,32,0.3);">${idx + 1}</div>`,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13],
+        html: `<div style="width:${size}px;height:${size}px;border-radius:${size / 2}px;background:${bg};color:#fff;font-family:Fredoka,sans-serif;font-weight:700;font-size:${stop.isFocused ? 13 : 11}px;display:flex;align-items:center;justify-content:center;border:2.5px solid #fff;box-shadow:0 6px 14px rgba(24,36,32,0.28);">${idx + 1}</div>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
       });
 
-      L.marker(stop.coords, { icon })
-        .addTo(map)
-        .bindPopup(`<strong>${stop.startTime} · ${stop.title}</strong><br/>${stop.locationHint}`);
+      const marker = L.marker(stop.coords, { icon }).addTo(map);
+      marker.bindPopup(
+        `<strong>${stop.time ? `${stop.time} · ` : ''}${stop.title}</strong>${stop.hint ? `<br/>${stop.hint}` : ''}`,
+      );
+      if (stop.isFocused) {
+        marker.openPopup();
+      }
     });
 
     if (latLngs.length >= 2) {
@@ -63,9 +158,9 @@ export function RouteMapView({ dayLabel, items, onSelectItem }: RouteMapViewProp
         opacity: 0.85,
         dashArray: '6 8',
       }).addTo(map);
-      map.fitBounds(L.latLngBounds(latLngs), { padding: [32, 32] });
+      map.fitBounds(L.latLngBounds(latLngs), { padding: [36, 36] });
     } else if (latLngs.length === 1) {
-      map.setView(latLngs[0], 13);
+      map.setView(latLngs[0], 14);
     }
 
     mapInstanceRef.current = map;
@@ -74,73 +169,258 @@ export function RouteMapView({ dayLabel, items, onSelectItem }: RouteMapViewProp
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, [mappable.map((m) => `${m.id}:${m.coords?.join(',')}`).join('|')]);
+  }, [showSchematic, mappable]);
 
-  if (items.length === 0) {
-    return (
-      <EmptyState
-        icon={<MapPin size={22} strokeWidth={1.8} />}
-        title={`No stops on ${dayLabel}`}
-        description="Add places with Google Maps links to plot your convoy route."
-      />
-    );
-  }
+  const focusedStop = stops.find((s) => s.isFocused) ?? stops[0];
+  const externalMapsUrl =
+    normalizeExternalUrl(target.mapsUrl || focusedStop?.mapsUrl) ??
+    (focusedStop?.coords
+      ? `https://www.google.com/maps/search/?api=1&query=${focusedStop.coords[0]},${focusedStop.coords[1]}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(target.address || target.title)}`);
+
+  // Crisp SVG Schematic Trail coordinates for Offline / Tile-Error fallback
+  const schematicNodes = useMemo(() => {
+    const visible = stops.slice(0, 6);
+    const count = visible.length;
+    return visible.map((stop, idx) => {
+      const t = count <= 1 ? 0.5 : idx / (count - 1);
+      const x = 44 + t * 272;
+      const y = count <= 1 ? 112 : 148 - Math.sin(t * Math.PI) * 74 + (idx % 2 === 0 ? 10 : -10);
+      return { stop, idx, x, y };
+    });
+  }, [stops]);
+
+  const schematicPath = useMemo(() => {
+    if (schematicNodes.length < 2) return '';
+    return schematicNodes
+      .map((pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `L ${pt.x} ${pt.y}`))
+      .join(' ');
+  }, [schematicNodes]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div ref={mapElRef} className="route-map-frame" aria-label="Day route map" />
+    <section className="detail-root" aria-label="Route overview">
+      <div className="detail-nav">
+        <CornerOrb kind="back" ariaLabel="Back" onClick={onBack} />
+        <Badge
+          tone={showSchematic ? 'amber' : 'matcha'}
+          icon={
+            showSchematic ? (
+              <WifiOff size={12} strokeWidth={2} />
+            ) : (
+              <Navigation size={12} strokeWidth={2} />
+            )
+          }
+        >
+          {showSchematic ? 'Schematic Trail' : target.dayLabel || 'Route Map'}
+        </Badge>
+      </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.map((stop, idx) => (
-          <GlassCard
-            key={stop.id}
-            variant="clear"
-            padding="sm"
-            interactive
-            onClick={() => onSelectItem(stop)}
+      <div>
+        <h1 className="plan-title" style={{ fontSize: 26 }}>
+          {target.title}
+        </h1>
+        {(target.subtitle || target.address) && (
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+            {target.subtitle || target.address}
+          </p>
+        )}
+      </div>
+
+      {/* Interactive Leaflet Map OR Crisp SVG Schematic Trail when Offline / Tile Failure */}
+      {showSchematic ? (
+        <div className="route-map-frame" aria-label="Schematic route trail">
+          <svg
+            viewBox="0 0 360 220"
+            width="100%"
+            height="100%"
+            role="img"
+            aria-label="Convoy schematic route"
+          >
+            <defs>
+              <linearGradient
+                id="schBg"
+                x1="0"
+                y1="0"
+                x2="360"
+                y2="220"
+                gradientUnits="userSpaceOnUse"
+              >
+                <stop offset="0%" stopColor="#E6F0E8" />
+                <stop offset="55%" stopColor="#F3F7F2" />
+                <stop offset="100%" stopColor="#F5F1E2" />
+              </linearGradient>
+            </defs>
+            <rect width="360" height="220" fill="url(#schBg)" />
+            <circle cx="80" cy="40" r="76" fill="none" stroke="#CBE0CE" strokeWidth="1" opacity="0.65" />
+            <circle cx="300" cy="185" r="88" fill="none" stroke="#CBE0CE" strokeWidth="1" opacity="0.65" />
+
+            {schematicPath && (
+              <path
+                d={schematicPath}
+                fill="none"
+                stroke="#4A7468"
+                strokeWidth="3.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray="6 7"
+              />
+            )}
+
+            {schematicNodes.map(({ stop, idx, x, y }) => (
+              <g key={stop.id}>
+                {stop.isFocused && <circle cx={x} cy={y} r="19" fill="#2B946B" opacity="0.18" />}
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={stop.isFocused ? 13 : 10}
+                  fill={stop.isFocused ? '#2B946B' : '#4A7468'}
+                  stroke="#FFFFFF"
+                  strokeWidth="2.5"
+                />
+                <text
+                  x={x}
+                  y={y + 4}
+                  textAnchor="middle"
+                  fill="#FFFFFF"
+                  fontSize={stop.isFocused ? '11' : '10'}
+                  fontWeight="700"
+                  fontFamily="Fredoka, sans-serif"
+                >
+                  {idx + 1}
+                </text>
+                <text
+                  x={x}
+                  y={y + (stop.isFocused ? 27 : 23)}
+                  textAnchor="middle"
+                  fill="#182420"
+                  fontSize="9.5"
+                  fontWeight="600"
+                  fontFamily="Plus Jakarta Sans, sans-serif"
+                >
+                  {stop.title.length > 14 ? `${stop.title.slice(0, 13)}…` : stop.title}
+                </text>
+              </g>
+            ))}
+          </svg>
+        </div>
+      ) : (
+        <div ref={mapElRef} className="route-map-frame" aria-label="Interactive route map" />
+      )}
+
+      {/* Primary Destination Card + Open in Google Maps CTA */}
+      <GlassCard variant="spotlight" padding="lg">
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
+          <div
             style={{
-              display: 'flex',
+              width: 36,
+              height: 36,
+              borderRadius: 14,
+              background: 'var(--brand-sage-tint)',
+              color: 'var(--brand-forest)',
+              display: 'inline-flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 10,
+              justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-              <Badge tone={stop.status === 'active' ? 'mint' : 'matcha'}>{idx + 1}</Badge>
-              <div style={{ minWidth: 0 }}>
-                <div
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: 15,
-                    fontWeight: 600,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {stop.title}
-                </div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                  {stop.startTime} · {stop.parkingNote || stop.locationHint}
-                </div>
-              </div>
+            <MapPin size={18} strokeWidth={1.8} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600 }}>
+              {target.title}
             </div>
-            {stop.mapsUrl && (
-              <Button
-                variant="glass"
-                size="sm"
-                rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  window.open(stop.mapsUrl, '_blank', 'noopener,noreferrer');
+            {target.address && (
+              <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2 }}>
+                {target.address}
+              </div>
+            )}
+            {target.parkingNote && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--brand-forest)',
+                  marginTop: 5,
+                  fontWeight: 600,
                 }}
               >
-                Route
-              </Button>
+                Parking: {target.parkingNote}
+              </div>
             )}
-          </GlassCard>
-        ))}
-      </div>
-    </div>
+          </div>
+        </div>
+
+        <Button
+          variant="matcha"
+          size="lg"
+          fullWidth
+          rightIcon={<ArrowUpRight size={18} strokeWidth={2} />}
+          onClick={() => window.open(externalMapsUrl, '_blank', 'noopener,noreferrer')}
+        >
+          Open in Google Maps
+        </Button>
+      </GlassCard>
+
+      {/* Day Convoy Sequence */}
+      {target.dayItems && target.dayItems.length > 1 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="gk-field__label" style={{ marginTop: 4 }}>
+            DAY CONVOY SEQUENCE ({target.dayItems.length} STOPS)
+          </div>
+          {target.dayItems.map((stop, idx) => {
+            const isFocused = stop.id === target.focusedItemId;
+            return (
+              <GlassCard
+                key={stop.id}
+                variant={isFocused ? 'tinted' : 'clear'}
+                padding="sm"
+                interactive
+                onClick={() => onSelectPlanItem?.(stop)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <Badge tone={isFocused ? 'mint' : 'matcha'}>{idx + 1}</Badge>
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontFamily: 'var(--font-display)',
+                        fontSize: 15,
+                        fontWeight: 600,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {stop.title}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                      {stop.startTime} · {stop.parkingNote || stop.locationHint}
+                    </div>
+                  </div>
+                </div>
+                {stop.mapsUrl && (
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const url = normalizeExternalUrl(stop.mapsUrl);
+                      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                    }}
+                  >
+                    Maps
+                  </Button>
+                )}
+              </GlassCard>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }

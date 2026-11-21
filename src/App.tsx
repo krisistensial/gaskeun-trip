@@ -5,11 +5,13 @@ import { Button, ConfirmDialog, EmptyState, Toast, type ToastTone } from './comp
 import { ExpandingGlassDock } from './components/organisms/ExpandingGlassDock';
 import { PinUnlockSheet } from './components/organisms/PinUnlockSheet';
 import { TripMenuSheet, type HomePhase } from './components/organisms/TripMenuSheet';
+import { TripSettingsSheet } from './components/organisms/TripSettingsSheet';
 import { CreateTripScreen } from './features/gate/CreateTripScreen';
 import { LandingGateScreen } from './features/gate/LandingGateScreen';
 import { WhoAreYouScreen } from './features/gate/WhoAreYouScreen';
 import { HomeScreen } from './features/home/HomeScreen';
 import { PlanScreen } from './features/plan/PlanScreen';
+import { RouteMapView } from './features/plan/RouteMapView';
 import { WalletScreen } from './features/wallet/WalletScreen';
 import {
   ensureSeedTrip,
@@ -23,7 +25,13 @@ import {
   upsertPersonalTransaction,
 } from './services/db';
 import { buildInviteUrl, compressCoverImage } from './services/tripFactory';
-import type { DockTabId, LocalPersonalData, SharedTrip, Transaction } from './types/trip';
+import type {
+  DockTabId,
+  LocalPersonalData,
+  RouteTarget,
+  SharedTrip,
+  Transaction,
+} from './types/trip';
 import './App.css';
 
 type AppRoute = 'landing' | 'who' | 'create' | 'hub';
@@ -42,8 +50,11 @@ export default function App() {
   const [phase, setPhase] = useState<HomePhase>('pre-trip');
   const [canEdit, setCanEdit] = useState<boolean>(false);
 
+  const [activeRouteTarget, setActiveRouteTarget] = useState<RouteTarget | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pinSheetOpen, setPinSheetOpen] = useState(false);
+  const [pendingAfterUnlock, setPendingAfterUnlock] = useState<(() => void) | null>(null);
   const [pendingImportTrip, setPendingImportTrip] = useState<SharedTrip | null>(null);
   const [toast, setToast] = useState<{ open: boolean; message: string; tone: ToastTone }>({
     open: false,
@@ -112,6 +123,11 @@ export default function App() {
     if (toastMsg) showToast(toastMsg, 'success');
   };
 
+  const requestUnlockPin = (onSuccess?: () => void) => {
+    setPendingAfterUnlock(() => onSuccess ?? null);
+    setPinSheetOpen(true);
+  };
+
   const handleJoinCode = async (code: string): Promise<boolean> => {
     const found =
       (await getSharedTripByCode(code)) ??
@@ -122,6 +138,7 @@ export default function App() {
     setActiveTrip(found);
     setLocalData(local);
     setCanEdit(false);
+    setActiveRouteTarget(null);
     setActiveTab('home');
     setRoute('who');
     return true;
@@ -149,12 +166,16 @@ export default function App() {
     setCanEdit(true);
   };
 
+  const handleCopyText = (text: string, label: string) => {
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text);
+    }
+    showToast(`${label} copied`, 'success');
+  };
+
   const handleCopyInvite = (url?: string) => {
     const target = url ?? buildInviteUrl(activeTrip.code);
-    if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(target);
-    }
-    showToast(`Invite link for ${activeTrip.code} copied`, 'success');
+    handleCopyText(target, `Invite link for ${activeTrip.code}`);
   };
 
   const handleUploadCover = async (file: File) => {
@@ -227,7 +248,13 @@ export default function App() {
     return (
       <div style={{ paddingTop: 32 }}>
         <EmptyState
-          icon={isAlbum ? <Images size={24} strokeWidth={1.8} /> : <ListChecks size={24} strokeWidth={1.8} />}
+          icon={
+            isAlbum ? (
+              <Images size={24} strokeWidth={1.8} />
+            ) : (
+              <ListChecks size={24} strokeWidth={1.8} />
+            )
+          }
           title={isAlbum ? 'Shared Album Gallery' : 'Group & Personal Prep'}
           description={
             isAlbum
@@ -244,6 +271,8 @@ export default function App() {
     );
   };
 
+  const showDock = route === 'hub' && !activeRouteTarget;
+
   return (
     <div className="app-viewport">
       <div className="ambient-mesh" aria-hidden="true">
@@ -254,7 +283,7 @@ export default function App() {
 
       <main
         className="app-shell"
-        style={route !== 'hub' ? { paddingBottom: 'calc(var(--safe-bottom) + 20px)' } : undefined}
+        style={!showDock ? { paddingBottom: 'calc(var(--safe-bottom) + 20px)' } : undefined}
       >
         {route === 'landing' && (
           <LandingGateScreen
@@ -270,7 +299,7 @@ export default function App() {
             selectedMemberId={localData?.activeMemberId ?? null}
             canEdit={canEdit}
             onSelectProfile={handleSelectProfile}
-            onRequestUnlockPin={() => setPinSheetOpen(true)}
+            onRequestUnlockPin={() => requestUnlockPin()}
             onBack={() => setRoute('landing')}
           />
         )}
@@ -288,7 +317,30 @@ export default function App() {
           />
         )}
 
-        {route === 'hub' && activeTab === 'home' && (
+        {route === 'hub' && activeRouteTarget && (
+          <RouteMapView
+            target={activeRouteTarget}
+            onBack={() => setActiveRouteTarget(null)}
+            onSelectPlanItem={(stop) => {
+              setActiveRouteTarget((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      title: stop.title,
+                      subtitle: stop.locationHint,
+                      address: stop.address,
+                      parkingNote: stop.parkingNote,
+                      mapsUrl: stop.mapsUrl,
+                      coords: stop.coords,
+                      focusedItemId: stop.id,
+                    }
+                  : null,
+              );
+            }}
+          />
+        )}
+
+        {route === 'hub' && !activeRouteTarget && activeTab === 'home' && (
           <HomeScreen
             trip={activeTrip}
             phase={phase}
@@ -298,40 +350,42 @@ export default function App() {
             onSwitchTrip={() => setRoute('landing')}
             onNavigateTab={setActiveTab}
             onUploadCover={handleUploadCover}
-            onRequestUnlockPin={() => setPinSheetOpen(true)}
+            onRequestUnlockPin={() => requestUnlockPin()}
+            onOpenRoute={(target) => setActiveRouteTarget(target)}
             onUpdateTrip={handleUpdateTrip}
           />
         )}
 
-        {route === 'hub' && activeTab === 'plan' && (
+        {route === 'hub' && !activeRouteTarget && activeTab === 'plan' && (
           <PlanScreen
             trip={activeTrip}
             canEdit={canEdit}
-            onRequestUnlockPin={() => setPinSheetOpen(true)}
+            onRequestUnlockPin={() => requestUnlockPin()}
+            onOpenRoute={(target) => setActiveRouteTarget(target)}
             onUpdateTrip={handleUpdateTrip}
           />
         )}
 
-        {route === 'hub' && activeTab === 'wallet' && (
+        {route === 'hub' && !activeRouteTarget && activeTab === 'wallet' && (
           <WalletScreen
             trip={activeTrip}
             personalTransactions={localData?.personalTransactions ?? []}
             canEdit={canEdit}
             onOpenMenu={() => setMenuOpen(true)}
-            onRequestUnlockPin={() => setPinSheetOpen(true)}
+            onRequestUnlockPin={() => requestUnlockPin()}
             onUpdateTrip={handleUpdateTrip}
             onUpsertPersonalTx={(tx, isNew) => void handleUpsertPersonalTx(tx, isNew)}
             onDeletePersonalTx={(id) => void handleDeletePersonalTx(id)}
           />
         )}
 
-        {route === 'hub' && (activeTab === 'album' || activeTab === 'prep') &&
+        {route === 'hub' &&
+          !activeRouteTarget &&
+          (activeTab === 'album' || activeTab === 'prep') &&
           renderSprint4Placeholder(activeTab)}
       </main>
 
-      {route === 'hub' && (
-        <ExpandingGlassDock activeTab={activeTab} onChange={setActiveTab} />
-      )}
+      {showDock && <ExpandingGlassDock activeTab={activeTab} onChange={setActiveTab} />}
 
       <TripMenuSheet
         open={menuOpen}
@@ -346,10 +400,17 @@ export default function App() {
             'info',
           );
         }}
-        onRequestUnlock={() => setPinSheetOpen(true)}
+        onRequestUnlock={() => requestUnlockPin()}
         onLockEditing={() => {
           setCanEdit(false);
           showToast('Crew editing locked', 'info');
+        }}
+        onOpenTripSettings={() => {
+          if (canEdit) {
+            setSettingsOpen(true);
+          } else {
+            requestUnlockPin(() => setSettingsOpen(true));
+          }
         }}
         onCopyInvite={() => handleCopyInvite()}
         onSwitchProfile={() => setRoute('who')}
@@ -357,6 +418,31 @@ export default function App() {
         onExportJson={handleExportJson}
         onImportJson={handleImportJsonFile}
         onClose={() => setMenuOpen(false)}
+      />
+
+      <TripSettingsSheet
+        key={`ts-${settingsOpen ? activeTrip.id : 'closed'}`}
+        open={settingsOpen}
+        trip={activeTrip}
+        onSave={(patch) => {
+          handleUpdateTrip(
+            (prev) => ({
+              ...prev,
+              title: patch.title,
+              subtitle: patch.subtitle,
+              departureAt: patch.departureAt,
+              financeConfig: {
+                ...prev.financeConfig,
+                poolTargetPerPerson: patch.poolTargetPerPerson,
+                fundraiseTarget: patch.fundraiseTarget,
+                minimumDpPerPerson: patch.minimumDpPerPerson,
+              },
+            }),
+            'Trip settings updated',
+          );
+        }}
+        onCopyText={handleCopyText}
+        onClose={() => setSettingsOpen(false)}
       />
 
       <PinUnlockSheet
@@ -367,8 +453,16 @@ export default function App() {
           setCanEdit(true);
           setPinSheetOpen(false);
           showToast('Crew editing unlocked', 'success');
+          if (pendingAfterUnlock) {
+            const cb = pendingAfterUnlock;
+            setPendingAfterUnlock(null);
+            cb();
+          }
         }}
-        onClose={() => setPinSheetOpen(false)}
+        onClose={() => {
+          setPinSheetOpen(false);
+          setPendingAfterUnlock(null);
+        }}
       />
 
       <ConfirmDialog

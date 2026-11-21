@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { BedDouble, Bike, Check, Plus, Trash2, UserPlus } from 'lucide-react';
+import { useMemo, useState, type FormEvent } from 'react';
+import { AlertCircle, BedDouble, Bike, Check, Plus, Trash2, UserPlus } from 'lucide-react';
 import { Avatar, Badge, Button, ConfirmDialog, CornerOrb, Input } from '../../components/atoms';
 import type {
   MemberRole,
@@ -7,6 +7,7 @@ import type {
   StayLodging,
   StayRoom,
   TrainPassInfo,
+  Transaction,
   TransportMode,
   TransportPod,
   TripMember,
@@ -160,6 +161,7 @@ export function TrainPassEditorSheet({
 export interface CrewMembersSheetProps {
   open: boolean;
   members: TripMember[];
+  transactions: Transaction[];
   onSaveMember: (member: TripMember, isNew: boolean) => void;
   onDeleteMember: (memberId: string) => void;
   onClose: () => void;
@@ -168,6 +170,7 @@ export interface CrewMembersSheetProps {
 export function CrewMembersSheet({
   open,
   members,
+  transactions,
   onSaveMember,
   onDeleteMember,
   onClose,
@@ -178,6 +181,16 @@ export function CrewMembersSheet({
   const [status, setStatus] = useState<MemberStatus>('confirmed');
   const [swatchIdx, setSwatchIdx] = useState(0);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [blockedDeleteMsg, setBlockedDeleteMsg] = useState<string>('');
+
+  const protectedMemberIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const tx of transactions) {
+      if (tx.memberId) ids.add(tx.memberId);
+      if (tx.paidByMemberId) ids.add(tx.paidByMemberId);
+    }
+    return ids;
+  }, [transactions]);
 
   if (!open) return null;
 
@@ -323,69 +336,104 @@ export function CrewMembersSheet({
           </div>
         </form>
 
+        {blockedDeleteMsg && (
+          <div
+            role="alert"
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+              padding: '10px 12px',
+              borderRadius: 16,
+              background: 'var(--accent-coral-soft)',
+              color: 'var(--accent-coral)',
+              fontSize: 12,
+              fontWeight: 600,
+              marginBottom: 12,
+            }}
+          >
+            <AlertCircle size={16} strokeWidth={2} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>{blockedDeleteMsg}</span>
+          </div>
+        )}
+
         {/* Existing Crew List */}
         <div className="gk-menu-list">
-          {members.map((m) => (
-            <div
-              key={m.id}
-              className="gk-menu-item"
-              style={{ cursor: 'default' }}
-            >
-              <button
-                type="button"
-                className="gk-menu-item__left"
-                style={{ flex: 1, textAlign: 'left' }}
-                onClick={() => startEdit(m)}
-              >
-                <Avatar
-                  initials={m.initials}
-                  size="sm"
-                  bg={m.avatarBg}
-                  color={m.avatarColor}
-                  variant={
-                    m.status === 'tentative'
-                      ? 'tentative'
-                      : m.role === 'passenger'
-                        ? 'passenger'
-                        : 'solid'
-                  }
-                />
-                <span>
-                  <div className="gk-menu-item__title">
-                    {m.status === 'tentative' ? `${m.name}?` : m.name}
-                  </div>
-                  <div className="gk-menu-item__sub">
-                    {m.role === 'passenger' ? 'Passenger' : 'Driver'} ·{' '}
-                    {m.status === 'tentative' ? 'Tentative' : 'Confirmed'}
-                  </div>
-                </span>
-              </button>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Badge tone="neutral" onClick={() => startEdit(m)} style={{ cursor: 'pointer' }}>
-                  Edit
-                </Badge>
-                {members.length > 1 && (
-                  <button
-                    type="button"
-                    aria-label={`Remove ${m.name}`}
-                    onClick={() => setConfirmDeleteId(m.id)}
-                    style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: 15,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--accent-coral)',
-                      background: 'var(--accent-coral-soft)',
-                    }}
-                  >
-                    <Trash2 size={14} strokeWidth={2} />
-                  </button>
-                )}
+          {members.map((m) => {
+            const hasLedgerHistory = protectedMemberIds.has(m.id);
+            return (
+              <div key={m.id} className="gk-menu-item" style={{ cursor: 'default' }}>
+                <button
+                  type="button"
+                  className="gk-menu-item__left"
+                  style={{ flex: 1, textAlign: 'left' }}
+                  onClick={() => {
+                    setBlockedDeleteMsg('');
+                    startEdit(m);
+                  }}
+                >
+                  <Avatar
+                    initials={m.initials}
+                    size="sm"
+                    bg={m.avatarBg}
+                    color={m.avatarColor}
+                    variant={
+                      m.status === 'tentative'
+                        ? 'tentative'
+                        : m.role === 'passenger'
+                          ? 'passenger'
+                          : 'solid'
+                    }
+                  />
+                  <span>
+                    <div className="gk-menu-item__title">
+                      {m.status === 'tentative' ? `${m.name}?` : m.name}
+                    </div>
+                    <div className="gk-menu-item__sub">
+                      {m.role === 'passenger' ? 'Passenger' : 'Driver'} ·{' '}
+                      {m.status === 'tentative' ? 'Tentative' : 'Confirmed'}
+                      {hasLedgerHistory ? ' · Has ledger records' : ''}
+                    </div>
+                  </span>
+                </button>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Badge tone="neutral" onClick={() => startEdit(m)} style={{ cursor: 'pointer' }}>
+                    Edit
+                  </Badge>
+                  {members.length > 1 && (
+                    <button
+                      type="button"
+                      aria-label={`Remove ${m.name}`}
+                      onClick={() => {
+                        if (hasLedgerHistory) {
+                          setBlockedDeleteMsg(
+                            `Cannot remove ${m.name} while they have Pool or Expense transactions. Delete or reassign their transactions in Wallet first.`,
+                          );
+                          return;
+                        }
+                        setBlockedDeleteMsg('');
+                        setConfirmDeleteId(m.id);
+                      }}
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 15,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: hasLedgerHistory ? 'var(--text-muted)' : 'var(--accent-coral)',
+                        background: hasLedgerHistory
+                          ? 'rgba(136, 155, 147, 0.16)'
+                          : 'var(--accent-coral-soft)',
+                      }}
+                    >
+                      <Trash2 size={14} strokeWidth={2} />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <ConfirmDialog

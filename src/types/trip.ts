@@ -39,6 +39,19 @@ export interface RichNoteBlock {
   italic?: boolean;
   underline?: boolean;
   strikethrough?: boolean;
+  color?: string;
+}
+
+export interface RouteTarget {
+  title: string;
+  subtitle?: string;
+  address?: string;
+  parkingNote?: string;
+  mapsUrl?: string;
+  coords?: [number, number];
+  dayLabel?: string;
+  dayItems?: PlanItem[];
+  focusedItemId?: string;
 }
 
 export interface PlanItem {

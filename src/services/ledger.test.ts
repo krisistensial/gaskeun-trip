@@ -54,19 +54,52 @@ describe('Ledger Calculator — Solo–Jogja Pilot & Anti-Double-Deduction', () 
     expect(summary.poolTarget).toBe(7_000_000);
   });
 
-  it('NEVER double-deducts Pool Left when marking an out-of-pocket expense Settled', () => {
-    const before = calculateLedger(pilotTrip);
-    const updatedTx = markTransactionSettled(pilotTrip.transactions, 'tx-out-fuel-solo');
-    const after = calculateLedger({ ...pilotTrip, transactions: updatedTx });
+  it('NEVER double-deducts Pool Left or Fundraise Left when marking settled (including repeated calls)', () => {
+    const withFundraiseOut: SharedTrip = {
+      ...pilotTrip,
+      transactions: [
+        ...pilotTrip.transactions,
+        {
+          id: 'tx-out-snack-box',
+          tripId: pilotTrip.id,
+          direction: 'out',
+          pocket: 'fundraise',
+          title: 'Packaging Boxes',
+          amount: 15_000,
+          date: '2026-11-10',
+          paidOutOfPocket: true,
+          paidByMemberId: 'm-chika',
+          reimbursed: false,
+          createdAt: '2026-11-10T10:00:00+07:00',
+          updatedAt: '2026-11-10T10:00:00+07:00',
+        },
+      ],
+    };
 
-    // Balance & spent MUST stay identical — zero double deduction!
-    expect(after.poolSpent).toBe(before.poolSpent);
-    expect(after.poolLeft).toBe(before.poolLeft);
-    expect(after.totalSpent).toBe(before.totalSpent);
+    const before = calculateLedger(withFundraiseOut);
+    expect(before.poolLeft).toBe(2_355_000);
+    expect(before.fundraiseLeft).toBe(18_500);
+    expect(before.pendingReimburseTotal).toBe(115_000);
 
-    // Pending reimburse clears cleanly to 0
-    expect(after.pendingReimburseTotal).toBe(0);
-    expect(after.pendingReimburseItems).toHaveLength(0);
+    // Mark Pool out-of-pocket settled, then call a second time to assert idempotency
+    const afterPoolSettle = markTransactionSettled(
+      markTransactionSettled(withFundraiseOut.transactions, 'tx-out-fuel-solo'),
+      'tx-out-fuel-solo',
+    );
+    const midSummary = calculateLedger({ ...withFundraiseOut, transactions: afterPoolSettle });
+    expect(midSummary.poolSpent).toBe(before.poolSpent);
+    expect(midSummary.poolLeft).toBe(before.poolLeft);
+    expect(midSummary.pendingReimburseTotal).toBe(15_000);
+
+    // Mark Fundraise out-of-pocket settled
+    const afterAllSettled = markTransactionSettled(afterPoolSettle, 'tx-out-snack-box');
+    const finalSummary = calculateLedger({ ...withFundraiseOut, transactions: afterAllSettled });
+    expect(finalSummary.fundraiseSpent).toBe(before.fundraiseSpent);
+    expect(finalSummary.fundraiseLeft).toBe(before.fundraiseLeft);
+    expect(finalSummary.poolLeft).toBe(before.poolLeft);
+    expect(finalSummary.totalSpent).toBe(before.totalSpent);
+    expect(finalSummary.pendingReimburseTotal).toBe(0);
+    expect(finalSummary.pendingReimburseItems).toHaveLength(0);
   });
 
   it('formats compact IDR labels cleanly', () => {

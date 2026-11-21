@@ -7,7 +7,6 @@ import {
   List,
   ListChecks,
   MapPin,
-  Plus,
   Trash2,
   X,
 } from 'lucide-react';
@@ -19,28 +18,28 @@ import {
   GlassCard,
   Input,
 } from '../../components/atoms';
-import type { PlanItem, PlanItemType, RichNoteBlock, TripDay } from '../../types/trip';
+import { isClosedOnDate, isValidMapsUrl } from '../../services/planUtils';
+import type { PlanItem, PlanItemType, RichNoteBlock, RouteTarget, TripDay } from '../../types/trip';
 import './plan.css';
 
-const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-function isValidMapsUrl(url: string): boolean {
-  const clean = url.trim().toLowerCase();
-  if (!clean) return false;
-  return (
-    clean.includes('maps.app.goo.gl') ||
-    clean.includes('google.com/maps') ||
-    clean.includes('goo.gl/maps') ||
-    clean.includes('maps.google.')
-  );
-}
+const TEXT_COLORS = [
+  { label: 'Default', hex: '#182420' },
+  { label: 'Forest', hex: '#2D4A42' },
+  { label: 'Matcha', hex: '#4A7468' },
+  { label: 'Amber', hex: '#D99136' },
+  { label: 'Coral', hex: '#CF4D5E' },
+  { label: 'Muted', hex: '#889B93' },
+];
 
 export interface PlanDetailEditScreenProps {
   item: PlanItem;
   days: TripDay[];
+  dayItems: PlanItem[];
   isNew: boolean;
   canEdit: boolean;
   onRequestUnlockPin: () => void;
+  onOpenRoute: (target: RouteTarget) => void;
+  onQuickPersistNotes?: (itemId: string, notes: RichNoteBlock[]) => void;
   onSave: (updated: PlanItem) => void;
   onDelete: (itemId: string) => void;
   onBack: () => void;
@@ -49,9 +48,12 @@ export interface PlanDetailEditScreenProps {
 export function PlanDetailEditScreen({
   item,
   days,
+  dayItems,
   isNew,
   canEdit,
   onRequestUnlockPin,
+  onOpenRoute,
+  onQuickPersistNotes,
   onSave,
   onDelete,
   onBack,
@@ -64,19 +66,14 @@ export function PlanDetailEditScreen({
         : [{ id: `nb-${Date.now().toString(36)}`, kind: 'paragraph', text: '' }],
   }));
   const [showEndTime, setShowEndTime] = useState<boolean>(Boolean(item.endTime));
-  const [focusedBlockId, setFocusedBlockId] = useState<string>(
-    item.notes[0]?.id ?? '',
-  );
+  const [focusedBlockId, setFocusedBlockId] = useState<string>(item.notes[0]?.id ?? '');
+  const [showColorRow, setShowColorRow] = useState<boolean>(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedDay = days.find((d) => d.id === draft.dayId);
-  const dayOfWeek =
-    selectedDay?.date ? new Date(`${selectedDay.date}T00:00:00`).getDay() : -1;
-  const closedConflict =
-    dayOfWeek >= 0 && Array.isArray(draft.closedDays) && draft.closedDays.includes(dayOfWeek);
-
-  const mapsValid = isValidMapsUrl(draft.mapsUrl ?? '');
+  const closedCheck = isClosedOnDate(draft.closedDays, selectedDay?.date);
+  const mapsValid = isValidMapsUrl(draft.mapsUrl);
   const activeBlock = draft.notes.find((b) => b.id === focusedBlockId) ?? draft.notes[0];
 
   const guardEdit = (fn: () => void) => {
@@ -87,11 +84,21 @@ export function PlanDetailEditScreen({
     fn();
   };
 
-  const updateBlock = (blockId: string, patch: Partial<RichNoteBlock>) => {
-    setDraft((prev) => ({
-      ...prev,
-      notes: prev.notes.map((b) => (b.id === blockId ? { ...b, ...patch } : b)),
-    }));
+  const updateBlock = (
+    blockId: string,
+    patch: Partial<RichNoteBlock>,
+    persistImmediately = false,
+  ) => {
+    setDraft((prev) => {
+      const nextNotes = prev.notes.map((b) => (b.id === blockId ? { ...b, ...patch } : b));
+      if (persistImmediately && !isNew && onQuickPersistNotes) {
+        onQuickPersistNotes(
+          prev.id,
+          nextNotes.filter((b) => b.text.trim().length > 0),
+        );
+      }
+      return { ...prev, notes: nextNotes };
+    });
   };
 
   const addBlock = (kind: RichNoteBlock['kind'] = 'paragraph') => {
@@ -127,7 +134,11 @@ export function PlanDetailEditScreen({
         title: draft.title.trim() || 'Untitled Stop',
         endTime: showEndTime ? draft.endTime : undefined,
         mapsVerified: mapsValid,
-        status: selectedDay?.isIdeas ? 'idea' : draft.status === 'idea' ? 'upcoming' : draft.status,
+        status: selectedDay?.isIdeas
+          ? 'idea'
+          : draft.status === 'idea'
+            ? 'upcoming'
+            : draft.status,
         notes: cleanedNotes,
       });
     });
@@ -145,7 +156,7 @@ export function PlanDetailEditScreen({
 
   return (
     <section className="detail-root" aria-label="Plan stop detail and editor">
-      {/* Header Row: Back Orb + Route (only for Place/Transit) */}
+      {/* Header Row: Back Orb + Route (only for Place/Transit -> opens RouteMapView) */}
       <div className="detail-nav">
         <CornerOrb kind="back" ariaLabel="Back to plan" onClick={onBack} />
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -157,12 +168,26 @@ export function PlanDetailEditScreen({
               onClick={() => setConfirmDelete(true)}
             />
           )}
-          {(draft.type === 'place' || draft.type === 'transit') && draft.mapsUrl && (
+          {(draft.type === 'place' || draft.type === 'transit') && (
             <Button
               variant="matcha"
               size="sm"
               rightIcon={<ArrowUpRight size={14} strokeWidth={2} />}
-              onClick={() => window.open(draft.mapsUrl, '_blank', 'noopener,noreferrer')}
+              onClick={() =>
+                onOpenRoute({
+                  title: draft.title || 'Selected Stop',
+                  subtitle: draft.locationHint,
+                  address: draft.address,
+                  parkingNote: draft.parkingNote,
+                  mapsUrl: draft.mapsUrl,
+                  coords: draft.coords,
+                  dayLabel: selectedDay?.isIdeas
+                    ? 'Ideas'
+                    : `${selectedDay?.dayLabel ?? ''} ${selectedDay?.dateNum ?? ''}`.trim(),
+                  dayItems,
+                  focusedItemId: draft.id,
+                })
+              }
             >
               Route
             </Button>
@@ -279,7 +304,7 @@ export function PlanDetailEditScreen({
       </div>
 
       {/* Smart Closed-Day Conflict Alert */}
-      {closedConflict && (
+      {closedCheck.closed && (
         <GlassCard
           variant="clear"
           padding="sm"
@@ -293,7 +318,7 @@ export function PlanDetailEditScreen({
         >
           <AlertTriangle size={18} strokeWidth={2} color="var(--accent-coral)" />
           <div style={{ fontSize: 12, color: 'var(--accent-coral)', fontWeight: 600 }}>
-            Usually closed on {WEEKDAY_NAMES[dayOfWeek]}! Consider moving to another day.
+            Usually closed on {closedCheck.weekdayName}! Consider moving to another day.
           </div>
         </GlassCard>
       )}
@@ -319,23 +344,25 @@ export function PlanDetailEditScreen({
         status={draft.mapsUrl ? (mapsValid ? 'verified' : 'error') : 'default'}
         verifiedLabel="Verified"
         errorMessage={
-          draft.mapsUrl && !mapsValid ? 'Use a Google Maps link (maps.app.goo.gl or google.com/maps)' : undefined
+          draft.mapsUrl && !mapsValid
+            ? 'Use a Google Maps link (maps.app.goo.gl or google.com/maps)'
+            : undefined
         }
         onChange={(e) =>
           guardEdit(() => setDraft((prev) => ({ ...prev, mapsUrl: e.target.value })))
         }
       />
 
-      {/* Top-Sticky Formatting Toolbar Pill (Pinned ABOVE Rich-Text Notes Canvas!) */}
+      {/* Top-Sticky Formatting Toolbar Pill (A⋮ Text Color | H1 H2 Aa | B I U S | List Check | Trash ×) */}
       <div className="format-toolbar" role="toolbar" aria-label="Text formatting">
         <button
           type="button"
-          className="fmt-btn"
-          style={{ color: 'var(--brand-matcha)' }}
-          onClick={() => guardEdit(() => addBlock('paragraph'))}
-          title="Add line"
+          className={`fmt-btn ${showColorRow ? 'fmt-btn--active' : ''}`}
+          style={{ color: activeBlock?.color || 'var(--brand-matcha)' }}
+          aria-label="Text color"
+          onClick={() => guardEdit(() => setShowColorRow((v) => !v))}
         >
-          <Plus size={14} strokeWidth={2.2} />
+          A⋮
         </button>
         <span className="fmt-div" />
         <button
@@ -424,7 +451,10 @@ export function PlanDetailEditScreen({
           onClick={() =>
             activeBlock &&
             guardEdit(() =>
-              updateBlock(activeBlock.id, { kind: 'checklist', checked: Boolean(activeBlock.checked) }),
+              updateBlock(activeBlock.id, {
+                kind: 'checklist',
+                checked: Boolean(activeBlock.checked),
+              }),
             )
           }
         >
@@ -442,21 +472,69 @@ export function PlanDetailEditScreen({
         <button
           type="button"
           className="fmt-btn"
-          aria-label="Clear focus"
-          onClick={() => setFocusedBlockId('')}
+          aria-label="Dismiss color palette"
+          onClick={() => {
+            setShowColorRow(false);
+            setFocusedBlockId('');
+          }}
         >
           <X size={14} strokeWidth={2} />
         </button>
       </div>
 
+      {/* Text Color Picker Row (toggled by A⋮) */}
+      {showColorRow && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 12px',
+            borderRadius: 18,
+            background: 'rgba(255, 255, 255, 0.84)',
+            border: '1.25px solid rgba(255, 255, 255, 0.96)',
+          }}
+        >
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+            Ink:
+          </span>
+          {TEXT_COLORS.map((swatch) => (
+            <button
+              key={swatch.hex}
+              type="button"
+              aria-label={`Color ${swatch.label}`}
+              onClick={() => {
+                if (activeBlock) {
+                  updateBlock(activeBlock.id, { color: swatch.hex });
+                }
+                setShowColorRow(false);
+              }}
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                background: swatch.hex,
+                border:
+                  (activeBlock?.color || '#182420') === swatch.hex
+                    ? '2.5px solid var(--brand-sage-tint)'
+                    : '1.5px solid #FFFFFF',
+                boxShadow:
+                  (activeBlock?.color || '#182420') === swatch.hex
+                    ? '0 0 0 2px var(--brand-matcha)'
+                    : 'none',
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Rich-Text Notes Canvas */}
       <GlassCard variant="clear" padding="lg" className="notes-canvas">
         {draft.notes.map((block) => {
+          const isChecked = block.kind === 'checklist' && Boolean(block.checked);
           const textDecor = [
             block.underline ? 'underline' : '',
-            block.strikethrough || (block.kind === 'checklist' && block.checked)
-              ? 'line-through'
-              : '',
+            block.strikethrough || isChecked ? 'line-through' : '',
           ]
             .filter(Boolean)
             .join(' ');
@@ -472,12 +550,12 @@ export function PlanDetailEditScreen({
                 <button
                   type="button"
                   aria-label="Toggle checklist item"
-                  className={`note-checkbox ${block.checked ? 'note-checkbox--checked' : ''}`}
+                  className={`note-checkbox ${isChecked ? 'note-checkbox--checked' : ''}`}
                   onClick={() =>
-                    guardEdit(() => updateBlock(block.id, { checked: !block.checked }))
+                    guardEdit(() => updateBlock(block.id, { checked: !block.checked }, true))
                   }
                 >
-                  {block.checked && <Check size={12} strokeWidth={2.6} />}
+                  {isChecked && <Check size={12} strokeWidth={2.6} />}
                 </button>
               )}
               <input
@@ -495,9 +573,9 @@ export function PlanDetailEditScreen({
                   fontStyle: block.italic ? 'italic' : undefined,
                   textDecoration: textDecor || undefined,
                   color:
-                    block.strikethrough || (block.kind === 'checklist' && block.checked)
+                    block.strikethrough || isChecked
                       ? 'var(--text-muted)'
-                      : undefined,
+                      : block.color || undefined,
                 }}
                 onFocus={() => setFocusedBlockId(block.id)}
                 onChange={(e) =>
@@ -507,7 +585,11 @@ export function PlanDetailEditScreen({
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     guardEdit(() =>
-                      addBlock(block.kind === 'checklist' || block.kind === 'bullet' ? block.kind : 'paragraph'),
+                      addBlock(
+                        block.kind === 'checklist' || block.kind === 'bullet'
+                          ? block.kind
+                          : 'paragraph',
+                      ),
                     );
                   }
                 }}

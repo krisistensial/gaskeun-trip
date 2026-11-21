@@ -20,6 +20,7 @@ import type { HomePhase } from '../../components/organisms/TripMenuSheet';
 import { calculateLedger, formatCompactIDR } from '../../services/ledger';
 import type {
   DockTabId,
+  RouteTarget,
   SharedTrip,
   StayLodging,
   TrainPassInfo,
@@ -66,6 +67,7 @@ export interface HomeScreenProps {
   onNavigateTab: (tab: DockTabId) => void;
   onUploadCover: (file: File) => void;
   onRequestUnlockPin: () => void;
+  onOpenRoute: (target: RouteTarget) => void;
   onUpdateTrip: (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => void;
 }
 
@@ -79,6 +81,7 @@ export function HomeScreen({
   onNavigateTab,
   onUploadCover,
   onRequestUnlockPin,
+  onOpenRoute,
   onUpdateTrip,
 }: HomeScreenProps) {
   const [countdown, setCountdown] = useState<CountdownParts>(() =>
@@ -165,9 +168,26 @@ export function HomeScreen({
     action();
   };
 
-  const openExternal = (url?: string) => {
-    if (!url) return;
-    window.open(url, '_blank', 'noopener,noreferrer');
+  const activeDayStops = activeStop
+    ? trip.itinerary
+        .filter((item) => item.dayId === activeStop.dayId)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+    : [];
+
+  const openStopInRoute = (stop: typeof activeStop) => {
+    if (!stop) return;
+    const dayObj = trip.days.find((d) => d.id === stop.dayId);
+    onOpenRoute({
+      title: stop.title,
+      subtitle: stop.locationHint,
+      address: stop.address,
+      parkingNote: stop.parkingNote,
+      mapsUrl: stop.mapsUrl,
+      coords: stop.coords,
+      dayLabel: dayObj ? `${dayObj.dayLabel} ${dayObj.dateNum}` : 'Route',
+      dayItems: activeDayStops,
+      focusedItemId: stop.id,
+    });
   };
 
   const handleSaveTrainPass = (info: TrainPassInfo) => {
@@ -356,7 +376,7 @@ export function HomeScreen({
                 variant="matcha"
                 size="sm"
                 rightIcon={<ArrowUpRight size={15} strokeWidth={2} />}
-                onClick={() => openExternal(activeStop.mapsUrl)}
+                onClick={() => openStopInRoute(activeStop)}
               >
                 Route
               </Button>
@@ -403,7 +423,7 @@ export function HomeScreen({
                   kind="custom"
                   ariaLabel="Open route for next stop"
                   icon={<ArrowUpRight size={18} strokeWidth={1.8} />}
-                  onClick={() => openExternal(nextStop.mapsUrl)}
+                  onClick={() => openStopInRoute(nextStop)}
                 />
               </GlassCard>
             </>
@@ -833,7 +853,15 @@ export function HomeScreen({
                     variant="glass"
                     size="sm"
                     rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
-                    onClick={() => openExternal(stay.mapsUrl)}
+                    onClick={() =>
+                      onOpenRoute({
+                        title: stay.name,
+                        subtitle: `${stay.city} · ${stay.checkIn}`,
+                        address: stay.address,
+                        mapsUrl: stay.mapsUrl,
+                        dayLabel: 'Stay',
+                      })
+                    }
                   >
                     Route
                   </Button>
@@ -1029,6 +1057,7 @@ export function HomeScreen({
       <CrewMembersSheet
         open={crewManagerOpen}
         members={trip.members}
+        transactions={trip.transactions}
         onSaveMember={handleSaveMember}
         onDeleteMember={handleDeleteMember}
         onClose={() => setCrewManagerOpen(false)}

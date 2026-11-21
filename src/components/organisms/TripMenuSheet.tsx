@@ -5,6 +5,7 @@ import {
   Link2,
   Lock,
   LogOut,
+  Settings2,
   Upload,
   Users,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ export interface TripMenuSheetProps {
   onPhaseChange: (phase: HomePhase) => void;
   onRequestUnlock: () => void;
   onLockEditing: () => void;
+  onOpenTripSettings: () => void;
   onCopyInvite: () => void;
   onSwitchProfile: () => void;
   onSwitchTrip: () => void;
@@ -40,6 +42,7 @@ export function TripMenuSheet({
   onPhaseChange,
   onRequestUnlock,
   onLockEditing,
+  onOpenTripSettings,
   onCopyInvite,
   onSwitchProfile,
   onSwitchTrip,
@@ -111,6 +114,28 @@ export function TripMenuSheet({
               </span>
             </span>
             <Badge tone={canEdit ? 'mint' : 'neutral'}>{canEdit ? 'Unlocked' : 'Locked'}</Badge>
+          </button>
+
+          <button
+            type="button"
+            className="gk-menu-item"
+            onClick={() => {
+              onClose();
+              onOpenTripSettings();
+            }}
+          >
+            <span className="gk-menu-item__left">
+              <span className="gk-menu-item__icon">
+                <Settings2 size={18} strokeWidth={1.8} />
+              </span>
+              <span>
+                <div className="gk-menu-item__title">Trip Settings</div>
+                <div className="gk-menu-item__sub">
+                  Trip name, targets, milestone &amp; invite link
+                </div>
+              </span>
+            </span>
+            {!canEdit && <Badge tone="neutral">PIN</Badge>}
           </button>
 
           <button
