@@ -164,6 +164,19 @@ export interface TrainPassInfo {
   returnDate: string;
 }
 
+export interface AlbumPhoto {
+  id: string;
+  tripId: string;
+  dayId: string;
+  dayLabel: string;
+  caption: string;
+  uploaderName: string;
+  /** Data URL or remote thumbnail/image URL */
+  url: string;
+  source: 'drive' | 'local';
+  createdAt: string;
+}
+
 export interface SharedTrip {
   schemaVersion: number;
   id: string;
@@ -175,6 +188,8 @@ export interface SharedTrip {
   departureAt: string; // ISO with timezone offset
   crewPinHash: string;
   albumUrl: string;
+  gdriveFolderUrl?: string;
+  gdriveScriptUrl?: string;
   trainPass?: TrainPassInfo;
   financeConfig: FinanceConfig;
   members: TripMember[];
@@ -196,6 +211,7 @@ export interface LocalPersonalData {
   coverBlob?: Blob | null;
   personalTransactions: Transaction[];
   personalPrep: PrepTask[];
+  localAlbumPhotos?: AlbumPhoto[];
   updatedAt: string;
 }
 

@@ -1,33 +1,44 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Images, ListChecks } from 'lucide-react';
 import seedData from './data/seed-solo-jogja-2027.json';
-import { Button, ConfirmDialog, EmptyState, Toast, type ToastTone } from './components/atoms';
+import { ConfirmDialog, Toast, type ToastTone } from './components/atoms';
 import { ExpandingGlassDock } from './components/organisms/ExpandingGlassDock';
 import { PinUnlockSheet } from './components/organisms/PinUnlockSheet';
 import { TripMenuSheet, type HomePhase } from './components/organisms/TripMenuSheet';
 import { TripSettingsSheet } from './components/organisms/TripSettingsSheet';
+import { AlbumScreen } from './features/album/AlbumScreen';
 import { CreateTripScreen } from './features/gate/CreateTripScreen';
 import { LandingGateScreen } from './features/gate/LandingGateScreen';
 import { WhoAreYouScreen } from './features/gate/WhoAreYouScreen';
 import { HomeScreen } from './features/home/HomeScreen';
 import { PlanScreen } from './features/plan/PlanScreen';
 import { RouteMapView } from './features/plan/RouteMapView';
+import { PrepScreen } from './features/prep/PrepScreen';
 import { WalletScreen } from './features/wallet/WalletScreen';
 import {
   ensureSeedTrip,
   getLocalPersonal,
   getSharedTripByCode,
   listSharedTrips,
+  saveLocalAlbumPhotos,
   saveLocalCoverBlob,
   saveLocalPersonal,
+  savePersonalPrep,
   saveSharedTrip,
   setActiveMemberLocal,
   upsertPersonalTransaction,
 } from './services/db';
+import { exportTripToExcel } from './services/excelExporter';
+import {
+  fetchRemoteTripByCode,
+  flushOfflineMutationQueue,
+  pushOrQueueSharedTrip,
+} from './services/supabaseSync';
 import { buildInviteUrl, compressCoverImage } from './services/tripFactory';
 import type {
+  AlbumPhoto,
   DockTabId,
   LocalPersonalData,
+  PrepTask,
   RouteTarget,
   SharedTrip,
   Transaction,
@@ -66,6 +77,7 @@ export default function App() {
     setToast({ open: true, message, tone });
   };
 
+  // Bootstrap IndexedDB pilot seed + check URL ?code= deep-link (local + Supabase fallback)
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -78,8 +90,12 @@ export default function App() {
         const params = new URLSearchParams(window.location.search);
         const queryCode = params.get('code')?.trim().toUpperCase();
         if (queryCode) {
-          const matched = await getSharedTripByCode(queryCode);
+          const matched =
+            (await fetchRemoteTripByCode(queryCode)) ??
+            (await getSharedTripByCode(queryCode));
           if (matched && alive) {
+            const refreshed = await listSharedTrips();
+            setSavedTrips(refreshed);
             const local = await getLocalPersonal(matched.id);
             setActiveTrip(matched);
             setLocalData(local);
@@ -95,6 +111,20 @@ export default function App() {
     };
   }, []);
 
+  // Automatically flush offline Layer-1 mutation queue when connectivity returns
+  useEffect(() => {
+    const handleOnline = () => {
+      void flushOfflineMutationQueue().then((flushedCount) => {
+        if (flushedCount > 0) {
+          showToast('Synced', 'success');
+        }
+      });
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
+
+  // Maintain object URL for Layer 2 local cover blob
   useEffect(() => {
     if (!localData?.coverBlob) {
       setCoverUrl(defaultCoverPath);
@@ -117,7 +147,9 @@ export default function App() {
         ...updater(prev),
         updatedAt: new Date().toISOString(),
       };
-      void saveSharedTrip(next).then(() => listSharedTrips().then(setSavedTrips));
+      void saveSharedTrip(next)
+        .then(() => listSharedTrips().then(setSavedTrips))
+        .then(() => pushOrQueueSharedTrip(next));
       return next;
     });
     if (toastMsg) showToast(toastMsg, 'success');
@@ -128,11 +160,27 @@ export default function App() {
     setPinSheetOpen(true);
   };
 
+  const openTripSettingsGated = () => {
+    if (canEdit) {
+      setSettingsOpen(true);
+    } else {
+      requestUnlockPin(() => setSettingsOpen(true));
+    }
+  };
+
   const handleJoinCode = async (code: string): Promise<boolean> => {
+    // Try Supabase pull first (if configured & online) -> caches to Layer 1 only!
+    const remote = await fetchRemoteTripByCode(code);
     const found =
+      remote ??
       (await getSharedTripByCode(code)) ??
       savedTrips.find((t) => t.code.toUpperCase() === code.toUpperCase());
     if (!found) return false;
+
+    if (remote) {
+      const refreshed = await listSharedTrips();
+      setSavedTrips(refreshed);
+    }
 
     const local = await getLocalPersonal(found.id);
     setActiveTrip(found);
@@ -157,6 +205,7 @@ export default function App() {
 
   const handleTripCreated = async (newTrip: SharedTrip) => {
     await saveSharedTrip(newTrip);
+    void pushOrQueueSharedTrip(newTrip);
     const all = await listSharedTrips();
     setSavedTrips(all);
     const creatorId = newTrip.members[0]?.id ?? null;
@@ -207,6 +256,23 @@ export default function App() {
     showToast('Personal expense deleted', 'info');
   };
 
+  const handleUpdatePersonalPrep = async (tasks: PrepTask[], toastMsg?: string) => {
+    const nextLocal = await savePersonalPrep(activeTrip.id, tasks);
+    setLocalData(nextLocal);
+    if (toastMsg) showToast(toastMsg, 'success');
+  };
+
+  const handleSaveLocalAlbumPhotos = async (photos: AlbumPhoto[], toastMsg?: string) => {
+    const nextLocal = await saveLocalAlbumPhotos(activeTrip.id, photos);
+    setLocalData(nextLocal);
+    if (toastMsg) showToast(toastMsg, 'success');
+  };
+
+  const handleExportExcel = () => {
+    exportTripToExcel(activeTrip);
+    showToast(`Exported gaskeun-${activeTrip.code.toLowerCase()}.xlsx`, 'success');
+  };
+
   const handleExportJson = () => {
     const blob = new Blob([JSON.stringify(activeTrip, null, 2)], {
       type: 'application/json',
@@ -241,34 +307,6 @@ export default function App() {
     setActiveTrip(pendingImportTrip);
     setPendingImportTrip(null);
     showToast('Shared trip updated — personal data stayed untouched', 'success');
-  };
-
-  const renderSprint4Placeholder = (tab: 'album' | 'prep') => {
-    const isAlbum = tab === 'album';
-    return (
-      <div style={{ paddingTop: 32 }}>
-        <EmptyState
-          icon={
-            isAlbum ? (
-              <Images size={24} strokeWidth={1.8} />
-            ) : (
-              <ListChecks size={24} strokeWidth={1.8} />
-            )
-          }
-          title={isAlbum ? 'Shared Album Gallery' : 'Group & Personal Prep'}
-          description={
-            isAlbum
-              ? 'Pinned crew photo folder & highlights arrive in Sprint 4.'
-              : 'Dual-layer group checklist & private packing list arrive in Sprint 4.'
-          }
-          action={
-            <Button variant="matcha" size="sm" onClick={() => setActiveTab('home')}>
-              Back to Home
-            </Button>
-          }
-        />
-      </div>
-    );
   };
 
   const showDock = route === 'hub' && !activeRouteTarget;
@@ -379,10 +417,30 @@ export default function App() {
           />
         )}
 
-        {route === 'hub' &&
-          !activeRouteTarget &&
-          (activeTab === 'album' || activeTab === 'prep') &&
-          renderSprint4Placeholder(activeTab)}
+        {route === 'hub' && !activeRouteTarget && activeTab === 'album' && (
+          <AlbumScreen
+            trip={activeTrip}
+            localPhotos={localData?.localAlbumPhotos ?? []}
+            activeMemberName={activeMemberName}
+            onSaveLocalPhotos={(photos, msg) => void handleSaveLocalAlbumPhotos(photos, msg)}
+            onOpenSettings={openTripSettingsGated}
+            onNotify={showToast}
+          />
+        )}
+
+        {route === 'hub' && !activeRouteTarget && activeTab === 'prep' && (
+          <PrepScreen
+            trip={activeTrip}
+            personalPrep={localData?.personalPrep ?? []}
+            canEdit={canEdit}
+            onOpenMenu={() => setMenuOpen(true)}
+            onRequestUnlockPin={() => requestUnlockPin()}
+            onUpdatePersonalPrep={(tasks, msg) => void handleUpdatePersonalPrep(tasks, msg)}
+            onUpdateGroupPrep={(tasks, msg) =>
+              handleUpdateTrip((prev) => ({ ...prev, groupPrep: tasks }), msg)
+            }
+          />
+        )}
       </main>
 
       {showDock && <ExpandingGlassDock activeTab={activeTab} onChange={setActiveTab} />}
@@ -405,16 +463,11 @@ export default function App() {
           setCanEdit(false);
           showToast('Crew editing locked', 'info');
         }}
-        onOpenTripSettings={() => {
-          if (canEdit) {
-            setSettingsOpen(true);
-          } else {
-            requestUnlockPin(() => setSettingsOpen(true));
-          }
-        }}
+        onOpenTripSettings={openTripSettingsGated}
         onCopyInvite={() => handleCopyInvite()}
         onSwitchProfile={() => setRoute('who')}
         onSwitchTrip={() => setRoute('landing')}
+        onExportExcel={handleExportExcel}
         onExportJson={handleExportJson}
         onImportJson={handleImportJsonFile}
         onClose={() => setMenuOpen(false)}
@@ -431,6 +484,9 @@ export default function App() {
               title: patch.title,
               subtitle: patch.subtitle,
               departureAt: patch.departureAt,
+              albumUrl: patch.gdriveFolderUrl || prev.albumUrl,
+              gdriveFolderUrl: patch.gdriveFolderUrl,
+              gdriveScriptUrl: patch.gdriveScriptUrl,
               financeConfig: {
                 ...prev.financeConfig,
                 poolTargetPerPerson: patch.poolTargetPerPerson,

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Check, Copy, Link2, Settings2 } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Copy, Link2, Settings2 } from 'lucide-react';
 import { Badge, Button, CornerOrb, Input } from '../atoms';
 import { buildInviteUrl } from '../../services/tripFactory';
 import type { SharedTrip } from '../../types/trip';
@@ -15,6 +15,8 @@ export interface TripSettingsSheetProps {
     poolTargetPerPerson: number;
     fundraiseTarget: number;
     minimumDpPerPerson: number;
+    gdriveFolderUrl: string;
+    gdriveScriptUrl: string;
   }) => void;
   onCopyText: (text: string, label: string) => void;
   onClose: () => void;
@@ -47,6 +49,11 @@ export function TripSettingsSheet({
   const [minDp, setMinDp] = useState(
     String(trip.financeConfig.minimumDpPerPerson ?? 200000),
   );
+  const [showDriveConfig, setShowDriveConfig] = useState(false);
+  const [gdriveFolderUrl, setGdriveFolderUrl] = useState(
+    trip.gdriveFolderUrl ?? trip.albumUrl ?? '',
+  );
+  const [gdriveScriptUrl, setGdriveScriptUrl] = useState(trip.gdriveScriptUrl ?? '');
   const [copiedWhich, setCopiedWhich] = useState<'code' | 'link' | null>(null);
 
   if (!open) return null;
@@ -69,6 +76,8 @@ export function TripSettingsSheet({
       poolTargetPerPerson: Math.max(0, Number(poolPerPerson.replace(/\D/g, '')) || 0),
       fundraiseTarget: Math.max(0, Number(fundraiseGoal.replace(/\D/g, '')) || 0),
       minimumDpPerPerson: Math.max(0, Number(minDp.replace(/\D/g, '')) || 0),
+      gdriveFolderUrl: gdriveFolderUrl.trim(),
+      gdriveScriptUrl: gdriveScriptUrl.trim(),
     });
     onClose();
   };
@@ -190,6 +199,40 @@ export function TripSettingsSheet({
             value={minDp}
             onChange={(e) => setMinDp(e.target.value.replace(/\D/g, ''))}
           />
+
+          {/* Optional Collapsible Google Drive Album Sync */}
+          <button
+            type="button"
+            className="create-optional-toggle tactile"
+            onClick={() => setShowDriveConfig((v) => !v)}
+          >
+            <span>Optional: Google Drive Album Sync</span>
+            {showDriveConfig ? (
+              <ChevronUp size={16} strokeWidth={2} />
+            ) : (
+              <ChevronDown size={16} strokeWidth={2} />
+            )}
+          </button>
+
+          {showDriveConfig && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <Input
+                id="ts-gdrive-folder"
+                label="Google Drive Folder URL"
+                placeholder="https://drive.google.com/drive/folders/..."
+                value={gdriveFolderUrl}
+                onChange={(e) => setGdriveFolderUrl(e.target.value)}
+              />
+              <Input
+                id="ts-gdrive-script"
+                label="Apps Script Sync URL"
+                placeholder="https://script.google.com/macros/s/.../exec"
+                hint="Deploy scripts/gdrive-apps-script.gs to enable direct uploads."
+                value={gdriveScriptUrl}
+                onChange={(e) => setGdriveScriptUrl(e.target.value)}
+              />
+            </div>
+          )}
 
           <Button
             type="submit"

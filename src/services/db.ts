@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type {
+  AlbumPhoto,
   LocalPersonalData,
   OfflineQueueItem,
   PrepTask,
@@ -142,10 +143,12 @@ function createEmptyLocalPersonal(tripId: string): LocalPersonalData {
     coverBlob: null,
     personalTransactions: [],
     personalPrep: [
-      { id: 'pp-1', title: 'Powerbank 10,000mAh + cable', done: true, category: 'Tech' },
-      { id: 'pp-2', title: 'Rain poncho for motorbike convoy', done: false, category: 'Ride' },
-      { id: 'pp-3', title: 'Small cash (Rp 5k–10k) for parking', done: false, category: 'Cash' },
+      { id: 'pp-1', title: 'ID Card / KTP', done: true, category: 'Docs' },
+      { id: 'pp-2', title: 'Powerbank', done: false, category: 'Tech' },
+      { id: 'pp-3', title: 'Rain poncho', done: false, category: 'Ride' },
+      { id: 'pp-4', title: 'Walking shoes', done: false, category: 'Wear' },
     ],
+    localAlbumPhotos: [],
     updatedAt: new Date().toISOString(),
   };
 }
@@ -207,6 +210,16 @@ export async function savePersonalPrep(
 ): Promise<LocalPersonalData> {
   const current = await getLocalPersonal(tripId);
   const next: LocalPersonalData = { ...current, personalPrep };
+  await saveLocalPersonal(next);
+  return next;
+}
+
+export async function saveLocalAlbumPhotos(
+  tripId: string,
+  localAlbumPhotos: AlbumPhoto[],
+): Promise<LocalPersonalData> {
+  const current = await getLocalPersonal(tripId);
+  const next: LocalPersonalData = { ...current, localAlbumPhotos };
   await saveLocalPersonal(next);
   return next;
 }

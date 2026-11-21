@@ -1,0 +1,123 @@
+/* ==========================================================================
+   Album Screen (07_Album_Gallery) — 2-Column Masonry Grid & Lightbox
+   ========================================================================== */
+
+.album-root {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.album-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.album-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.05;
+  color: var(--text-primary);
+}
+
+.album-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* True 2-Column Masonry Grid */
+.album-masonry {
+  column-count: 2;
+  column-gap: 10px;
+}
+
+.album-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+  break-inside: avoid;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 12px 26px -10px rgba(31, 45, 39, 0.16);
+  text-align: left;
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+
+.album-card:active {
+  transform: scale(0.97);
+}
+
+.album-card__img {
+  width: 100%;
+  height: auto;
+  min-height: 120px;
+  max-height: 260px;
+  object-fit: cover;
+  display: block;
+}
+
+.album-card__badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.album-card__caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20px 10px 9px;
+  background: linear-gradient(180deg, rgba(24, 36, 32, 0) 0%, rgba(24, 36, 32, 0.72) 100%);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Full-Screen Lightbox */
+.album-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: calc(var(--safe-top) + 16px) 16px calc(var(--safe-bottom) + 20px);
+  background: rgba(18, 28, 24, 0.88);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.album-lightbox__img-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin: 14px 0;
+}
+
+.album-lightbox__img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 22px;
+  object-fit: contain;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.album-upload-preview {
+  width: 100%;
+  max-height: 180px;
+  border-radius: 20px;
+  object-fit: cover;
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
+}

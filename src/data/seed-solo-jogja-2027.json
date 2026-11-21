@@ -8,7 +8,9 @@
   "endDate": "2027-02-14",
   "departureAt": "2027-02-11T09:14:00+07:00",
   "crewPinHash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
-  "albumUrl": "https://photos.google.com/",
+  "albumUrl": "https://drive.google.com/",
+  "gdriveFolderUrl": "https://drive.google.com/",
+  "gdriveScriptUrl": "",
   "trainPass": {
     "trainName": "KA Bengawan (Economy)",
     "outboundCode": "KA 246",
@@ -619,11 +621,11 @@
     }
   ],
   "groupPrep": [
-    { "id": "gp-1", "title": "Confirm Valen final seat (early Dec)", "done": false, "assigneeId": "m-chika", "category": "Crew" },
-    { "id": "gp-2", "title": "Book KA Bengawan outbound H-45 (Dec 27, 23:50)", "done": false, "assigneeId": "m-kris", "category": "Tickets" },
-    { "id": "gp-3", "title": "Book KA Bengawan return H-45 (Dec 30, 23:50)", "done": false, "assigneeId": "m-kris", "category": "Tickets" },
-    { "id": "gp-4", "title": "Reserve 5 motorbikes + 10 helmets in Solo", "done": false, "assigneeId": "m-rani", "category": "Transport" },
-    { "id": "gp-5", "title": "Pack compact first-aid kit & rain ponchos", "done": true, "assigneeId": "m-dora", "category": "Safety" }
+    { "id": "gp-1", "title": "War departure train H-45 Dec 27", "done": false, "assigneeId": "m-kris", "category": "Tickets" },
+    { "id": "gp-2", "title": "War return train H-45 Dec 30", "done": false, "assigneeId": "m-kris", "category": "Tickets" },
+    { "id": "gp-3", "title": "Confirm extra beds Solo & Jogja", "done": false, "assigneeId": "m-chika", "category": "Stay" },
+    { "id": "gp-4", "title": "Group First-Aid Kit", "done": true, "assigneeId": "m-dora", "category": "Safety" },
+    { "id": "gp-5", "title": "Reserve 5 motorbikes + 10 helmets in Solo", "done": false, "assigneeId": "m-rani", "category": "Transport" }
   ],
   "updatedAt": "2026-11-21T12:00:00+07:00"
 }

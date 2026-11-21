@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import {
   Download,
+  FileSpreadsheet,
   KeyRound,
   Link2,
   Lock,
@@ -28,6 +29,7 @@ export interface TripMenuSheetProps {
   onCopyInvite: () => void;
   onSwitchProfile: () => void;
   onSwitchTrip: () => void;
+  onExportExcel: () => void;
   onExportJson: () => void;
   onImportJson: (file: File) => void;
   onClose: () => void;
@@ -46,6 +48,7 @@ export function TripMenuSheet({
   onCopyInvite,
   onSwitchProfile,
   onSwitchTrip,
+  onExportExcel,
   onExportJson,
   onImportJson,
   onClose,
@@ -153,6 +156,27 @@ export function TripMenuSheet({
               <span>
                 <div className="gk-menu-item__title">Copy Invite Link</div>
                 <div className="gk-menu-item__sub">Share code {trip.code} via WhatsApp</div>
+              </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="gk-menu-item"
+            onClick={() => {
+              onExportExcel();
+              onClose();
+            }}
+          >
+            <span className="gk-menu-item__left">
+              <span className="gk-menu-item__icon">
+                <FileSpreadsheet size={18} strokeWidth={1.8} />
+              </span>
+              <span>
+                <div className="gk-menu-item__title">Export Trip (.xlsx)</div>
+                <div className="gk-menu-item__sub">
+                  Itinerary, Wallet &amp; Crew workbook (3 sheets)
+                </div>
               </span>
             </span>
           </button>

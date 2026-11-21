@@ -1,0 +1,175 @@
+/* ==========================================================================
+   Prep Screen (08_Prep_Tasks) — Dual Personal (Local) & Group (Shared)
+   ========================================================================== */
+
+.prep-root {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.prep-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.prep-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.05;
+  color: var(--text-primary);
+}
+
+.prep-seg {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.5px solid rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.prep-seg__btn {
+  height: 36px;
+  border-radius: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.prep-seg__btn--active {
+  background: var(--brand-matcha);
+  color: var(--text-inverse);
+  box-shadow: 0 6px 14px -4px rgba(45, 74, 66, 0.3);
+}
+
+.prep-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.prep-progress-pct {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--brand-forest);
+}
+
+.prep-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.prep-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1.25px solid rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: opacity var(--dur-fast) ease, transform var(--dur-fast) var(--ease-spring);
+}
+
+.prep-item--done {
+  opacity: 0.7;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.prep-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.8px solid var(--brand-matcha);
+  background: rgba(255, 255, 255, 0.85);
+  color: #FFFFFF;
+  transition:
+    background-color var(--dur-fast) var(--ease-spring),
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+.prep-check:active {
+  transform: scale(0.88);
+}
+
+.prep-check--done {
+  background: var(--brand-matcha);
+}
+
+.prep-item__title {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.prep-item--done .prep-item__title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.prep-quick-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 16px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 10px 24px -10px rgba(31, 45, 39, 0.14);
+}
+
+.prep-quick-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.prep-quick-input::placeholder {
+  color: var(--text-muted);
+}
+
+.prep-quick-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 19px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-matcha);
+  color: #FFFFFF;
+}

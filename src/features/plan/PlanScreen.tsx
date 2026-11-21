@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, ArrowUpRight, CalendarPlus } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, CalendarPlus, FileSpreadsheet } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -9,6 +9,7 @@ import {
   GlassCard,
   TrailDot,
 } from '../../components/atoms';
+import { exportTripToExcel } from '../../services/excelExporter';
 import { formatCompactIDR } from '../../services/ledger';
 import { isClosedOnDate } from '../../services/planUtils';
 import type {
@@ -383,58 +384,72 @@ export function PlanScreen({
           })}
         </div>
       ) : (
-        /* 03b_Plan_Table — Strictly 3 columns: TIME | AGENDA | EST. (NO TYPE, NO PARKING) */
-        <GlassCard variant="clear" padding="none">
-          <div
-            className="plan-table-row"
-            style={{
-              paddingTop: 10,
-              paddingBottom: 8,
-              borderBottom: '1px solid var(--hairline)',
-              cursor: 'default',
-            }}
-          >
-            <span className="gk-field__label">TIME</span>
-            <span className="gk-field__label">AGENDA</span>
-            <span className="gk-field__label" style={{ textAlign: 'right' }}>
-              EST.
-            </span>
-          </div>
-          {dayItems.map((stop) => (
-            <button
-              key={stop.id}
-              type="button"
-              className="plan-table-row tactile"
-              onClick={() => setEditingStopId(stop.id)}
+        /* 03b_Plan_Table — Strictly 3 columns: TIME | AGENDA | EST. + Export .xlsx */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <GlassCard variant="clear" padding="none">
+            <div
+              className="plan-table-row"
+              style={{
+                paddingTop: 10,
+                paddingBottom: 8,
+                borderBottom: '1px solid var(--hairline)',
+                cursor: 'default',
+              }}
             >
-              <span className="plan-table-time">{stop.startTime}</span>
-              <span
-                style={{
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  color: 'var(--text-primary)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {stop.title}
+              <span className="gk-field__label">TIME</span>
+              <span className="gk-field__label">AGENDA</span>
+              <span className="gk-field__label" style={{ textAlign: 'right' }}>
+                EST.
               </span>
-              <span
-                style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: 'var(--text-secondary)',
-                  textAlign: 'right',
-                  whiteSpace: 'nowrap',
-                }}
+            </div>
+            {dayItems.map((stop) => (
+              <button
+                key={stop.id}
+                type="button"
+                className="plan-table-row tactile"
+                onClick={() => setEditingStopId(stop.id)}
               >
-                {formatEstimate(stop.costEstimate)}
-              </span>
-            </button>
-          ))}
-        </GlassCard>
+                <span className="plan-table-time">{stop.startTime}</span>
+                <span
+                  style={{
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {stop.title}
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                    textAlign: 'right',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {formatEstimate(stop.costEstimate)}
+                </span>
+              </button>
+            ))}
+          </GlassCard>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              variant="glass"
+              size="sm"
+              leftIcon={<FileSpreadsheet size={14} strokeWidth={1.8} />}
+              rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
+              onClick={() => exportTripToExcel(trip)}
+            >
+              Export .xlsx
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* Floating Glass (+) Button above Dock */}
