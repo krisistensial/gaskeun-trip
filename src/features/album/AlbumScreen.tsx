@@ -29,6 +29,7 @@ import {
   fetchDriveAlbumWithStatus,
   uploadPhotoToDrive,
 } from '../../services/gdriveAlbum';
+import { uploadSharedImage } from '../../services/mediaUploader';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import type { AlbumPhoto, SharedTrip } from '../../types/trip';
 import './album.css';
@@ -70,6 +71,7 @@ export function AlbumScreen({
   const [uploadOpen, setUploadOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [compressedBase64, setCompressedBase64] = useState('');
+  const [uploadMimeType, setUploadMimeType] = useState('image/jpeg');
   const [fileName, setFileName] = useState('photo.jpg');
   const [caption, setCaption] = useState('');
   const [uploadDayId, setUploadDayId] = useState<string>(tripDays[0]?.id ?? 'day-1');
@@ -143,11 +145,15 @@ export function AlbumScreen({
   }, [drivePhotos, localPhotos, dayFilter]);
 
   const handleCropConfirmed = (cropped: CroppedImageResult) => {
-    const pickedName = cropFile?.name.replace(/\.[^.]+$/, '') || 'photo';
+    const rawName = cropFile?.name || 'photo.jpg';
+    const baseName = rawName.replace(/\.[^.]+$/, '') || 'photo';
+    const origExtMatch = rawName.match(/\.[a-zA-Z0-9]+$/);
+    const ext = cropped.isOriginalPassthrough && origExtMatch ? origExtMatch[0].toLowerCase() : '.jpg';
     setCropFile(null);
     setPreviewUrl(cropped.dataUrl);
     setCompressedBase64(cropped.base64);
-    setFileName(`${pickedName}.jpg`);
+    setUploadMimeType(cropped.mimeType || 'image/jpeg');
+    setFileName(`${baseName}${ext}`);
     setUploadOpen(true);
   };
 
@@ -155,6 +161,7 @@ export function AlbumScreen({
     setUploadOpen(false);
     setPreviewUrl('');
     setCompressedBase64('');
+    setUploadMimeType('image/jpeg');
     setCaption('');
     setUploading(false);
   };
@@ -170,26 +177,40 @@ export function AlbumScreen({
     const cleanCaption = caption.trim() || dayObj?.city || 'Highlight';
 
     if (trip.gdriveScriptUrl?.trim() && navigator.onLine) {
-      const uploadRes = await uploadPhotoToDrive({
-        scriptUrl: trip.gdriveScriptUrl.trim(),
-        folderUrl: driveFolderUrl,
-        tripId: trip.id,
-        dayId: uploadDayId,
-        dayLabel,
-        caption: cleanCaption,
-        uploaderName: activeMemberName,
-        base64: compressedBase64,
-        fileName,
-      });
-      if (uploadRes.ok && uploadRes.photo) {
-        setDrivePhotos((prev) => [uploadRes.photo!, ...prev]);
+      const uploaded = await uploadSharedImage(
+        { dataUrl: previewUrl, base64: compressedBase64, mimeType: uploadMimeType },
+        {
+          kind: 'album',
+          trip,
+          dayId: uploadDayId,
+          dayLabel,
+          caption: cleanCaption,
+          uploaderName: activeMemberName,
+          fileName,
+        },
+      );
+      if (uploaded.source === 'drive') {
+        const drivePhoto: AlbumPhoto = {
+          id: uploaded.driveId || `drv-${Date.now().toString(36)}`,
+          tripId: trip.id,
+          dayId: uploadDayId,
+          dayLabel,
+          caption: cleanCaption,
+          uploaderName: activeMemberName,
+          url: uploaded.url,
+          fullUrl: uploaded.fullUrl,
+          downloadUrl: uploaded.downloadUrl,
+          source: 'drive',
+          createdAt: new Date().toISOString(),
+        };
+        setDrivePhotos((prev) => [drivePhoto, ...prev]);
         setSyncHealth({ status: 'ok' });
         onNotify('Uploaded to Google Drive', 'success');
         resetUpload();
         return;
       }
-      if (uploadRes.error) {
-        setSyncHealth({ status: 'error', error: uploadRes.error });
+      if (uploaded.error) {
+        setSyncHealth({ status: 'error', error: uploaded.error });
       }
     }
 
@@ -201,6 +222,8 @@ export function AlbumScreen({
       caption: cleanCaption,
       uploaderName: activeMemberName,
       url: previewUrl,
+      fullUrl: previewUrl,
+      downloadUrl: previewUrl,
       source: 'local',
       createdAt: new Date().toISOString(),
     };
@@ -218,6 +241,7 @@ export function AlbumScreen({
     if (!scriptUrl || !navigator.onLine) return false;
     const base64 = photo.url.includes(',') ? photo.url.split(',')[1] : '';
     if (!base64) return false;
+    const mimeMatch = photo.url.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
 
     const res = await uploadPhotoToDrive({
       scriptUrl,
@@ -229,6 +253,7 @@ export function AlbumScreen({
       uploaderName: photo.uploaderName || activeMemberName,
       base64,
       fileName: `${photo.id}.jpg`,
+      mimeType: mimeMatch?.[1] || 'image/jpeg',
     });
 
     if (res.ok && res.photo) {
@@ -283,7 +308,7 @@ export function AlbumScreen({
 
   const handleDownload = (photo: AlbumPhoto) => {
     const a = document.createElement('a');
-    a.href = photo.fullUrl || photo.url;
+    a.href = photo.downloadUrl || photo.fullUrl || photo.url;
     a.download = `${photo.caption.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'gaskeun-photo'}.jpg`;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
@@ -602,7 +627,7 @@ export function AlbumScreen({
         </form>
       </LiquidBottomSheet>
 
-      {/* Full-Screen Lightbox (Portaled to document.body, uses fullUrl w2000) */}
+      {/* Full-Screen Lightbox (Portaled to document.body, uses fullUrl w4096 + original downloadUrl) */}
       {lightboxPhoto &&
         typeof document !== 'undefined' &&
         createPortal(

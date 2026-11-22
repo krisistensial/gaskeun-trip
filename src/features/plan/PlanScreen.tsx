@@ -626,18 +626,20 @@ export function PlanScreen({
                           variant="spotlight"
                           padding="lg"
                           interactive
-                          className="spotlight-now"
+                          className={`spotlight-now ${stop.coverUrl ? 'card-has-photo' : ''}`}
                           onClick={() => setEditingStopId(stop.id)}
                         >
                           {stop.coverUrl && (
-                            <div className="trail-card-cover-wrap">
+                            <>
                               <img
                                 src={stop.coverUrl}
-                                alt={stop.title}
-                                className="trail-card-cover"
+                                alt=""
+                                aria-hidden="true"
+                                className="card-bg-photo"
                                 loading="lazy"
                               />
-                            </div>
+                              <div className="card-bg-scrim" aria-hidden="true" />
+                            </>
                           )}
                           <div className="spotlight-now__top">
                             <span className="spotlight-live-tag">
@@ -663,8 +665,9 @@ export function PlanScreen({
                             )}
                             {(stop.type === 'place' || stop.type === 'transit') && (
                               <Button
-                                variant="matcha"
+                                variant={stop.coverUrl ? 'glass' : 'matcha'}
                                 size="sm"
+                                className={stop.coverUrl ? 'card-photo-route-btn' : undefined}
                                 rightIcon={<ArrowUpRight size={14} strokeWidth={2} />}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -681,17 +684,20 @@ export function PlanScreen({
                           variant="clear"
                           padding="md"
                           interactive
+                          className={stop.coverUrl ? 'card-has-photo' : undefined}
                           onClick={() => setEditingStopId(stop.id)}
                         >
                           {stop.coverUrl && (
-                            <div className="trail-card-cover-wrap">
+                            <>
                               <img
                                 src={stop.coverUrl}
-                                alt={stop.title}
-                                className="trail-card-cover"
+                                alt=""
+                                aria-hidden="true"
+                                className="card-bg-photo"
                                 loading="lazy"
                               />
-                            </div>
+                              <div className="card-bg-scrim" aria-hidden="true" />
+                            </>
                           )}
                           <div className="trail-upcoming-head">
                             <span className="trail-upcoming-meta">
@@ -707,8 +713,9 @@ export function PlanScreen({
                               </Badge>
                             ) : stop.type === 'place' || stop.type === 'transit' ? (
                               <Button
-                                variant="ghost"
+                                variant={stop.coverUrl ? 'glass' : 'ghost'}
                                 size="sm"
+                                className={stop.coverUrl ? 'card-photo-route-btn' : undefined}
                                 rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -721,15 +728,7 @@ export function PlanScreen({
                           </div>
                           <h3 className="trail-upcoming-title">{stop.title}</h3>
                           {stop.locationHint && (
-                            <p
-                              style={{
-                                margin: '3px 0 0',
-                                fontSize: 12,
-                                color: 'var(--text-secondary)',
-                              }}
-                            >
-                              {stop.locationHint}
-                            </p>
+                            <p className="trail-upcoming-hint">{stop.locationHint}</p>
                           )}
                           {stop.specialScheduleNote && (
                             <div style={{ marginTop: 6 }}>

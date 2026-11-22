@@ -409,13 +409,22 @@ export function HomeScreen({
       {/* On-Trip Spotlight Now & Up Next */}
       {phase === 'on-trip' && activeStop && (
         <section aria-label="Current stop spotlight">
-          <GlassCard variant="spotlight" padding="lg" className="spotlight-now">
+          <GlassCard
+            variant="spotlight"
+            padding="lg"
+            className={`spotlight-now ${activeStop.coverUrl ? 'card-has-photo' : ''}`}
+          >
             {activeStop.coverUrl && (
-              <img
-                src={activeStop.coverUrl}
-                alt={activeStop.title}
-                className="spotlight-now__cover"
-              />
+              <>
+                <img
+                  src={activeStop.coverUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="card-bg-photo"
+                  loading="lazy"
+                />
+                <div className="card-bg-scrim" aria-hidden="true" />
+              </>
             )}
             <div className="spotlight-now__top">
               <span className="spotlight-live-tag">
@@ -429,9 +438,7 @@ export function HomeScreen({
               <h2 className="spotlight-place">{activeStop.title}</h2>
               <p className="spotlight-hint">{activeStop.locationHint}</p>
               {activeStop.parkingNote && (
-                <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>
-                  {activeStop.parkingNote}
-                </p>
+                <p className="spotlight-parking">{activeStop.parkingNote}</p>
               )}
             </div>
 
@@ -440,8 +447,9 @@ export function HomeScreen({
                 {activeStop.type.charAt(0).toUpperCase() + activeStop.type.slice(1)}
               </Badge>
               <Button
-                variant="matcha"
+                variant={activeStop.coverUrl ? 'glass' : 'matcha'}
                 size="sm"
+                className={activeStop.coverUrl ? 'card-photo-route-btn' : undefined}
                 rightIcon={<ArrowUpRight size={15} strokeWidth={2} />}
                 onClick={() => openStopInRoute(activeStop)}
               >

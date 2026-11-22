@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Prep Screen (08_Prep_Tasks) — Dual Personal (Local) & Group (Shared)
+   Prep Screen (08_Prep_Tasks) — Read-Only Default, Edit Mode, 2-Step Safety & Undo
    ========================================================================== */
 
 .prep-root {
@@ -22,6 +22,12 @@
   font-weight: 600;
   line-height: 1.05;
   color: var(--text-primary);
+}
+
+.prep-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .prep-seg {
@@ -69,6 +75,24 @@
   color: var(--brand-forest);
 }
 
+/* Edit Mode Banner */
+.prep-edit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 20px;
+  background: rgba(227, 237, 230, 0.65);
+  border: 1.25px solid rgba(255, 255, 255, 0.92);
+}
+
+.prep-edit-bar__hint {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--brand-forest);
+}
+
 .prep-list {
   display: flex;
   flex-direction: column;
@@ -86,11 +110,18 @@
   border: 1.25px solid rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  transition: opacity var(--dur-fast) ease, transform var(--dur-fast) var(--ease-spring);
+  transition:
+    opacity var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+.prep-item--editing {
+  border-color: rgba(74, 116, 104, 0.32);
 }
 
 .prep-item--done {
-  opacity: 0.7;
+  opacity: 0.72;
   background: rgba(255, 255, 255, 0.48);
 }
 
@@ -110,7 +141,7 @@
     transform var(--dur-fast) var(--ease-spring);
 }
 
-.prep-check:active {
+.prep-check:active:not(:disabled) {
   transform: scale(0.88);
 }
 
@@ -118,58 +149,252 @@
   background: var(--brand-matcha);
 }
 
-.prep-item__title {
+/* Read-only clean text (zero accidental keyboard popups on scroll) */
+.prep-item__text {
   flex: 1;
   min-width: 0;
-  border: none;
-  background: transparent;
-  outline: none;
   font-size: 13.5px;
   font-weight: 600;
+  line-height: 1.35;
   color: var(--text-primary);
+  word-break: break-word;
+  user-select: none;
 }
 
-.prep-item--done .prep-item__title {
+.prep-item--done .prep-item__text {
   text-decoration: line-through;
   color: var(--text-muted);
 }
 
-.prep-quick-add {
-  display: flex;
+.prep-pic-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 6px 6px 16px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1.5px solid rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  box-shadow: 0 10px 24px -10px rgba(31, 45, 39, 0.14);
+  border-radius: 9999px;
 }
 
-.prep-quick-input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
-  outline: none;
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--text-primary);
+.prep-pic-btn--editable {
+  box-shadow: 0 0 0 2px rgba(74, 116, 104, 0.25);
 }
 
-.prep-quick-input::placeholder {
-  color: var(--text-muted);
-}
-
-.prep-quick-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 19px;
+.prep-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex-shrink: 0;
+}
+
+.prep-icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--brand-matcha);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.prep-icon-btn--edit {
+  color: var(--brand-forest);
+}
+
+.prep-icon-btn--delete {
+  color: var(--accent-coral);
+  background: rgba(251, 236, 239, 0.82);
+}
+
+/* Edit & Add Sheets */
+.prep-sheet-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.prep-current-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: rgba(227, 237, 230, 0.54);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+
+.prep-current-box__val {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.prep-assignee-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.prep-assignee-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 4px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.25px solid rgba(255, 255, 255, 0.95);
+}
+
+.prep-assignee-pill--active {
+  background: var(--brand-sage-tint);
+  border-color: var(--brand-matcha);
+  color: var(--brand-forest);
+}
+
+/* Step 2 Before -> After Diff Card */
+.prep-diff-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1.25px solid rgba(255, 255, 255, 0.96);
+}
+
+.prep-diff-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.prep-diff-before {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: line-through;
+  word-break: break-word;
+}
+
+.prep-diff-after {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--brand-forest);
+  word-break: break-word;
+}
+
+.prep-diff-meta {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.prep-verify-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+/* 2-Step Delete Dialog Styling */
+.prep-delete-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  margin-bottom: 10px;
+  border-radius: 9999px;
+  background: var(--accent-coral-soft);
+  color: var(--accent-coral);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.prep-delete-preview {
+  margin: 8px 0 12px;
+  padding: 10px 13px;
+  border-radius: 16px;
+  background: rgba(246, 248, 245, 0.92);
+  border: 1px solid rgba(74, 116, 104, 0.16);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.prep-verify-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 11px 12px;
+  border-radius: 16px;
+  background: rgba(251, 236, 239, 0.62);
+  border: 1px solid rgba(207, 77, 94, 0.25);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.prep-verify-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-coral);
+  flex-shrink: 0;
+}
+
+/* 5-Second Floating Undo Toast (Positioned Right Above Glass Dock for 1-Thumb Reach) */
+.prep-undo-toast-host {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--dock-height) + var(--safe-bottom) + 20px);
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  width: min(calc(100% - 32px), 388px);
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+}
+
+.prep-undo-toast {
+  pointer-events: auto;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+  border-radius: 9999px;
+  background: rgba(24, 36, 32, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  box-shadow: 0 16px 36px -10px rgba(18, 28, 24, 0.42);
   color: #FFFFFF;
+  animation: gaskeun-fade-up var(--dur-normal) var(--ease-spring);
+}
+
+.prep-undo-toast__msg {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prep-undo-toast__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 9999px;
+  background: var(--brand-sage-tint);
+  color: var(--brand-forest);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
 }

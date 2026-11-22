@@ -1,5 +1,6 @@
 /**
- * Pure geometry & Canvas rendering engine for the Universal Interactive Photo Cropper.
+ * Pure geometry, Original Passthrough & High-Res Canvas rendering engine
+ * for the Universal Interactive Photo Cropper.
  */
 
 export type CropPresetId =
@@ -11,6 +12,10 @@ export type CropPresetId =
   | 'album';
 
 export type AlbumAspectChoice = 'original' | '4:5' | '1:1' | '16:9';
+
+export const ALBUM_MAX_DIM = 4096;
+export const ALBUM_HIGH_QUALITY = 0.94;
+export const ORIGINAL_PASSTHROUGH_MAX_BYTES = 12 * 1024 * 1024; // 12 MB safe ceiling for Apps Script
 
 export interface CropPresetSpec {
   id: CropPresetId;
@@ -31,7 +36,7 @@ export const CROP_PRESETS: Record<Exclude<CropPresetId, 'album'>, CropPresetSpec
     aspect: 9 / 10,
     outputW: 1080,
     outputH: 1200,
-    quality: 0.82,
+    quality: 0.86,
   },
   'plan-cover': {
     id: 'plan-cover',
@@ -40,7 +45,7 @@ export const CROP_PRESETS: Record<Exclude<CropPresetId, 'album'>, CropPresetSpec
     aspect: 16 / 9,
     outputW: 1200,
     outputH: 675,
-    quality: 0.8,
+    quality: 0.86,
   },
   'stay-cover': {
     id: 'stay-cover',
@@ -49,7 +54,7 @@ export const CROP_PRESETS: Record<Exclude<CropPresetId, 'album'>, CropPresetSpec
     aspect: 16 / 9,
     outputW: 1200,
     outputH: 675,
-    quality: 0.8,
+    quality: 0.86,
   },
   'train-photo': {
     id: 'train-photo',
@@ -58,7 +63,7 @@ export const CROP_PRESETS: Record<Exclude<CropPresetId, 'album'>, CropPresetSpec
     aspect: 4 / 3,
     outputW: 960,
     outputH: 720,
-    quality: 0.8,
+    quality: 0.86,
   },
   avatar: {
     id: 'avatar',
@@ -67,7 +72,7 @@ export const CROP_PRESETS: Record<Exclude<CropPresetId, 'album'>, CropPresetSpec
     aspect: 1,
     outputW: 256,
     outputH: 256,
-    quality: 0.82,
+    quality: 0.86,
     circular: true,
   },
 };
@@ -93,6 +98,31 @@ export function getRotatedDimensions(
   return { effW: imgW, effH: imgH };
 }
 
+/**
+ * Returns true when an album upload can skip Canvas re-encoding completely and
+ * pass through the untouched native image file (zero quality loss) safely under 12 MB.
+ */
+export function shouldUseOriginalPassthrough(params: {
+  preset: CropPresetId;
+  albumRatio: AlbumAspectChoice;
+  zoom: number;
+  panX: number;
+  panY: number;
+  rotationDeg: number;
+  fileSizeBytes: number;
+}): boolean {
+  if (params.preset !== 'album') return false;
+  if (params.albumRatio !== 'original') return false;
+  if (Math.abs(params.zoom - 1) > 1e-4) return false;
+  if (Math.abs(params.panX) >= 0.5 || Math.abs(params.panY) >= 0.5) return false;
+  const normRot = ((params.rotationDeg % 360) + 360) % 360;
+  if (normRot !== 0) return false;
+  if (params.fileSizeBytes <= 0 || params.fileSizeBytes > ORIGINAL_PASSTHROUGH_MAX_BYTES) {
+    return false;
+  }
+  return true;
+}
+
 export function getCropOutputDimensions(
   preset: CropPresetId,
   albumRatio: AlbumAspectChoice,
@@ -113,33 +143,46 @@ export function getCropOutputDimensions(
   }
 
   const { effW, effH } = getRotatedDimensions(Math.max(1, imgW), Math.max(1, imgH), rotationDeg);
-  const maxDim = 1600;
 
   if (albumRatio === 'original') {
     const aspect = effW / effH;
-    const scale = Math.min(1, maxDim / Math.max(effW, effH));
+    const scale = Math.min(1, ALBUM_MAX_DIM / Math.max(effW, effH));
     return {
       width: Math.max(1, Math.round(effW * scale)),
       height: Math.max(1, Math.round(effH * scale)),
       aspect,
       ratioLabel: 'Original',
-      quality: 0.82,
+      quality: ALBUM_HIGH_QUALITY,
       circular: false,
     };
   }
 
-  const ratioMap: Record<Exclude<AlbumAspectChoice, 'original'>, { aspect: number; w: number; h: number }> = {
-    '4:5': { aspect: 4 / 5, w: 1280, h: 1600 },
-    '1:1': { aspect: 1, w: 1400, h: 1400 },
-    '16:9': { aspect: 16 / 9, w: 1600, h: 900 },
+  const aspectMap: Record<Exclude<AlbumAspectChoice, 'original'>, number> = {
+    '4:5': 4 / 5,
+    '1:1': 1,
+    '16:9': 16 / 9,
   };
-  const chosen = ratioMap[albumRatio];
+  const targetAspect = aspectMap[albumRatio];
+
+  // Match the native resolution of the cropped region inside (effW, effH) without upscaling,
+  // capping the longest edge at ALBUM_MAX_DIM (4096 px).
+  let cropW: number;
+  let cropH: number;
+  if (effW / effH >= targetAspect) {
+    cropH = effH;
+    cropW = effH * targetAspect;
+  } else {
+    cropW = effW;
+    cropH = effW / targetAspect;
+  }
+  const scale = Math.min(1, ALBUM_MAX_DIM / Math.max(cropW, cropH));
+
   return {
-    width: chosen.w,
-    height: chosen.h,
-    aspect: chosen.aspect,
+    width: Math.max(1, Math.round(cropW * scale)),
+    height: Math.max(1, Math.round(cropH * scale)),
+    aspect: targetAspect,
     ratioLabel: albumRatio,
-    quality: 0.82,
+    quality: ALBUM_HIGH_QUALITY,
     circular: false,
   };
 }
@@ -189,11 +232,43 @@ export interface CroppedImageResult {
   base64: string;
   width: number;
   height: number;
+  mimeType?: string;
+  isOriginalPassthrough?: boolean;
 }
 
 /**
- * Renders the exact user-cropped region into an offscreen Canvas and exports
- * JPEG blob + dataUrl + base64.
+ * Reads an original image File directly as a Data URL + base64 without Canvas
+ * re-encoding so native camera resolution & sharpness stay 100% intact.
+ */
+export async function readOriginalImageFile(
+  file: File,
+  width: number,
+  height: number,
+): Promise<CroppedImageResult> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('Could not read original image'));
+    };
+    reader.onerror = () => reject(new Error('Could not read original image'));
+    reader.readAsDataURL(file);
+  });
+  const base64 = dataUrl.split(',')[1] ?? '';
+  return {
+    blob: file,
+    dataUrl,
+    base64,
+    width,
+    height,
+    mimeType: file.type || 'image/jpeg',
+    isOriginalPassthrough: true,
+  };
+}
+
+/**
+ * Renders the exact user-cropped region into an offscreen Canvas with high-quality
+ * resampling and exports JPEG blob + dataUrl + base64.
  */
 export async function renderCroppedImage(params: {
   image: HTMLImageElement;
@@ -236,6 +311,9 @@ export async function renderCroppedImage(params: {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas unavailable');
 
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
   const ratioX = outputW / frameW;
   const ratioY = outputH / frameH;
   const outScale = bounds.displayScale * Math.max(ratioX, ratioY);
@@ -260,5 +338,13 @@ export async function renderCroppedImage(params: {
   });
   const base64 = dataUrl.split(',')[1] ?? '';
 
-  return { blob, dataUrl, base64, width: outputW, height: outputH };
+  return {
+    blob,
+    dataUrl,
+    base64,
+    width: outputW,
+    height: outputH,
+    mimeType: 'image/jpeg',
+    isOriginalPassthrough: false,
+  };
 }

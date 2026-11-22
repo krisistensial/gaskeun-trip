@@ -6,7 +6,9 @@ import {
   clampPanOffset,
   computePanBounds,
   getCropOutputDimensions,
+  readOriginalImageFile,
   renderCroppedImage,
+  shouldUseOriginalPassthrough,
   type AlbumAspectChoice,
   type CropPresetId,
   type CroppedImageResult,
@@ -115,6 +117,19 @@ export function PhotoCropperSheet({
 
   if (!open || !file) return null;
 
+  const isOriginalPassthrough = shouldUseOriginalPassthrough({
+    preset,
+    albumRatio,
+    zoom,
+    panX: offset.x,
+    panY: offset.y,
+    rotationDeg: rotation,
+    fileSizeBytes: file.size,
+  });
+
+  const displayW = isOriginalPassthrough ? imgSize.w : dims.width;
+  const displayH = isOriginalPassthrough ? imgSize.h : dims.height;
+
   const title = preset === 'album' ? 'Crop Album Photo' : CROP_PRESETS[preset].title;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -180,18 +195,24 @@ export function PhotoCropperSheet({
     if (!imgRef.current || applying) return;
     setApplying(true);
     try {
-      const result = await renderCroppedImage({
-        image: imgRef.current,
-        rotationDeg: rotation,
-        frameW,
-        frameH,
-        zoom,
-        offsetX: offset.x,
-        offsetY: offset.y,
-        outputW: dims.width,
-        outputH: dims.height,
-        quality: dims.quality,
-      });
+      const result = isOriginalPassthrough
+        ? await readOriginalImageFile(
+            file,
+            imgRef.current.naturalWidth || imgSize.w,
+            imgRef.current.naturalHeight || imgSize.h,
+          )
+        : await renderCroppedImage({
+            image: imgRef.current,
+            rotationDeg: rotation,
+            frameW,
+            frameH,
+            zoom,
+            offsetX: offset.x,
+            offsetY: offset.y,
+            outputW: dims.width,
+            outputH: dims.height,
+            quality: dims.quality,
+          });
       onConfirm(result);
     } finally {
       setApplying(false);
@@ -204,7 +225,9 @@ export function PhotoCropperSheet({
         {/* Dimension Info Badge */}
         <div className="cropper-meta-row">
           <Badge tone="matcha">
-            {dims.ratioLabel} · {dims.width} × {dims.height} px
+            {isOriginalPassthrough
+              ? `Original · ${displayW} × ${displayH} px`
+              : `${dims.ratioLabel} · ${displayW} × ${displayH} px`}
           </Badge>
           <span className="cropper-zoom-tag">{zoom.toFixed(1)}×</span>
         </div>
@@ -330,7 +353,7 @@ export function PhotoCropperSheet({
             Cancel
           </Button>
           <Button variant="matcha" size="lg" onClick={() => void handleApply()} disabled={applying}>
-            {applying ? 'Applying...' : 'Apply Crop'}
+            {applying ? 'Applying...' : isOriginalPassthrough ? 'Use Original' : 'Apply Crop'}
           </Button>
         </div>
       </div>

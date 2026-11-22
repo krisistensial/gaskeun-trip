@@ -44,6 +44,35 @@ export function extractDriveFolderId(folderUrl?: string): string {
 }
 
 /**
+ * Extracts a Google Drive file ID from `thumbnail?id=...`, `uc?...id=...`, or `/file/d/...` URLs.
+ */
+export function extractDriveFileId(url?: string): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  const thumbMatch = trimmed.match(/drive\.google\.com\/thumbnail\?[^#]*[?&]?id=([a-zA-Z0-9_-]+)/);
+  if (thumbMatch?.[1]) return thumbMatch[1];
+  const ucMatch = trimmed.match(/drive\.google\.com\/uc\?[^#]*[?&]id=([a-zA-Z0-9_-]+)/);
+  if (ucMatch?.[1]) return ucMatch[1];
+  const fileMatch = trimmed.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (fileMatch?.[1]) return fileMatch[1];
+  return '';
+}
+
+/**
+ * Builds the reliable Drive thumbnail URL at a specific width (`w1200` for grid, `w4096` for Lightbox).
+ */
+export function buildDriveThumbnailUrl(fileId: string, width = 4096): string {
+  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w${width}`;
+}
+
+/**
+ * Builds the direct original-file download URL for a Google Drive file ID.
+ */
+export function buildDriveDownloadUrl(fileId: string): string {
+  return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`;
+}
+
+/**
  * Normalizes Google Drive image links to the reliable `thumbnail?id=...&sz=w...`
  * endpoint so mobile browsers never hit 403 blocks from legacy `uc?export=view`.
  */
@@ -87,12 +116,13 @@ export function parseDriveScriptJson<T extends { ok?: boolean; error?: string }>
 
 /**
  * Compresses an uploaded album image client-side via Canvas
- * (max width 1600px, JPEG 80%) so Drive uploads & local IndexedDB stay fast.
+ * (max side 4096px, JPEG 94%) when a fallback resize is needed.
  */
 export async function compressAlbumPhoto(file: File): Promise<CompressedPhotoResult> {
   const bitmap = await createImageBitmap(file);
-  const maxWidth = 1600;
-  const scale = bitmap.width > maxWidth ? maxWidth / bitmap.width : 1;
+  const maxSide = 4096;
+  const longest = Math.max(bitmap.width, bitmap.height);
+  const scale = longest > maxSide ? maxSide / longest : 1;
   const width = Math.round(bitmap.width * scale);
   const height = Math.round(bitmap.height * scale);
 
@@ -104,20 +134,51 @@ export async function compressAlbumPhoto(file: File): Promise<CompressedPhotoRes
     bitmap.close();
     throw new Error('Canvas unavailable');
   }
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bitmap, 0, 0, width, height);
   bitmap.close();
 
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.94);
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (b) => (b ? resolve(b) : reject(new Error('Image compression failed'))),
       'image/jpeg',
-      0.8,
+      0.94,
     );
   });
   const base64 = dataUrl.split(',')[1] ?? '';
 
   return { blob, dataUrl, base64 };
+}
+
+/**
+ * Builds sharp `url` (w1200), `fullUrl` (w4096), and `downloadUrl` directly on the
+ * frontend whenever a Google Drive file ID is known (no Apps Script re-deploy needed).
+ */
+export function resolveDrivePhotoUrls(params: {
+  id?: string;
+  url: string;
+  fullUrl?: string;
+  downloadUrl?: string;
+}): { url: string; fullUrl: string; downloadUrl?: string } {
+  const driveId = params.id?.trim() || extractDriveFileId(params.fullUrl || params.url);
+  if (driveId) {
+    return {
+      url: buildDriveThumbnailUrl(driveId, 1200),
+      fullUrl: buildDriveThumbnailUrl(driveId, 4096),
+      downloadUrl: params.downloadUrl?.trim() || buildDriveDownloadUrl(driveId),
+    };
+  }
+  const gridUrl = normalizeDriveImageUrl(params.url, 1200);
+  const hiResUrl = params.fullUrl
+    ? normalizeDriveImageUrl(params.fullUrl, 4096)
+    : normalizeDriveImageUrl(params.url, 4096);
+  return {
+    url: gridUrl,
+    fullUrl: hiResUrl,
+    downloadUrl: params.downloadUrl,
+  };
 }
 
 /**
@@ -159,6 +220,7 @@ export async function fetchDriveAlbumWithStatus(
         uploaderName?: string;
         url: string;
         fullUrl?: string;
+        downloadUrl?: string;
         createdAt?: string;
       }>;
     }>(text);
@@ -174,10 +236,12 @@ export async function fetchDriveAlbumWithStatus(
     const photos: AlbumPhoto[] = parsed.data.photos
       .filter((p) => !isAssetFileName(p.name) && !isAssetFileName(p.caption))
       .map((p) => {
-        const gridUrl = normalizeDriveImageUrl(p.url, 1200);
-        const hiResUrl = p.fullUrl
-          ? normalizeDriveImageUrl(p.fullUrl, 2000)
-          : normalizeDriveImageUrl(p.url, 2000);
+        const urls = resolveDrivePhotoUrls({
+          id: p.id,
+          url: p.url,
+          fullUrl: p.fullUrl,
+          downloadUrl: p.downloadUrl,
+        });
         return {
           id: p.id,
           tripId,
@@ -185,8 +249,9 @@ export async function fetchDriveAlbumWithStatus(
           dayLabel: p.dayLabel || 'Trip',
           caption: p.caption || '',
           uploaderName: p.uploaderName || 'Crew',
-          url: gridUrl,
-          fullUrl: hiResUrl,
+          url: urls.url,
+          fullUrl: urls.fullUrl,
+          downloadUrl: urls.downloadUrl,
           source: 'drive',
           createdAt: p.createdAt || new Date().toISOString(),
         };
@@ -219,6 +284,7 @@ export async function uploadPhotoToDrive(params: {
   uploaderName: string;
   base64: string;
   fileName: string;
+  mimeType?: string;
 }): Promise<DriveUploadResult> {
   if (!params.scriptUrl.trim()) {
     return { ok: false, error: 'Sync URL not configured' };
@@ -240,7 +306,7 @@ export async function uploadPhotoToDrive(params: {
         caption: params.caption,
         uploaderName: params.uploaderName,
         fileName: params.fileName,
-        mimeType: 'image/jpeg',
+        mimeType: params.mimeType || 'image/jpeg',
         base64: params.base64,
       }),
     });
@@ -255,11 +321,19 @@ export async function uploadPhotoToDrive(params: {
       id?: string;
       url?: string;
       fullUrl?: string;
+      downloadUrl?: string;
     }>(text);
 
     if (!parsed.ok || !parsed.data.url) {
       return { ok: false, error: parsed.ok ? 'Missing Drive URL' : parsed.error };
     }
+
+    const urls = resolveDrivePhotoUrls({
+      id: parsed.data.id,
+      url: parsed.data.url,
+      fullUrl: parsed.data.fullUrl,
+      downloadUrl: parsed.data.downloadUrl,
+    });
 
     return {
       ok: true,
@@ -270,10 +344,9 @@ export async function uploadPhotoToDrive(params: {
         dayLabel: params.dayLabel,
         caption: params.caption,
         uploaderName: params.uploaderName,
-        url: normalizeDriveImageUrl(parsed.data.url, 1200),
-        fullUrl: parsed.data.fullUrl
-          ? normalizeDriveImageUrl(parsed.data.fullUrl, 2000)
-          : normalizeDriveImageUrl(parsed.data.url, 2000),
+        url: urls.url,
+        fullUrl: urls.fullUrl,
+        downloadUrl: urls.downloadUrl,
         source: 'drive',
         createdAt: new Date().toISOString(),
       },

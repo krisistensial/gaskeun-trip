@@ -10,7 +10,7 @@
  * - Filters out `[ASSET-` files (hero covers, avatars, plan/stay/train photos) from
  *   the Album gallery `doGet` response while keeping them publicly viewable via URL.
  * - Optional PIN protection: only enforces `REQUIRED_PIN` if non-empty.
- * - Uses stable `thumbnail?id=...&sz=w1200` / `w2000` endpoints (never blocked 403).
+ * - Uses stable `thumbnail?id=...&sz=w1200` / `w4096` endpoints + direct original `downloadUrl`.
  */
 
 const DEFAULT_FOLDER_ID = '19pwUotU9NdKh06HWaKkCvCUQS3WkSlVt';
@@ -24,6 +24,18 @@ function jsonResponse(obj) {
 
 function buildThumbnailUrl(fileId, width) {
   return 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w' + width;
+}
+
+function buildDownloadUrl(fileId) {
+  return 'https://drive.google.com/uc?export=download&id=' + fileId;
+}
+
+function extensionFromMime(mimeType) {
+  const m = String(mimeType || '').toLowerCase();
+  if (m === 'image/png') return '.png';
+  if (m === 'image/webp') return '.webp';
+  if (m === 'image/heic' || m === 'image/heif') return '.heic';
+  return '.jpg';
 }
 
 /**
@@ -65,7 +77,8 @@ function doGet(e) {
         uploaderName: uploaderName,
         caption: caption,
         url: buildThumbnailUrl(fileId, 1200),
-        fullUrl: buildThumbnailUrl(fileId, 2000),
+        fullUrl: buildThumbnailUrl(fileId, 4096),
+        downloadUrl: buildDownloadUrl(fileId),
         createdAt: file.getDateCreated().toISOString(),
       });
     }
@@ -85,7 +98,7 @@ function doGet(e) {
 }
 
 /**
- * POST — Saves base64 JPEG into the shared Drive folder and sets public view sharing.
+ * POST — Saves full-res base64 image into the shared Drive folder and sets public view sharing.
  * Reads `e.postData.contents` via JSON.parse so `Content-Type: text/plain;charset=utf-8`
  * bypasses browser CORS OPTIONS preflight cleanly.
  */
@@ -115,6 +128,9 @@ function doPost(e) {
     const prefix =
       rawPrefix && /^\[ASSET-[a-z0-9-]+\]$/i.test(rawPrefix) ? rawPrefix + '__' : '';
 
+    const mimeType = body.mimeType || 'image/jpeg';
+    const ext = extensionFromMime(mimeType);
+
     const fileName =
       prefix +
       [
@@ -123,9 +139,9 @@ function doPost(e) {
         safe(body.uploaderName) || 'Crew',
         safe(body.caption) || 'Highlight',
       ].join('__') +
-      '.jpg';
+      ext;
 
-    const blob = Utilities.newBlob(bytes, body.mimeType || 'image/jpeg', fileName);
+    const blob = Utilities.newBlob(bytes, mimeType, fileName);
     const file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     const fileId = file.getId();
@@ -135,7 +151,8 @@ function doPost(e) {
       id: fileId,
       name: fileName,
       url: buildThumbnailUrl(fileId, 1200),
-      fullUrl: buildThumbnailUrl(fileId, 2000),
+      fullUrl: buildThumbnailUrl(fileId, 4096),
+      downloadUrl: buildDownloadUrl(fileId),
     });
   } catch (err) {
     return jsonResponse({

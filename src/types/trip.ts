@@ -189,8 +189,10 @@ export interface AlbumPhoto {
   uploaderName: string;
   /** Data URL or remote thumbnail/image URL (w1200 for grid) */
   url: string;
-  /** Higher-resolution URL (w2000 for Lightbox) */
+  /** Higher-resolution URL (w4096 for crisp Lightbox) */
   fullUrl?: string;
+  /** Original file download URL (Drive uc?export=download or local dataUrl) */
+  downloadUrl?: string;
   source: 'drive' | 'local';
   createdAt: string;
 }

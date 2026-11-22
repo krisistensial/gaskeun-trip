@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDriveDownloadUrl,
+  buildDriveThumbnailUrl,
+  extractDriveFileId,
   extractDriveFolderId,
   isAssetFileName,
   normalizeDriveImageUrl,
   parseDriveScriptJson,
+  resolveDrivePhotoUrls,
 } from './gdriveAlbum';
 
 describe('Google Drive Album Bridge helpers & diagnostics', () => {
@@ -31,6 +35,29 @@ describe('Google Drive Album Bridge helpers & diagnostics', () => {
     expect(
       normalizeDriveImageUrl('https://drive.google.com/thumbnail?id=abc123XYZ999&sz=w2000', 2000),
     ).toBe('https://drive.google.com/thumbnail?id=abc123XYZ999&sz=w2000');
+  });
+
+  it('upgrades Drive photo URLs to sharp w4096 Lightbox + direct original downloadUrl on frontend', () => {
+    expect(buildDriveThumbnailUrl('fileABC123', 4096)).toBe(
+      'https://drive.google.com/thumbnail?id=fileABC123&sz=w4096',
+    );
+    expect(buildDriveDownloadUrl('fileABC123')).toBe(
+      'https://drive.google.com/uc?export=download&id=fileABC123',
+    );
+    expect(
+      extractDriveFileId('https://drive.google.com/thumbnail?id=fileABC123&sz=w1200'),
+    ).toBe('fileABC123');
+
+    const resolved = resolveDrivePhotoUrls({
+      id: 'fileABC123',
+      url: 'https://drive.google.com/thumbnail?id=fileABC123&sz=w1200',
+      fullUrl: 'https://drive.google.com/thumbnail?id=fileABC123&sz=w2000',
+    });
+    expect(resolved).toEqual({
+      url: 'https://drive.google.com/thumbnail?id=fileABC123&sz=w1200',
+      fullUrl: 'https://drive.google.com/thumbnail?id=fileABC123&sz=w4096',
+      downloadUrl: 'https://drive.google.com/uc?export=download&id=fileABC123',
+    });
   });
 
   it('identifies [ASSET- filenames so card/avatar uploads never pollute Album', () => {
