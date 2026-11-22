@@ -102,19 +102,34 @@ export async function ensureSeedTrip(seed: SharedTrip): Promise<SharedTrip> {
     return seed;
   }
 
-  // Non-destructive seed version bump: upgrades pilot demo itinerary (e.g. 10 stops on Sat 13)
+  // Non-destructive seed version bump: upgrades pilot demo itinerary & default Drive folder
   // while preserving user-uploaded profile avatars, editor roles, ledger, and Layer-2 local data.
-  if ((existing.seedVersion ?? 1) < (seed.seedVersion ?? 1)) {
-    const seedDay3 = seed.itinerary.filter((i) => i.dayId === 'day-3');
-    const otherDays = existing.itinerary.filter((i) => i.dayId !== 'day-3');
+  const currentVersion = existing.seedVersion ?? 1;
+  const targetVersion = seed.seedVersion ?? 1;
+  if (currentVersion < targetVersion) {
+    const needsDay3Upgrade = currentVersion < 3;
+    const upgradedItinerary = needsDay3Upgrade
+      ? [
+          ...existing.itinerary.filter((i) => i.dayId !== 'day-3'),
+          ...seed.itinerary.filter((i) => i.dayId === 'day-3'),
+        ]
+      : existing.itinerary;
+
+    const isGenericDrive =
+      !existing.gdriveFolderUrl ||
+      existing.gdriveFolderUrl.trim() === 'https://drive.google.com/' ||
+      existing.gdriveFolderUrl.trim() === 'https://drive.google.com';
+
     const upgraded: SharedTrip = {
       ...existing,
-      seedVersion: seed.seedVersion,
+      seedVersion: targetVersion,
       editorMemberIds:
         existing.editorMemberIds && existing.editorMemberIds.length > 0
           ? existing.editorMemberIds
           : seed.editorMemberIds,
-      itinerary: [...otherDays, ...seedDay3],
+      albumUrl: isGenericDrive ? seed.albumUrl : existing.albumUrl,
+      gdriveFolderUrl: isGenericDrive ? seed.gdriveFolderUrl : existing.gdriveFolderUrl,
+      itinerary: upgradedItinerary,
     };
     await saveSharedTrip(upgraded);
     return upgraded;

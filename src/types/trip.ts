@@ -187,8 +187,10 @@ export interface AlbumPhoto {
   dayLabel: string;
   caption: string;
   uploaderName: string;
-  /** Data URL or remote thumbnail/image URL */
+  /** Data URL or remote thumbnail/image URL (w1200 for grid) */
   url: string;
+  /** Higher-resolution URL (w2000 for Lightbox) */
+  fullUrl?: string;
   source: 'drive' | 'local';
   createdAt: string;
 }

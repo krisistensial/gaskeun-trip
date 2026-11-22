@@ -1,8 +1,8 @@
 /**
- * Single mathematical source of truth for the Fixed Dotted Circular Arc
+ * Single mathematical source of truth for the Frozen Dotted Circular Arc
  * on `Plan → Trail`.
  *
- * Both the fixed sticky SVG dotted rail AND every `TrailDot` + card offset
+ * Both the fixed dotted SVG rail AND every `TrailDot` + card offset
  * read `getArcX(normalizedY)` so dots stay 100% locked onto the circular rail
  * during 60fps scrolling regardless of whether a day has 1, 4, or 10 stops.
  */
@@ -21,29 +21,32 @@ const ARC_RADIUS = (HALF_H * HALF_H + ARC_BULGE * ARC_BULGE) / (2 * ARC_BULGE);
 /**
  * Computes the exact horizontal coordinate `x` (in px, inside the 64px left rail)
  * along a true circular C-arc for normalized vertical coordinate `u ∈ [-1, 1]`:
- * - `u = 0`   → vertical center of the 520px sticky rail (`x = ARC_MAX_X = 40px`)
- * - `u = ±1`  → top/bottom edge of the 520px sticky rail (`x = ARC_BASE_X = 12px`)
+ * - `u = 0`   → vertical center of the trail viewport (`x = ARC_MAX_X = 40px`)
+ * - `u = ±1`  → top/bottom edge of the trail viewport (`x = ARC_BASE_X = 12px`)
  */
 export function getArcX(normalizedY: number): number {
   const u = Math.max(-1, Math.min(1, normalizedY));
   const dy = u * HALF_H;
-  const sagittaAtY = Math.sqrt(Math.max(0, ARC_RADIUS * ARC_RADIUS - dy * dy)) - (ARC_RADIUS - ARC_BULGE);
+  const sagittaAtY =
+    Math.sqrt(Math.max(0, ARC_RADIUS * ARC_RADIUS - dy * dy)) - (ARC_RADIUS - ARC_BULGE);
   return ARC_BASE_X + sagittaAtY;
 }
 
 /**
- * Generates an SVG path string sampled directly from `getArcX` so the rendered
- * dotted rail matches the dot coordinate equation down to sub-pixel precision.
+ * Generates an SVG path string sampled directly from `getArcX` for any stage height
+ * so circular dots (`stroke-dasharray="1 10"`) stay 100% round and never stretch.
  */
-export function buildDottedArcPath(paddingY = 10, samples = 50): string {
+export function buildDottedArcPath(paddingY = 12, samples = 56, height = ARC_HEIGHT): string {
+  const safeHeight = Math.max(200, height);
+  const half = safeHeight / 2;
   const startY = paddingY;
-  const endY = ARC_HEIGHT - paddingY;
+  const endY = safeHeight - paddingY;
   const cmds: string[] = [];
 
   for (let i = 0; i <= samples; i += 1) {
     const t = i / samples;
     const y = startY + t * (endY - startY);
-    const u = (y - HALF_H) / HALF_H;
+    const u = (y - half) / half;
     const x = getArcX(u);
     cmds.push(`${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`);
   }

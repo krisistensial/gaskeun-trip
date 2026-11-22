@@ -298,8 +298,9 @@
 }
 
 .gk-input-shell:focus-within {
-  border-color: var(--brand-matcha);
-  box-shadow: 0 0 0 3px rgba(74, 116, 104, 0.14);
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 8px 22px -10px rgba(31, 45, 39, 0.14);
 }
 
 .gk-input-shell--verified {
@@ -308,7 +309,7 @@
 
 .gk-input-shell--error {
   border-color: rgba(207, 77, 94, 0.65);
-  box-shadow: 0 0 0 3px rgba(207, 77, 94, 0.12);
+  box-shadow: 0 0 0 2px rgba(207, 77, 94, 0.12);
 }
 
 .gk-input__icon {
@@ -325,7 +326,16 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
-  outline: none;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.gk-input__native:focus,
+.gk-input__native:focus-visible,
+.gk-input__native:active {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .gk-input__native::placeholder {

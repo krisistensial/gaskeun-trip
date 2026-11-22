@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowUpRight,
   Download,
   ImagePlus,
   Images,
+  RefreshCw,
   Settings2,
   Trash2,
   Upload,
@@ -22,6 +23,7 @@ import {
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import {
   compressAlbumPhoto,
+  extractDriveFolderId,
   fetchDriveAlbum,
   uploadPhotoToDrive,
 } from '../../services/gdriveAlbum';
@@ -48,6 +50,7 @@ export function AlbumScreen({
   const tripDays = useMemo(() => trip.days.filter((d) => !d.isIdeas), [trip.days]);
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [drivePhotos, setDrivePhotos] = useState<AlbumPhoto[]>([]);
+  const [syncingDrive, setSyncingDrive] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<AlbumPhoto | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -63,6 +66,32 @@ export function AlbumScreen({
   const [uploading, setUploading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const driveFolderUrl = trip.gdriveFolderUrl || trip.albumUrl;
+  const hasLinkedFolder = Boolean(extractDriveFolderId(driveFolderUrl));
+  const hasSyncScript = Boolean(trip.gdriveScriptUrl?.trim());
+
+  const syncFromDrive = useCallback(
+    async (notifyResult = false) => {
+      const scriptUrl = trip.gdriveScriptUrl?.trim();
+      if (!scriptUrl) {
+        setDrivePhotos([]);
+        return;
+      }
+      setSyncingDrive(true);
+      const remote = await fetchDriveAlbum(scriptUrl, trip.id, driveFolderUrl);
+      setDrivePhotos(remote);
+      setSyncingDrive(false);
+      if (notifyResult) {
+        onNotify(
+          remote.length > 0
+            ? `Synced ${remote.length} ${remote.length === 1 ? 'photo' : 'photos'} from Drive`
+            : 'Drive album is up to date',
+          'success',
+        );
+      }
+    },
+    [trip.gdriveScriptUrl, trip.id, driveFolderUrl, onNotify],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -71,13 +100,17 @@ export function AlbumScreen({
       setDrivePhotos([]);
       return;
     }
-    void fetchDriveAlbum(scriptUrl, trip.id).then((remote) => {
-      if (alive) setDrivePhotos(remote);
+    setSyncingDrive(true);
+    void fetchDriveAlbum(scriptUrl, trip.id, driveFolderUrl).then((remote) => {
+      if (alive) {
+        setDrivePhotos(remote);
+        setSyncingDrive(false);
+      }
     });
     return () => {
       alive = false;
     };
-  }, [trip.gdriveScriptUrl, trip.id]);
+  }, [trip.gdriveScriptUrl, trip.id, driveFolderUrl]);
 
   const allPhotos = useMemo(() => {
     const merged = [...drivePhotos, ...localPhotos].sort((a, b) =>
@@ -86,8 +119,6 @@ export function AlbumScreen({
     if (dayFilter === 'all') return merged;
     return merged.filter((p) => p.dayId === dayFilter);
   }, [drivePhotos, localPhotos, dayFilter]);
-
-  const driveFolderUrl = trip.gdriveFolderUrl || trip.albumUrl;
 
   const handlePickFile = async (file: File) => {
     try {
@@ -123,6 +154,7 @@ export function AlbumScreen({
     if (trip.gdriveScriptUrl?.trim() && navigator.onLine) {
       const remote = await uploadPhotoToDrive({
         scriptUrl: trip.gdriveScriptUrl.trim(),
+        folderUrl: driveFolderUrl,
         crewPin: crewPinInput.trim(),
         tripId: trip.id,
         dayId: uploadDayId,
@@ -162,7 +194,7 @@ export function AlbumScreen({
 
   const handleDownload = (photo: AlbumPhoto) => {
     const a = document.createElement('a');
-    a.href = photo.url;
+    a.href = photo.fullUrl || photo.url;
     a.download = `${photo.caption.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'gaskeun-photo'}.jpg`;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
@@ -245,8 +277,8 @@ export function AlbumScreen({
         ))}
       </div>
 
-      {/* Subtle Drive Connect Hint */}
-      {!trip.gdriveScriptUrl && (
+      {/* Subtle Google Drive Connection & Sync Status Bar */}
+      {hasSyncScript ? (
         <GlassCard
           variant="clear"
           padding="sm"
@@ -257,8 +289,62 @@ export function AlbumScreen({
             gap: 10,
           }}
         >
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            Photos save locally until Google Drive sync is connected.
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: 'var(--accent-mint)',
+                flexShrink: 0,
+              }}
+            />
+            <span>
+              {syncingDrive
+                ? 'Syncing Google Drive...'
+                : `Google Drive connected · ${drivePhotos.length} shared`}
+            </span>
+          </span>
+          <Button
+            variant="glass"
+            size="sm"
+            disabled={syncingDrive}
+            leftIcon={
+              <RefreshCw
+                size={13}
+                strokeWidth={2}
+                style={syncingDrive ? { animation: 'gaskeun-spin 0.9s linear infinite' } : undefined}
+              />
+            }
+            onClick={() => void syncFromDrive(true)}
+          >
+            Sync
+          </Button>
+        </GlassCard>
+      ) : (
+        <GlassCard
+          variant="clear"
+          padding="sm"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+          }}
+        >
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+            {hasLinkedFolder
+              ? 'Drive folder linked. Add your Apps Script URL to auto-sync photos here.'
+              : 'Photos save locally until Google Drive sync is connected.'}
           </span>
           <Button
             variant="glass"
@@ -266,7 +352,7 @@ export function AlbumScreen({
             leftIcon={<Settings2 size={13} strokeWidth={2} />}
             onClick={onOpenSettings}
           >
-            Connect
+            Connect Sync URL
           </Button>
         </GlassCard>
       )}
@@ -352,7 +438,7 @@ export function AlbumScreen({
             </div>
           </div>
 
-          {trip.gdriveScriptUrl && navigator.onLine && (
+          {hasSyncScript && navigator.onLine && (
             <Input
               id="album-drive-pin"
               label="4-Digit Crew PIN (for Drive Upload)"
@@ -368,14 +454,14 @@ export function AlbumScreen({
           <Button type="submit" variant="matcha" size="lg" fullWidth disabled={uploading}>
             {uploading
               ? 'Saving Photo...'
-              : trip.gdriveScriptUrl && navigator.onLine
+              : hasSyncScript && navigator.onLine
                 ? 'Upload to Drive'
                 : 'Save to Local Album'}
           </Button>
         </form>
       </LiquidBottomSheet>
 
-      {/* Full-Screen Lightbox (Portaled to document.body) */}
+      {/* Full-Screen Lightbox (Portaled to document.body, uses fullUrl w2000) */}
       {lightboxPhoto &&
         typeof document !== 'undefined' &&
         createPortal(
@@ -407,7 +493,7 @@ export function AlbumScreen({
 
             <div className="album-lightbox__img-wrap" onClick={(e) => e.stopPropagation()}>
               <img
-                src={lightboxPhoto.url}
+                src={lightboxPhoto.fullUrl || lightboxPhoto.url}
                 alt={lightboxPhoto.caption}
                 className="album-lightbox__img"
               />

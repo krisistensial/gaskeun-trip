@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AlertTriangle, ArrowUpRight, CalendarPlus, FileSpreadsheet } from 'lucide-react';
 import {
   Badge,
@@ -21,22 +21,12 @@ import type {
   SharedTrip,
   TripDay,
 } from '../../types/trip';
-import {
-  ARC_BASE_X,
-  ARC_BULGE,
-  ARC_HEIGHT,
-  ARC_MAX_X,
-  ARC_WIDTH,
-  buildDottedArcPath,
-  getArcX,
-} from './arcMath';
+import { ARC_HEIGHT, ARC_MAX_X, ARC_WIDTH, buildDottedArcPath, getArcX } from './arcMath';
 import { PlanDetailEditScreen } from './PlanDetailEditScreen';
 import './plan.css';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const DOTTED_ARC_PATH = buildDottedArcPath(10, 56);
 const DOT_HALF_SIZE = 14; // .trail-item__dot is 28x28 -> center offset = 14px
-const DOT_TOP_OFFSET = 18; // .trail-item__dot top: 18px -> center Y = rowTop + 32px
 
 function formatEstimate(cost?: number): string {
   if (cost === undefined) return '—';
@@ -127,11 +117,16 @@ export function PlanScreen({
   const [typeFilter, setTypeFilter] = useState<'all' | PlanItemType>('all');
   const [editingStopId, setEditingStopId] = useState<string | null>(null);
   const [draftNewStop, setDraftNewStop] = useState<PlanItem | null>(null);
+  const [stageHeight, setStageHeight] = useState<number>(ARC_HEIGHT);
+  const [centeredStopId, setCenteredStopId] = useState<string | null>(null);
 
-  const arcStickyRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const dotRefs = useRef<Map<string, HTMLElement>>(new Map());
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const centeredIdRef = useRef<string | null>(null);
+  const userInteractedRef = useRef<boolean>(false);
 
   const selectedDay = trip.days.find((d) => d.id === selectedDayId) ?? trip.days[0];
   const dayLabelStr = selectedDay?.isIdeas
@@ -156,6 +151,11 @@ export function PlanScreen({
     [dayItems, selectedDay?.date],
   );
 
+  const dottedArcPath = useMemo(
+    () => buildDottedArcPath(14, 56, stageHeight),
+    [stageHeight],
+  );
+
   const activeEditingItem = draftNewStop
     ? draftNewStop
     : editingStopId
@@ -163,17 +163,24 @@ export function PlanScreen({
       : null;
 
   /**
-   * 60fps rAF Arc Geometry Sync:
-   * Reads the fixed sticky 520px dotted rail's live viewport position and places
-   * every TrailDot center at exact `(getArcX(u), y)` directly ON the dotted path,
-   * while sliding each card horizontally with an exact fixed gap from its dot.
+   * 60fps rAF Frozen Arc Geometry + Depth Scale/Dimming + Magnetic "Tugh" Haptic:
+   * - Reads the frozen `.trail-stage` bounds (rail stays 100% still).
+   * - Places every TrailDot center at exact `(getArcX(u), y)` directly on the dotted rail.
+   * - Scales & dims non-centered cards smoothly (`scale: 0.88–1.00`, `opacity: 0.52–1.00`).
+   * - Triggers subtle micro-haptic `navigator.vibrate?.(12)` + spring settle when a new
+   *   card locks into the center apex.
    */
   const syncArcPositions = useCallback(() => {
-    const stickyEl = arcStickyRef.current;
-    if (!stickyEl) return;
-    const stickyRect = stickyEl.getBoundingClientRect();
-    const halfH = ARC_HEIGHT / 2;
-    const railCenterY = stickyRect.top + halfH;
+    const stageEl = stageRef.current;
+    if (!stageEl) return;
+    const stageRect = stageEl.getBoundingClientRect();
+    if (stageRect.height < 40) return;
+
+    const halfH = Math.max(120, stageRect.height / 2);
+    const stageCenterY = stageRect.top + halfH;
+
+    let closestId: string | null = null;
+    let minDist = Number.POSITIVE_INFINITY;
 
     for (const stop of dayItems) {
       const rowEl = rowRefs.current.get(stop.id);
@@ -182,21 +189,74 @@ export function PlanScreen({
       if (!rowEl || !dotEl || !cardEl) continue;
 
       const rowRect = rowEl.getBoundingClientRect();
-      const dotCenterY = rowRect.top + DOT_TOP_OFFSET + DOT_HALF_SIZE;
-      const u = (dotCenterY - railCenterY) / halfH;
+      const dotCenterY = rowRect.top + rowRect.height / 2;
+      const u = (dotCenterY - stageCenterY) / halfH;
+      const absU = Math.min(1, Math.abs(u));
+
+      if (Math.abs(u) < minDist) {
+        minDist = Math.abs(u);
+        closestId = stop.id;
+      }
+
       const exactX = getArcX(u);
-      const curveNorm = (exactX - ARC_BASE_X) / ARC_BULGE; // 0 at edges -> 1 at arc apex
+      const focus = Math.pow(Math.max(0, 1 - absU), 1.35);
 
-      dotEl.style.transform = `translate3d(${(exactX - DOT_HALF_SIZE).toFixed(2)}px, 0, 0)`;
+      const dotScale = 0.86 + focus * 0.24;
+      dotEl.style.transform = `translate3d(${(exactX - DOT_HALF_SIZE).toFixed(2)}px, 0, 0) scale(${dotScale.toFixed(3)})`;
 
-      const cardShiftX = exactX - ARC_MAX_X; // 0 at apex -> -28px at top/bottom edges
-      const cardScale = 0.965 + curveNorm * 0.035;
+      const cardShiftX = exactX - ARC_MAX_X; // 0 at deepest apex -> -28px at top/bottom
+      const cardScale = 0.88 + focus * 0.12; // 1.00 at center -> 0.88–0.93 above/below
+      const cardOpacity = 0.52 + focus * 0.48; // 1.00 at center -> 0.52–0.68 above/below
       cardEl.style.transform = `translate3d(${cardShiftX.toFixed(2)}px, 0, 0) scale(${cardScale.toFixed(4)})`;
+      cardEl.style.opacity = cardOpacity.toFixed(3);
+    }
+
+    if (closestId && closestId !== centeredIdRef.current) {
+      const hadPrevious = centeredIdRef.current !== null;
+      centeredIdRef.current = closestId;
+      setCenteredStopId(closestId);
+
+      if (
+        hadPrevious &&
+        userInteractedRef.current &&
+        typeof navigator !== 'undefined' &&
+        typeof navigator.vibrate === 'function'
+      ) {
+        try {
+          navigator.vibrate(12);
+        } catch {
+          // Safe no-op on unsupported browsers
+        }
+      }
     }
   }, [dayItems]);
 
+  // Measure frozen trail stage height so dotted SVG path stays 100% circular (zero stretching)
+  useEffect(() => {
+    if (viewMode !== 'trail' || activeEditingItem) return;
+    const stageEl = stageRef.current;
+    if (!stageEl) return;
+
+    const updateSize = () => {
+      const h = Math.round(stageEl.getBoundingClientRect().height);
+      if (h >= 160) setStageHeight(h);
+    };
+    updateSize();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(updateSize);
+      ro.observe(stageEl);
+      return () => ro.disconnect();
+    }
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, [viewMode, activeEditingItem]);
+
+  // Attach 60fps rAF scroll listener on the dedicated trail scroll viewport
   useEffect(() => {
     if (viewMode !== 'trail' || activeEditingItem || dayItems.length === 0) return;
+    const scroller = scrollRef.current;
+    if (!scroller) return;
 
     let rafId = 0;
     const scheduleSync = () => {
@@ -207,20 +267,54 @@ export function PlanScreen({
       });
     };
 
-    // Initial alignment right after DOM paint
+    const markUserInteracted = () => {
+      userInteractedRef.current = true;
+    };
+
     syncArcPositions();
     const initRaf = window.requestAnimationFrame(syncArcPositions);
 
-    window.addEventListener('scroll', scheduleSync, { passive: true });
+    scroller.addEventListener('scroll', scheduleSync, { passive: true });
+    scroller.addEventListener('touchstart', markUserInteracted, { passive: true });
+    scroller.addEventListener('wheel', markUserInteracted, { passive: true });
+    scroller.addEventListener('pointerdown', markUserInteracted, { passive: true });
     window.addEventListener('resize', scheduleSync, { passive: true });
 
     return () => {
       window.cancelAnimationFrame(initRaf);
       if (rafId) window.cancelAnimationFrame(rafId);
-      window.removeEventListener('scroll', scheduleSync);
+      scroller.removeEventListener('scroll', scheduleSync);
+      scroller.removeEventListener('touchstart', markUserInteracted);
+      scroller.removeEventListener('wheel', markUserInteracted);
+      scroller.removeEventListener('pointerdown', markUserInteracted);
       window.removeEventListener('resize', scheduleSync);
     };
-  }, [viewMode, activeEditingItem, dayItems, syncArcPositions]);
+  }, [viewMode, activeEditingItem, dayItems, stageHeight, syncArcPositions]);
+
+  // Auto-center the active ("Now") stop when switching day/filter so it opens right at arc apex
+  useEffect(() => {
+    if (viewMode !== 'trail' || activeEditingItem || dayItems.length === 0) return;
+    userInteractedRef.current = false;
+    centeredIdRef.current = null;
+
+    const targetStop =
+      dayItems.find((s) => effectiveStatusMap.get(s.id) === 'active') ??
+      dayItems.find((s) => effectiveStatusMap.get(s.id) !== 'done') ??
+      dayItems[0];
+
+    const raf = window.requestAnimationFrame(() => {
+      const scroller = scrollRef.current;
+      const rowEl = targetStop ? rowRefs.current.get(targetStop.id) : undefined;
+      if (scroller && rowEl) {
+        const targetTop =
+          rowEl.offsetTop - scroller.clientHeight / 2 + rowEl.offsetHeight / 2;
+        scroller.scrollTop = Math.max(0, targetTop);
+      }
+      syncArcPositions();
+    });
+
+    return () => window.cancelAnimationFrame(raf);
+  }, [selectedDayId, typeFilter, viewMode, activeEditingItem, dayItems.length]);
 
   const handleAddDay = () => {
     if (!canEdit) {
@@ -353,329 +447,349 @@ export function PlanScreen({
 
   return (
     <div className="plan-root">
-      {/* Header: Plan + 2-Option V4 Switcher (Trail | Table) */}
-      <header className="plan-header">
-        <h1 className="plan-title">Plan</h1>
-        <div className="plan-view-switch" role="tablist" aria-label="Plan view mode">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={viewMode === 'trail'}
-            className={`plan-view-btn ${viewMode === 'trail' ? 'plan-view-btn--active' : ''}`}
-            onClick={() => setViewMode('trail')}
-          >
-            Trail
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={viewMode === 'table'}
-            className={`plan-view-btn ${viewMode === 'table' ? 'plan-view-btn--active' : ''}`}
-            onClick={() => setViewMode('table')}
-          >
-            Table
-          </button>
+      {/* FROZEN HEADER: Title, Trail|Table Switcher, Vertical Day Pills, Category Filters */}
+      <div className="plan-frozen-header">
+        <header className="plan-header">
+          <h1 className="plan-title">Plan</h1>
+          <div className="plan-view-switch" role="tablist" aria-label="Plan view mode">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === 'trail'}
+              className={`plan-view-btn ${viewMode === 'trail' ? 'plan-view-btn--active' : ''}`}
+              onClick={() => setViewMode('trail')}
+            >
+              Trail
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === 'table'}
+              className={`plan-view-btn ${viewMode === 'table' ? 'plan-view-btn--active' : ''}`}
+              onClick={() => setViewMode('table')}
+            >
+              Table
+            </button>
+          </div>
+        </header>
+
+        {/* Vertical Day Strip + Dashed + Day (Editors Only) */}
+        <div className="plan-day-strip" role="tablist" aria-label="Trip days">
+          {trip.days.map((day) => (
+            <DayPill
+              key={day.id}
+              variant={day.isIdeas ? 'ideas' : 'day'}
+              dayLabel={day.dayLabel}
+              dateNum={day.dateNum}
+              active={selectedDay?.id === day.id}
+              onClick={() => setSelectedDayId(day.id)}
+            />
+          ))}
+          {canEdit && <DayPill variant="add" onClick={handleAddDay} />}
         </div>
-      </header>
 
-      {/* Vertical Day Strip + Dashed + Day (Editors Only) */}
-      <div className="plan-day-strip" role="tablist" aria-label="Trip days">
-        {trip.days.map((day) => (
-          <DayPill
-            key={day.id}
-            variant={day.isIdeas ? 'ideas' : 'day'}
-            dayLabel={day.dayLabel}
-            dateNum={day.dateNum}
-            active={selectedDay?.id === day.id}
-            onClick={() => setSelectedDayId(day.id)}
-          />
-        ))}
-        {canEdit && <DayPill variant="add" onClick={handleAddDay} />}
+        {/* Category Filter Pills */}
+        <div className="plan-filter-row" role="tablist" aria-label="Stop type filter">
+          {(['all', 'transit', 'place', 'activity'] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              className={`plan-chip tactile ${typeFilter === f ? 'plan-chip--active' : ''}`}
+              onClick={() => setTypeFilter(f)}
+            >
+              {f === 'all' ? 'All' : formatStopType(f)}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Category Filter Pills */}
-      <div className="plan-filter-row" role="tablist" aria-label="Stop type filter">
-        {(['all', 'transit', 'place', 'activity'] as const).map((f) => (
-          <button
-            key={f}
-            type="button"
-            className={`plan-chip tactile ${typeFilter === f ? 'plan-chip--active' : ''}`}
-            onClick={() => setTypeFilter(f)}
-          >
-            {f === 'all' ? 'All' : formatStopType(f)}
-          </button>
-        ))}
-      </div>
-
-      {/* Content: Fixed Dotted Circular Arc Trail (03a) or Clean 3-Column Table (03b) */}
+      {/* Content: Frozen Dotted Circular Arc Trail (03a) or Clean 3-Column Table (03b) */}
       {dayItems.length === 0 ? (
-        <EmptyState
-          icon={<CalendarPlus size={22} strokeWidth={1.8} />}
-          title={`No stops for ${dayLabelStr}`}
-          description={
-            canEdit
-              ? 'Tap the floating + button to add a place, transit leg, or group activity.'
-              : 'No stops planned for this day yet.'
-          }
-          action={
-            canEdit ? (
-              <Button variant="matcha" size="sm" onClick={handleAddNewStop}>
-                Add First Stop
-              </Button>
-            ) : undefined
-          }
-        />
+        <div className="plan-table-scroll">
+          <EmptyState
+            icon={<CalendarPlus size={22} strokeWidth={1.8} />}
+            title={`No stops for ${dayLabelStr}`}
+            description={
+              canEdit
+                ? 'Tap the floating + button to add a place, transit leg, or group activity.'
+                : 'No stops planned for this day yet.'
+            }
+            action={
+              canEdit ? (
+                <Button variant="matcha" size="sm" onClick={handleAddNewStop}>
+                  Add First Stop
+                </Button>
+              ) : undefined
+            }
+          />
+        </div>
       ) : viewMode === 'trail' ? (
-        <div className="trail-list">
-          {/* Fixed 520px Sticky Dotted Circular Arc Rail (Identical for 1, 4, or 10 stops) */}
-          <div className="trail-arc-layer" aria-hidden="true">
-            <div ref={arcStickyRef} className="trail-arc-sticky">
-              <svg
-                className="trail-arc-svg"
-                width={ARC_WIDTH}
-                height={ARC_HEIGHT}
-                viewBox={`0 0 ${ARC_WIDTH} ${ARC_HEIGHT}`}
-              >
-                <path
-                  d={DOTTED_ARC_PATH}
-                  fill="none"
-                  stroke="rgba(74, 116, 104, 0.42)"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeDasharray="1 10"
-                />
-              </svg>
-            </div>
+        <div
+          ref={stageRef}
+          className="trail-stage"
+          style={{ '--trail-stage-h': `${stageHeight}px` } as CSSProperties}
+        >
+          {/* 100% Frozen Dotted Circular Arc Rail */}
+          <div className="trail-arc-fixed" aria-hidden="true">
+            <svg
+              className="trail-arc-svg"
+              width={ARC_WIDTH}
+              height={stageHeight}
+              viewBox={`0 0 ${ARC_WIDTH} ${stageHeight}`}
+            >
+              <path
+                d={dottedArcPath}
+                fill="none"
+                stroke="rgba(74, 116, 104, 0.42)"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeDasharray="1 10"
+              />
+            </svg>
           </div>
 
-          {dayItems.map((stop) => {
-            const closedCheck = isClosedOnDate(stop.closedDays, selectedDay?.date);
-            const effStatus = effectiveStatusMap.get(stop.id) ?? stop.status;
-            const dotStatus =
-              effStatus === 'done' ? 'done' : effStatus === 'active' ? 'active' : 'upcoming';
-            const typeLabel = formatStopType(stop.type);
+          {/* Dedicated Scroll Viewport with Mandatory Center Snap + Magnetic "Tugh" */}
+          <div ref={scrollRef} className="trail-scroll-viewport">
+            <div className="trail-list-inner">
+              {dayItems.map((stop) => {
+                const closedCheck = isClosedOnDate(stop.closedDays, selectedDay?.date);
+                const effStatus = effectiveStatusMap.get(stop.id) ?? stop.status;
+                const dotStatus =
+                  effStatus === 'done' ? 'done' : effStatus === 'active' ? 'active' : 'upcoming';
+                const typeLabel = formatStopType(stop.type);
+                const isCentered = centeredStopId === stop.id;
 
-            return (
-              <div
-                key={stop.id}
-                ref={(el) => {
-                  if (el) rowRefs.current.set(stop.id, el);
-                  else rowRefs.current.delete(stop.id);
-                }}
-                className="trail-item"
-              >
-                {canEdit ? (
-                  <button
-                    ref={(el) => {
-                      if (el) dotRefs.current.set(stop.id, el);
-                      else dotRefs.current.delete(stop.id);
-                    }}
-                    type="button"
-                    className="trail-item__dot trail-item__dot--btn"
-                    aria-label={
-                      effStatus === 'done'
-                        ? `Mark ${stop.title} upcoming`
-                        : `Mark ${stop.title} done`
-                    }
-                    onClick={() => handleToggleStopDone(stop)}
-                  >
-                    <TrailDot status={dotStatus} />
-                  </button>
-                ) : (
+                return (
                   <div
+                    key={stop.id}
                     ref={(el) => {
-                      if (el) dotRefs.current.set(stop.id, el);
-                      else dotRefs.current.delete(stop.id);
+                      if (el) rowRefs.current.set(stop.id, el);
+                      else rowRefs.current.delete(stop.id);
                     }}
-                    className="trail-item__dot"
+                    className={`trail-item ${isCentered ? 'trail-item--centered' : ''}`}
                   >
-                    <TrailDot status={dotStatus} />
-                  </div>
-                )}
+                    {canEdit ? (
+                      <button
+                        ref={(el) => {
+                          if (el) dotRefs.current.set(stop.id, el);
+                          else dotRefs.current.delete(stop.id);
+                        }}
+                        type="button"
+                        className="trail-item__dot trail-item__dot--btn"
+                        aria-label={
+                          effStatus === 'done'
+                            ? `Mark ${stop.title} upcoming`
+                            : `Mark ${stop.title} done`
+                        }
+                        onClick={() => handleToggleStopDone(stop)}
+                      >
+                        <TrailDot status={dotStatus} />
+                      </button>
+                    ) : (
+                      <div
+                        ref={(el) => {
+                          if (el) dotRefs.current.set(stop.id, el);
+                          else dotRefs.current.delete(stop.id);
+                        }}
+                        className="trail-item__dot"
+                      >
+                        <TrailDot status={dotStatus} />
+                      </div>
+                    )}
 
-                <div
-                  ref={(el) => {
-                    if (el) cardRefs.current.set(stop.id, el);
-                    else cardRefs.current.delete(stop.id);
-                  }}
-                  className="trail-item__card-wrap"
-                >
-                  {effStatus === 'done' ? (
-                    <GlassCard
-                      variant="clear"
-                      padding="sm"
-                      interactive
-                      className="trail-past-card"
-                      onClick={() => setEditingStopId(stop.id)}
+                    <div
+                      ref={(el) => {
+                        if (el) cardRefs.current.set(stop.id, el);
+                        else cardRefs.current.delete(stop.id);
+                      }}
+                      className="trail-item__card-wrap"
                     >
-                      <span className="trail-past-title">
-                        {stop.startTime} · {stop.title}
-                      </span>
-                      <Badge tone="mint">Done</Badge>
-                    </GlassCard>
-                  ) : effStatus === 'active' ? (
-                    <GlassCard
-                      variant="spotlight"
-                      padding="lg"
-                      interactive
-                      className="spotlight-now"
-                      onClick={() => setEditingStopId(stop.id)}
-                    >
-                      <div className="spotlight-now__top">
-                        <span className="spotlight-live-tag">
-                          <span className="spotlight-live-dot" aria-hidden="true" />
-                          <span>Now · {typeLabel}</span>
-                        </span>
-                        <span className="spotlight-time">{stop.startTime}</span>
-                      </div>
-                      <div>
-                        <h2 className="spotlight-place">{stop.title}</h2>
-                        <p className="spotlight-hint">{stop.locationHint}</p>
-                      </div>
-                      <div className="spotlight-footer">
-                        {closedCheck.closed ? (
-                          <Badge tone="coral" icon={<AlertTriangle size={12} strokeWidth={2} />}>
-                            Closed {closedCheck.weekdayName?.slice(0, 3)}
-                          </Badge>
-                        ) : (
-                          <span />
-                        )}
-                        {(stop.type === 'place' || stop.type === 'transit') && (
-                          <Button
-                            variant="matcha"
-                            size="sm"
-                            rightIcon={<ArrowUpRight size={14} strokeWidth={2} />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openStopRoute(stop);
-                            }}
-                          >
-                            Route
-                          </Button>
-                        )}
-                      </div>
-                    </GlassCard>
-                  ) : (
-                    <GlassCard
-                      variant="clear"
-                      padding="md"
-                      interactive
-                      onClick={() => setEditingStopId(stop.id)}
-                    >
-                      <div className="trail-upcoming-head">
-                        <span className="trail-upcoming-meta">
-                          {stop.startTime}
-                          {stop.endTime ? `–${stop.endTime}` : ''} · {typeLabel}
-                        </span>
-                        {closedCheck.closed ? (
-                          <Badge tone="coral" icon={<AlertTriangle size={11} strokeWidth={2} />}>
-                            Closed
-                          </Badge>
-                        ) : stop.type === 'place' || stop.type === 'transit' ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openStopRoute(stop);
-                            }}
-                          >
-                            Route
-                          </Button>
-                        ) : null}
-                      </div>
-                      <h3 className="trail-upcoming-title">{stop.title}</h3>
-                      {stop.locationHint && (
-                        <p
-                          style={{
-                            margin: '3px 0 0',
-                            fontSize: 12,
-                            color: 'var(--text-secondary)',
-                          }}
+                      {effStatus === 'done' ? (
+                        <GlassCard
+                          variant="clear"
+                          padding="sm"
+                          interactive
+                          className="trail-past-card"
+                          onClick={() => setEditingStopId(stop.id)}
                         >
-                          {stop.locationHint}
-                        </p>
+                          <span className="trail-past-title">
+                            {stop.startTime} · {stop.title}
+                          </span>
+                          <Badge tone="mint">Done</Badge>
+                        </GlassCard>
+                      ) : effStatus === 'active' ? (
+                        <GlassCard
+                          variant="spotlight"
+                          padding="lg"
+                          interactive
+                          className="spotlight-now"
+                          onClick={() => setEditingStopId(stop.id)}
+                        >
+                          <div className="spotlight-now__top">
+                            <span className="spotlight-live-tag">
+                              <span className="spotlight-live-dot" aria-hidden="true" />
+                              <span>Now · {typeLabel}</span>
+                            </span>
+                            <span className="spotlight-time">{stop.startTime}</span>
+                          </div>
+                          <div>
+                            <h2 className="spotlight-place">{stop.title}</h2>
+                            <p className="spotlight-hint">{stop.locationHint}</p>
+                          </div>
+                          <div className="spotlight-footer">
+                            {closedCheck.closed ? (
+                              <Badge
+                                tone="coral"
+                                icon={<AlertTriangle size={12} strokeWidth={2} />}
+                              >
+                                Closed {closedCheck.weekdayName?.slice(0, 3)}
+                              </Badge>
+                            ) : (
+                              <span />
+                            )}
+                            {(stop.type === 'place' || stop.type === 'transit') && (
+                              <Button
+                                variant="matcha"
+                                size="sm"
+                                rightIcon={<ArrowUpRight size={14} strokeWidth={2} />}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openStopRoute(stop);
+                                }}
+                              >
+                                Route
+                              </Button>
+                            )}
+                          </div>
+                        </GlassCard>
+                      ) : (
+                        <GlassCard
+                          variant="clear"
+                          padding="md"
+                          interactive
+                          onClick={() => setEditingStopId(stop.id)}
+                        >
+                          <div className="trail-upcoming-head">
+                            <span className="trail-upcoming-meta">
+                              {stop.startTime}
+                              {stop.endTime ? `–${stop.endTime}` : ''} · {typeLabel}
+                            </span>
+                            {closedCheck.closed ? (
+                              <Badge
+                                tone="coral"
+                                icon={<AlertTriangle size={11} strokeWidth={2} />}
+                              >
+                                Closed
+                              </Badge>
+                            ) : stop.type === 'place' || stop.type === 'transit' ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openStopRoute(stop);
+                                }}
+                              >
+                                Route
+                              </Button>
+                            ) : null}
+                          </div>
+                          <h3 className="trail-upcoming-title">{stop.title}</h3>
+                          {stop.locationHint && (
+                            <p
+                              style={{
+                                margin: '3px 0 0',
+                                fontSize: 12,
+                                color: 'var(--text-secondary)',
+                              }}
+                            >
+                              {stop.locationHint}
+                            </p>
+                          )}
+                          {stop.specialScheduleNote && (
+                            <div style={{ marginTop: 6 }}>
+                              <Badge tone="amber">{stop.specialScheduleNote}</Badge>
+                            </div>
+                          )}
+                        </GlassCard>
                       )}
-                      {stop.specialScheduleNote && (
-                        <div style={{ marginTop: 6 }}>
-                          <Badge tone="amber">{stop.specialScheduleNote}</Badge>
-                        </div>
-                      )}
-                    </GlassCard>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       ) : (
         /* 03b_Plan_Table — Strictly 3 columns: TIME | AGENDA | EST. + Export .xlsx */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <GlassCard variant="clear" padding="none">
-            <div
-              className="plan-table-row"
-              style={{
-                paddingTop: 10,
-                paddingBottom: 8,
-                borderBottom: '1px solid var(--hairline)',
-                cursor: 'default',
-              }}
-            >
-              <span className="gk-field__label">TIME</span>
-              <span className="gk-field__label">AGENDA</span>
-              <span className="gk-field__label" style={{ textAlign: 'right' }}>
-                EST.
-              </span>
-            </div>
-            {dayItems.map((stop) => (
-              <button
-                key={stop.id}
-                type="button"
-                className="plan-table-row tactile"
-                onClick={() => setEditingStopId(stop.id)}
+        <div className="plan-table-scroll">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <GlassCard variant="clear" padding="none">
+              <div
+                className="plan-table-row"
+                style={{
+                  paddingTop: 10,
+                  paddingBottom: 8,
+                  borderBottom: '1px solid var(--hairline)',
+                  cursor: 'default',
+                }}
               >
-                <span className="plan-table-time">{stop.startTime}</span>
-                <span
-                  style={{
-                    fontSize: 13.5,
-                    fontWeight: 600,
-                    color: 'var(--text-primary)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    textDecoration: stop.status === 'done' ? 'line-through' : undefined,
-                    opacity: stop.status === 'done' ? 0.65 : 1,
-                  }}
-                >
-                  {stop.title}
+                <span className="gk-field__label">TIME</span>
+                <span className="gk-field__label">AGENDA</span>
+                <span className="gk-field__label" style={{ textAlign: 'right' }}>
+                  EST.
                 </span>
-                <span
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: 'var(--text-secondary)',
-                    textAlign: 'right',
-                    whiteSpace: 'nowrap',
-                  }}
+              </div>
+              {dayItems.map((stop) => (
+                <button
+                  key={stop.id}
+                  type="button"
+                  className="plan-table-row tactile"
+                  onClick={() => setEditingStopId(stop.id)}
                 >
-                  {formatEstimate(stop.costEstimate)}
-                </span>
-              </button>
-            ))}
-          </GlassCard>
+                  <span className="plan-table-time">{stop.startTime}</span>
+                  <span
+                    style={{
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      textDecoration: stop.status === 'done' ? 'line-through' : undefined,
+                      opacity: stop.status === 'done' ? 0.65 : 1,
+                    }}
+                  >
+                    {stop.title}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: 'var(--text-secondary)',
+                      textAlign: 'right',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {formatEstimate(stop.costEstimate)}
+                  </span>
+                </button>
+              ))}
+            </GlassCard>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button
-              variant="glass"
-              size="sm"
-              leftIcon={<FileSpreadsheet size={14} strokeWidth={1.8} />}
-              rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
-              onClick={() => exportTripToExcel(trip)}
-            >
-              Export .xlsx
-            </Button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                variant="glass"
+                size="sm"
+                leftIcon={<FileSpreadsheet size={14} strokeWidth={1.8} />}
+                rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
+                onClick={() => exportTripToExcel(trip)}
+              >
+                Export .xlsx
+              </Button>
+            </div>
           </div>
         </div>
       )}
