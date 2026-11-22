@@ -13,6 +13,7 @@ export interface TripMember {
   initials: string;
   avatarBg: string;
   avatarColor: string;
+  avatarDataUrl?: string;
   role: MemberRole;
   status: MemberStatus;
   isCreator?: boolean;
@@ -74,6 +75,8 @@ export interface PlanItem {
   status: PlanItemStatus;
   coverUrl?: string;
   notes: RichNoteBlock[];
+  /** Seamless single-flow HTML notes edited via contentEditable */
+  notesHtml?: string;
 }
 
 export type TransportMode = 'bike' | 'train' | 'car';
@@ -200,6 +203,8 @@ export interface SharedTrip {
   endDate: string;
   departureAt: string; // ISO with timezone offset
   crewPinHash: string;
+  /** Host-designated editors allowed to edit shared trip data without PIN */
+  editorMemberIds?: string[];
   albumUrl: string;
   gdriveFolderUrl?: string;
   gdriveScriptUrl?: string;

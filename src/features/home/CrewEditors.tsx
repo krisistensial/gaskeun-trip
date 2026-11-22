@@ -452,6 +452,8 @@ export function CrewMembersSheet({
               >
                 <Avatar
                   initials={m.initials}
+                  name={m.name}
+                  src={m.avatarDataUrl}
                   size="sm"
                   bg={m.avatarBg}
                   color={m.avatarColor}
@@ -566,12 +568,9 @@ export function PodEditorSheet({
   const [trainFormat, setTrainFormat] = useState<'3-2' | '2-2'>(
     initial?.trainLayout?.format ?? '3-2',
   );
-  const [carNumber, setCarNumber] = useState(initial?.trainLayout?.carNumber ?? 'Car 3');
+  const [carNumber, setCarNumber] = useState(initial?.trainLayout?.carNumber ?? 'Coach 3');
   const [startRow, setStartRow] = useState(String(initial?.trainLayout?.startRow ?? 10));
   const [endRow, setEndRow] = useState(String(initial?.trainLayout?.endRow ?? 12));
-  const [facingRows, setFacingRows] = useState<boolean>(
-    initial?.trainLayout?.facingRows ?? true,
-  );
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const handleSubmit = (e: FormEvent) => {
@@ -583,10 +582,10 @@ export function PodEditorSheet({
       const end = Math.max(start, Math.min(start + 12, Number(endRow) || start + 2));
       const layout: TrainCarLayout = {
         format: trainFormat,
-        carNumber: carNumber.trim() || 'Car 1',
+        carNumber: carNumber.trim() || 'Coach 1',
         startRow: start,
         endRow: end,
-        facingRows,
+        facingRows: false,
       };
       const slots = buildTrainSlotsForLayout(layout, initial?.slots ?? []);
       const pod: TransportPod = {
@@ -718,8 +717,8 @@ export function PodEditorSheet({
 
             <Input
               id="pod-car-num"
-              label="Car Number"
-              placeholder="Car 3"
+              label="Coach / Car Badge"
+              placeholder="Coach 3 or EKO 3"
               value={carNumber}
               onChange={(e) => setCarNumber(e.target.value)}
             />
@@ -739,24 +738,6 @@ export function PodEditorSheet({
                 value={endRow}
                 onChange={(e) => setEndRow(e.target.value.replace(/\D/g, ''))}
               />
-            </div>
-
-            <div className="tx-toggle-row">
-              <div>
-                <div style={{ fontSize: 13.5, fontWeight: 600 }}>Facing rows</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  Show facing arrows (↓ / ↑) between paired rows
-                </div>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={facingRows}
-                className={`tx-switch ${facingRows ? 'tx-switch--on' : ''}`}
-                onClick={() => setFacingRows((v) => !v)}
-              >
-                <span className="tx-switch__thumb" />
-              </button>
             </div>
           </>
         ) : (
@@ -791,6 +772,16 @@ export function PodEditorSheet({
         )}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          {initial && onDelete && (
+            <Button
+              variant="danger"
+              size="lg"
+              aria-label="Delete transport pod"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 size={17} strokeWidth={2} />
+            </Button>
+          )}
           <Button
             type="submit"
             variant="matcha"
@@ -800,11 +791,6 @@ export function PodEditorSheet({
           >
             {initial ? 'Save Changes' : 'Add Transport Pod'}
           </Button>
-          {initial && onDelete && (
-            <Button variant="danger" size="lg" onClick={() => setConfirmDelete(true)}>
-              <Trash2 size={17} strokeWidth={2} />
-            </Button>
-          )}
         </div>
       </form>
 
@@ -1128,6 +1114,16 @@ export function StayEditorSheet({
         ))}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          {initial && onDelete && (
+            <Button
+              variant="danger"
+              size="lg"
+              aria-label="Delete stay"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 size={17} strokeWidth={2} />
+            </Button>
+          )}
           <Button
             type="submit"
             variant="matcha"
@@ -1137,11 +1133,6 @@ export function StayEditorSheet({
           >
             Save Stay
           </Button>
-          {initial && onDelete && (
-            <Button variant="danger" size="lg" onClick={() => setConfirmDelete(true)}>
-              <Trash2 size={17} strokeWidth={2} />
-            </Button>
-          )}
         </div>
       </form>
 

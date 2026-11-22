@@ -223,6 +223,7 @@ export function WalletScreen({
                     key={m.id}
                     initials={m.initials}
                     name={m.name}
+                    src={m.avatarDataUrl}
                     showLabel
                     size="sm"
                     bg={m.avatarBg}
@@ -257,6 +258,8 @@ export function WalletScreen({
                 <span className="pool-member-row__left">
                   <Avatar
                     initials={entry.member.initials}
+                    name={entry.member.name}
+                    src={entry.member.avatarDataUrl}
                     size="sm"
                     bg={entry.member.avatarBg}
                     color={entry.member.avatarColor}
@@ -331,11 +334,10 @@ export function WalletScreen({
                   padding="md"
                   interactive
                   className="tx-card"
-                  onClick={() =>
-                    guardSharedEdit(() =>
-                      setComposer({ open: true, mode: 'fundraise', editing: tx }),
-                    )
-                  }
+                  onClick={() => {
+                    if (!canEdit) return;
+                    setComposer({ open: true, mode: 'fundraise', editing: tx });
+                  }}
                 >
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{tx.title}</div>
@@ -407,11 +409,10 @@ export function WalletScreen({
                     padding="md"
                     interactive
                     className="tx-card"
-                    onClick={() =>
-                      guardSharedEdit(() =>
-                        setComposer({ open: true, mode: 'expense', editing: tx }),
-                      )
-                    }
+                    onClick={() => {
+                      if (!canEdit) return;
+                      setComposer({ open: true, mode: 'expense', editing: tx });
+                    }}
                   >
                     <div>
                       <div style={{ fontSize: 14, fontWeight: 600 }}>{tx.title}</div>
@@ -421,7 +422,7 @@ export function WalletScreen({
                           : 'Direct from fund'}{' '}
                         · {tx.pocket === 'pool' ? 'Pool' : 'Fundraise'}
                       </div>
-                      {isUnpaid && (
+                      {isUnpaid && canEdit && (
                         <div style={{ marginTop: 8 }}>
                           <Button
                             variant="matcha"
@@ -518,14 +519,16 @@ export function WalletScreen({
         </>
       )}
 
-      {/* Floating Glass (+) Button above Dock */}
-      <CornerOrb
-        kind="add"
-        size="lg"
-        ariaLabel="Add transaction"
-        className="floating-glass-fab"
-        onClick={handleOpenFab}
-      />
+      {/* Floating Glass (+) Button — ALWAYS visible on Personal, Editor-only on shared tabs */}
+      {(subTab === 'personal' || canEdit) && (
+        <CornerOrb
+          kind="add"
+          size="lg"
+          ariaLabel="Add transaction"
+          className="floating-glass-fab"
+          onClick={handleOpenFab}
+        />
+      )}
 
       {/* Member Pool IN Deposit History Drill-Down Sheet */}
       <LiquidBottomSheet
@@ -552,10 +555,9 @@ export function WalletScreen({
                     type="button"
                     className="gk-menu-item"
                     onClick={() => {
+                      if (!canEdit) return;
                       setSelectedMemberId(null);
-                      guardSharedEdit(() =>
-                        setComposer({ open: true, mode: 'pool', editing: tx }),
-                      );
+                      setComposer({ open: true, mode: 'pool', editing: tx });
                     }}
                   >
                     <div>
@@ -571,26 +573,26 @@ export function WalletScreen({
               )}
             </div>
 
-            <Button
-              variant="matcha"
-              size="lg"
-              fullWidth
-              leftIcon={<Plus size={16} strokeWidth={2} />}
-              onClick={() => {
-                const mid = selectedMemberSummary.member.id;
-                setSelectedMemberId(null);
-                guardSharedEdit(() =>
+            {canEdit && (
+              <Button
+                variant="matcha"
+                size="lg"
+                fullWidth
+                leftIcon={<Plus size={16} strokeWidth={2} />}
+                onClick={() => {
+                  const mid = selectedMemberSummary.member.id;
+                  setSelectedMemberId(null);
                   setComposer({
                     open: true,
                     mode: 'pool',
                     editing: null,
                     defaultMemberId: mid,
-                  }),
-                );
-              }}
-            >
-              Add Deposit for {selectedMemberSummary.member.name}
-            </Button>
+                  });
+                }}
+              >
+                Add Deposit for {selectedMemberSummary.member.name}
+              </Button>
+            )}
           </>
         )}
       </LiquidBottomSheet>

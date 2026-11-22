@@ -151,6 +151,7 @@ export async function buildNewTrip(input: CreateTripInput): Promise<SharedTrip> 
     endDate: input.endDate,
     departureAt: `${input.startDate}T${startTime}:00+07:00`,
     crewPinHash,
+    editorMemberIds: [creatorId],
     albumUrl: '',
     financeConfig: {
       poolTargetPerPerson: Math.max(0, Math.round(input.poolTargetPerPerson ?? 0)),
@@ -237,6 +238,29 @@ export async function compressPhotoToDataUrl(file: File, maxWidth = 960): Promis
     throw new Error('Canvas unavailable');
   }
   ctx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  return canvas.toDataURL('image/jpeg', 0.78);
+}
+
+/**
+ * Center-crops a face photo to a 256×256px square JPEG (~18–25KB)
+ * for fast offline rendering across all Avatar instances.
+ */
+export async function compressAvatarSquare(file: File, size = 256): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const side = Math.min(bitmap.width, bitmap.height);
+  const sx = Math.floor((bitmap.width - side) / 2);
+  const sy = Math.floor((bitmap.height - side) / 2);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    bitmap.close();
+    throw new Error('Canvas unavailable');
+  }
+  ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, size, size);
   bitmap.close();
   return canvas.toDataURL('image/jpeg', 0.78);
 }

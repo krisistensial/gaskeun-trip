@@ -88,49 +88,48 @@
   color: var(--text-secondary);
 }
 
-/* --- Hierarchical Wide Live Countdown Card (Big DAYS + 3-Col HH/MM/SS) --- */
+/* --- Hierarchical Wide Live Countdown Card (Editorial Transparent Glass + Serif) --- */
 .countdown-hero-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 16px 18px 14px;
-  border-radius: 28px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.84) 0%,
-    rgba(233, 242, 235, 0.72) 100%
-  );
-  border: 1.5px solid rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(26px) saturate(190%);
-  -webkit-backdrop-filter: blur(26px) saturate(190%);
+  padding: 18px 20px 15px;
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.32);
+  border: 1.5px solid rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(20px) saturate(165%);
+  -webkit-backdrop-filter: blur(20px) saturate(165%);
   box-shadow:
-    0 16px 34px -12px rgba(31, 45, 39, 0.16),
-    inset 0 1.5px 1px rgba(255, 255, 255, 0.98);
+    0 14px 32px -12px rgba(31, 45, 39, 0.16),
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.85);
 }
 
 .countdown-days-block {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-bottom: 10px;
+  padding-bottom: 12px;
 }
 
 .countdown-days-val {
-  font-family: var(--font-display);
-  font-size: 58px;
+  font-family: var(--font-serif);
+  font-size: 82px;
   font-weight: 700;
-  line-height: 0.94;
+  line-height: 0.86;
   letter-spacing: -0.03em;
   color: var(--brand-forest);
+  font-variant-numeric: lining-nums tabular-nums;
+  text-shadow: 0 2px 14px rgba(255, 255, 255, 0.45);
 }
 
 .countdown-days-lbl {
   font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--text-secondary);
-  margin-top: 4px;
+  color: var(--brand-forest);
+  opacity: 0.78;
+  margin-top: 8px;
 }
 
 .countdown-sub-grid {
@@ -138,8 +137,8 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  padding-top: 10px;
-  border-top: 1px solid var(--hairline);
+  padding-top: 11px;
+  border-top: 1px solid rgba(31, 45, 39, 0.12);
 }
 
 .countdown-sub-cell {
@@ -150,20 +149,21 @@
 }
 
 .countdown-val {
-  font-family: var(--font-display);
-  font-size: 22px;
+  font-family: var(--font-serif);
+  font-size: 24px;
   font-weight: 700;
-  line-height: 1.05;
+  line-height: 1.04;
   color: var(--text-primary);
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
 .countdown-lbl {
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--text-muted);
-  margin-top: 2px;
+  color: var(--text-secondary);
+  margin-top: 3px;
 }
 
 /* --- On-Trip Spotlight Now & Up Next --- */
@@ -714,9 +714,14 @@
   gap: 8px;
 }
 
+.slot-picker-grid--train {
+  grid-template-columns: 1fr;
+}
+
 .slot-picker-option {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
   border-radius: 18px;
@@ -725,4 +730,10 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+  text-align: left;
+}
+
+.slot-picker-option--current {
+  border-color: var(--brand-matcha);
+  background: rgba(227, 237, 230, 0.56);
 }

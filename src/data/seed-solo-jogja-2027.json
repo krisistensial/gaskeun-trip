@@ -8,6 +8,7 @@
   "endDate": "2027-02-14",
   "departureAt": "2027-02-11T09:14:00+07:00",
   "crewPinHash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+  "editorMemberIds": ["m-kris"],
   "albumUrl": "https://drive.google.com/",
   "gdriveFolderUrl": "https://drive.google.com/",
   "gdriveScriptUrl": "",
@@ -435,13 +436,13 @@
       "id": "pod-train-1",
       "mode": "train",
       "label": "KA Bengawan",
-      "meta": "Car 3 · Economy 3–2",
+      "meta": "Coach 3 · 3–2",
       "trainLayout": {
         "format": "3-2",
-        "carNumber": "Car 3",
+        "carNumber": "Coach 3",
         "startRow": 10,
         "endRow": 12,
-        "facingRows": true
+        "facingRows": false
       },
       "slots": [
         { "role": "10A", "memberId": "m-kris" },

@@ -29,6 +29,8 @@ import {
   upsertPersonalTransaction,
 } from './services/db';
 import { exportTripToExcel } from './services/excelExporter';
+import { canEditTrip, getMemberRoleLabel, isHostMember } from './services/permissions';
+import { clearActiveSession, loadSavedSession, saveActiveSession } from './services/session';
 import {
   fetchRemoteTripByCode,
   flushOfflineMutationQueue,
@@ -60,7 +62,9 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<DockTabId>('home');
   const [phase, setPhase] = useState<HomePhase>('pre-trip');
-  const [canEdit, setCanEdit] = useState<boolean>(false);
+  const [pinUnlockedCodes, setPinUnlockedCodes] = useState<string[]>(
+    () => loadSavedSession()?.pinUnlockedCodes ?? [],
+  );
 
   const [activeRouteTarget, setActiveRouteTarget] = useState<RouteTarget | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -78,7 +82,7 @@ export default function App() {
     setToast({ open: true, message, tone });
   };
 
-  // Bootstrap IndexedDB pilot seed + check URL ?code= deep-link (local + Supabase fallback)
+  // Bootstrap IndexedDB pilot seed + URL ?code= deep-link + Auto-Restore remembered session
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -100,7 +104,37 @@ export default function App() {
             const local = await getLocalPersonal(matched.id);
             setActiveTrip(matched);
             setLocalData(local);
-            setRoute(local.activeMemberId ? 'hub' : 'who');
+            if (local.activeMemberId) {
+              saveActiveSession({
+                tripCode: matched.code,
+                activeMemberId: local.activeMemberId,
+                pinUnlockedCodes: loadSavedSession()?.pinUnlockedCodes ?? [],
+              });
+              setRoute('hub');
+            } else {
+              setRoute('who');
+            }
+            return;
+          }
+        }
+
+        // Auto-remember last login session so reopening the PWA lands straight on Home
+        const saved = loadSavedSession();
+        if (saved) {
+          const restored =
+            (await getSharedTripByCode(saved.tripCode)) ??
+            all.find((t) => t.code.toUpperCase() === saved.tripCode.toUpperCase());
+          if (restored && alive) {
+            const local = await getLocalPersonal(restored.id);
+            const memberId = local.activeMemberId ?? saved.activeMemberId;
+            const syncedLocal =
+              local.activeMemberId === memberId
+                ? local
+                : await setActiveMemberLocal(restored.id, memberId);
+            setActiveTrip(restored);
+            setLocalData(syncedLocal);
+            setPinUnlockedCodes(saved.pinUnlockedCodes);
+            setRoute('hub');
           }
         }
       } catch {
@@ -136,11 +170,28 @@ export default function App() {
     return () => URL.revokeObjectURL(url);
   }, [localData?.coverBlob]);
 
-  const activeMemberName = useMemo(() => {
-    const id = localData?.activeMemberId;
-    if (!id || id === 'guest') return 'Guest';
-    return activeTrip.members.find((m) => m.id === id)?.name ?? 'Guest';
-  }, [activeTrip.members, localData?.activeMemberId]);
+  const activeMemberId = localData?.activeMemberId ?? null;
+  const activeMember = useMemo(
+    () =>
+      activeMemberId && activeMemberId !== 'guest'
+        ? activeTrip.members.find((m) => m.id === activeMemberId)
+        : undefined,
+    [activeTrip.members, activeMemberId],
+  );
+  const activeMemberName = activeMember?.name ?? 'Guest';
+
+  const pinUnlocked = pinUnlockedCodes.includes(activeTrip.code.toUpperCase());
+  const isHost = isHostMember(activeTrip, activeMemberId);
+  const canEdit = canEditTrip(activeTrip, activeMemberId, pinUnlocked);
+  const roleLabel = getMemberRoleLabel(activeTrip, activeMemberId, pinUnlocked);
+
+  const persistSession = (tripCode: string, memberId: string, unlockedList: string[]) => {
+    saveActiveSession({
+      tripCode,
+      activeMemberId: memberId,
+      pinUnlockedCodes: unlockedList,
+    });
+  };
 
   const handleUpdateTrip = (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => {
     setActiveTrip((prev) => {
@@ -186,7 +237,6 @@ export default function App() {
     const local = await getLocalPersonal(found.id);
     setActiveTrip(found);
     setLocalData(local);
-    setCanEdit(false);
     setActiveRouteTarget(null);
     setActiveTab('home');
     setRoute('who');
@@ -196,6 +246,7 @@ export default function App() {
   const handleSelectProfile = async (memberId: string) => {
     const nextLocal = await setActiveMemberLocal(activeTrip.id, memberId);
     setLocalData(nextLocal);
+    persistSession(activeTrip.code, memberId, pinUnlockedCodes);
     setRoute('hub');
     const name =
       memberId === 'guest'
@@ -204,16 +255,46 @@ export default function App() {
     showToast(`Welcome, ${name}`, 'success');
   };
 
+  const handleUpdateMemberAvatar = (memberId: string, avatarDataUrl: string) => {
+    handleUpdateTrip(
+      (prev) => ({
+        ...prev,
+        members: prev.members.map((m) => (m.id === memberId ? { ...m, avatarDataUrl } : m)),
+      }),
+      'Profile photo updated',
+    );
+  };
+
+  const handleToggleEditorMember = (memberId: string) => {
+    handleUpdateTrip((prev) => {
+      const hostIds = prev.members.filter((m) => m.isCreator).map((m) => m.id);
+      const current = new Set([...(prev.editorMemberIds ?? []), ...hostIds]);
+      if (hostIds.includes(memberId)) return prev;
+      if (current.has(memberId)) current.delete(memberId);
+      else current.add(memberId);
+      return { ...prev, editorMemberIds: Array.from(current) };
+    }, 'Editor permissions updated');
+  };
+
+  const handleLeaveTrip = () => {
+    clearActiveSession();
+    setActiveRouteTarget(null);
+    setRoute('landing');
+    showToast('Returned to Landing Gate', 'info');
+  };
+
   const handleTripCreated = async (newTrip: SharedTrip) => {
     await saveSharedTrip(newTrip);
     void pushOrQueueSharedTrip(newTrip);
     const all = await listSharedTrips();
     setSavedTrips(all);
-    const creatorId = newTrip.members[0]?.id ?? null;
+    const creatorId = newTrip.members[0]?.id ?? 'guest';
     const local = await setActiveMemberLocal(newTrip.id, creatorId);
+    const nextUnlocked = Array.from(new Set([...pinUnlockedCodes, newTrip.code.toUpperCase()]));
     setActiveTrip(newTrip);
     setLocalData(local);
-    setCanEdit(true);
+    setPinUnlockedCodes(nextUnlocked);
+    persistSession(newTrip.code, creatorId, nextUnlocked);
   };
 
   const handleCopyText = (text: string, label: string) => {
@@ -315,234 +396,255 @@ export default function App() {
   return (
     <OverlayProvider>
       <div className="app-viewport">
-      <div className="ambient-mesh" aria-hidden="true">
-        <div className="ambient-blob ambient-blob--matcha" />
-        <div className="ambient-blob ambient-blob--sunlight" />
-        <div className="ambient-blob ambient-blob--mint" />
-      </div>
+        <div className="ambient-mesh" aria-hidden="true">
+          <div className="ambient-blob ambient-blob--matcha" />
+          <div className="ambient-blob ambient-blob--sunlight" />
+          <div className="ambient-blob ambient-blob--mint" />
+        </div>
 
-      <main
-        className="app-shell"
-        style={!showDock ? { paddingBottom: 'calc(var(--safe-bottom) + 20px)' } : undefined}
-      >
-        {route === 'landing' && (
-          <LandingGateScreen
-            savedTrips={savedTrips}
-            onJoinCode={handleJoinCode}
-            onOpenCreate={() => setRoute('create')}
-          />
-        )}
+        <main
+          className="app-shell"
+          style={!showDock ? { paddingBottom: 'calc(var(--safe-bottom) + 20px)' } : undefined}
+        >
+          {route === 'landing' && (
+            <LandingGateScreen
+              savedTrips={savedTrips}
+              onJoinCode={handleJoinCode}
+              onOpenCreate={() => setRoute('create')}
+            />
+          )}
 
-        {route === 'who' && (
-          <WhoAreYouScreen
-            trip={activeTrip}
-            selectedMemberId={localData?.activeMemberId ?? null}
-            canEdit={canEdit}
-            onSelectProfile={handleSelectProfile}
-            onRequestUnlockPin={() => requestUnlockPin()}
-            onBack={() => setRoute('landing')}
-          />
-        )}
+          {route === 'who' && (
+            <WhoAreYouScreen
+              trip={activeTrip}
+              selectedMemberId={activeMemberId}
+              canEdit={canEdit}
+              onSelectProfile={handleSelectProfile}
+              onUpdateMemberAvatar={handleUpdateMemberAvatar}
+              onRequestUnlockPin={() => requestUnlockPin()}
+              onBack={() => setRoute('landing')}
+            />
+          )}
 
-        {route === 'create' && (
-          <CreateTripScreen
-            onCreated={handleTripCreated}
-            onOpenTrip={(trip) => {
-              setActiveTrip(trip);
-              setActiveTab('home');
-              setRoute('hub');
-            }}
-            onCopyInvite={(url) => handleCopyInvite(url)}
-            onBack={() => setRoute('landing')}
-          />
-        )}
+          {route === 'create' && (
+            <CreateTripScreen
+              onCreated={handleTripCreated}
+              onOpenTrip={(trip) => {
+                setActiveTrip(trip);
+                setActiveTab('home');
+                setRoute('hub');
+              }}
+              onCopyInvite={(url) => handleCopyInvite(url)}
+              onBack={() => setRoute('landing')}
+            />
+          )}
 
-        {route === 'hub' && activeRouteTarget && (
-          <RouteMapView
-            target={activeRouteTarget}
-            onBack={() => setActiveRouteTarget(null)}
-            onSelectPlanItem={(stop) => {
-              setActiveRouteTarget((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      title: stop.title,
-                      subtitle: stop.locationHint,
-                      address: stop.address,
-                      parkingNote: stop.parkingNote,
-                      mapsUrl: stop.mapsUrl,
-                      coords: stop.coords,
-                      focusedItemId: stop.id,
-                    }
-                  : null,
-              );
-            }}
-          />
-        )}
+          {route === 'hub' && activeRouteTarget && (
+            <RouteMapView
+              target={activeRouteTarget}
+              onBack={() => setActiveRouteTarget(null)}
+              onSelectPlanItem={(stop) => {
+                setActiveRouteTarget((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        title: stop.title,
+                        subtitle: stop.locationHint,
+                        address: stop.address,
+                        parkingNote: stop.parkingNote,
+                        mapsUrl: stop.mapsUrl,
+                        coords: stop.coords,
+                        focusedItemId: stop.id,
+                      }
+                    : null,
+                );
+              }}
+            />
+          )}
 
-        {route === 'hub' && !activeRouteTarget && activeTab === 'home' && (
-          <HomeScreen
-            trip={activeTrip}
-            phase={phase}
-            coverUrl={coverUrl}
-            canEdit={canEdit}
-            onOpenMenu={() => setMenuOpen(true)}
-            onOpenTripSettings={openTripSettingsGated}
-            onSwitchTrip={() => setRoute('landing')}
-            onNavigateTab={setActiveTab}
-            onUploadCover={handleUploadCover}
-            onRequestUnlockPin={() => requestUnlockPin()}
-            onOpenRoute={(target) => setActiveRouteTarget(target)}
-            onUpdateTrip={handleUpdateTrip}
-          />
-        )}
+          {route === 'hub' && !activeRouteTarget && activeTab === 'home' && (
+            <HomeScreen
+              trip={activeTrip}
+              phase={phase}
+              coverUrl={coverUrl}
+              canEdit={canEdit}
+              onOpenMenu={() => setMenuOpen(true)}
+              onOpenTripSettings={openTripSettingsGated}
+              onSwitchTrip={handleLeaveTrip}
+              onNavigateTab={setActiveTab}
+              onUploadCover={handleUploadCover}
+              onRequestUnlockPin={() => requestUnlockPin()}
+              onOpenRoute={(target) => setActiveRouteTarget(target)}
+              onUpdateTrip={handleUpdateTrip}
+            />
+          )}
 
-        {route === 'hub' && !activeRouteTarget && activeTab === 'plan' && (
-          <PlanScreen
-            trip={activeTrip}
-            canEdit={canEdit}
-            onRequestUnlockPin={() => requestUnlockPin()}
-            onOpenRoute={(target) => setActiveRouteTarget(target)}
-            onUpdateTrip={handleUpdateTrip}
-          />
-        )}
+          {route === 'hub' && !activeRouteTarget && activeTab === 'plan' && (
+            <PlanScreen
+              trip={activeTrip}
+              canEdit={canEdit}
+              onRequestUnlockPin={() => requestUnlockPin()}
+              onOpenRoute={(target) => setActiveRouteTarget(target)}
+              onUpdateTrip={handleUpdateTrip}
+            />
+          )}
 
-        {route === 'hub' && !activeRouteTarget && activeTab === 'wallet' && (
-          <WalletScreen
-            trip={activeTrip}
-            personalTransactions={localData?.personalTransactions ?? []}
-            canEdit={canEdit}
-            onOpenMenu={() => setMenuOpen(true)}
-            onRequestUnlockPin={() => requestUnlockPin()}
-            onUpdateTrip={handleUpdateTrip}
-            onUpsertPersonalTx={(tx, isNew) => void handleUpsertPersonalTx(tx, isNew)}
-            onDeletePersonalTx={(id) => void handleDeletePersonalTx(id)}
-          />
-        )}
+          {route === 'hub' && !activeRouteTarget && activeTab === 'wallet' && (
+            <WalletScreen
+              trip={activeTrip}
+              personalTransactions={localData?.personalTransactions ?? []}
+              canEdit={canEdit}
+              onOpenMenu={() => setMenuOpen(true)}
+              onRequestUnlockPin={() => requestUnlockPin()}
+              onUpdateTrip={handleUpdateTrip}
+              onUpsertPersonalTx={(tx, isNew) => void handleUpsertPersonalTx(tx, isNew)}
+              onDeletePersonalTx={(id) => void handleDeletePersonalTx(id)}
+            />
+          )}
 
-        {route === 'hub' && !activeRouteTarget && activeTab === 'album' && (
-          <AlbumScreen
-            trip={activeTrip}
-            localPhotos={localData?.localAlbumPhotos ?? []}
-            activeMemberName={activeMemberName}
-            onSaveLocalPhotos={(photos, msg) => void handleSaveLocalAlbumPhotos(photos, msg)}
-            onOpenSettings={openTripSettingsGated}
-            onNotify={showToast}
-          />
-        )}
+          {route === 'hub' && !activeRouteTarget && activeTab === 'album' && (
+            <AlbumScreen
+              trip={activeTrip}
+              localPhotos={localData?.localAlbumPhotos ?? []}
+              activeMemberName={activeMemberName}
+              onSaveLocalPhotos={(photos, msg) => void handleSaveLocalAlbumPhotos(photos, msg)}
+              onOpenSettings={openTripSettingsGated}
+              onNotify={showToast}
+            />
+          )}
 
-        {route === 'hub' && !activeRouteTarget && activeTab === 'prep' && (
-          <PrepScreen
-            trip={activeTrip}
-            personalPrep={localData?.personalPrep ?? []}
-            canEdit={canEdit}
-            onOpenMenu={() => setMenuOpen(true)}
-            onRequestUnlockPin={() => requestUnlockPin()}
-            onUpdatePersonalPrep={(tasks, msg) => void handleUpdatePersonalPrep(tasks, msg)}
-            onUpdateGroupPrep={(tasks, msg) =>
-              handleUpdateTrip((prev) => ({ ...prev, groupPrep: tasks }), msg)
+          {route === 'hub' && !activeRouteTarget && activeTab === 'prep' && (
+            <PrepScreen
+              trip={activeTrip}
+              personalPrep={localData?.personalPrep ?? []}
+              canEdit={canEdit}
+              onOpenMenu={() => setMenuOpen(true)}
+              onRequestUnlockPin={() => requestUnlockPin()}
+              onUpdatePersonalPrep={(tasks, msg) => void handleUpdatePersonalPrep(tasks, msg)}
+              onUpdateGroupPrep={(tasks, msg) =>
+                handleUpdateTrip((prev) => ({ ...prev, groupPrep: tasks }), msg)
+              }
+            />
+          )}
+        </main>
+
+        {showDock && <ExpandingGlassDock activeTab={activeTab} onChange={setActiveTab} />}
+
+        <TripMenuSheet
+          open={menuOpen}
+          trip={activeTrip}
+          phase={phase}
+          canEdit={canEdit}
+          isHost={isHost}
+          pinUnlocked={pinUnlocked}
+          roleLabel={roleLabel}
+          activeMember={activeMember}
+          activeMemberName={activeMemberName}
+          onPhaseChange={(next) => {
+            setPhase(next);
+            showToast(
+              next === 'pre-trip' ? 'Switched to Countdown View' : 'Switched to Live Trail View',
+              'info',
+            );
+          }}
+          onUpdateActiveAvatar={(avatarDataUrl) => {
+            if (activeMember) {
+              handleUpdateMemberAvatar(activeMember.id, avatarDataUrl);
             }
-          />
-        )}
-      </main>
+          }}
+          onToggleEditorMember={handleToggleEditorMember}
+          onRequestUnlock={() => requestUnlockPin()}
+          onLockEditing={() => {
+            const codeUpper = activeTrip.code.toUpperCase();
+            const nextUnlocked = pinUnlockedCodes.filter((c) => c !== codeUpper);
+            setPinUnlockedCodes(nextUnlocked);
+            if (activeMemberId) {
+              persistSession(activeTrip.code, activeMemberId, nextUnlocked);
+            }
+            showToast('Crew editing locked', 'info');
+          }}
+          onOpenTripSettings={openTripSettingsGated}
+          onCopyInvite={() => handleCopyInvite()}
+          onSwitchProfile={() => setRoute('who')}
+          onLeaveTrip={handleLeaveTrip}
+          onExportExcel={handleExportExcel}
+          onExportJson={handleExportJson}
+          onImportJson={handleImportJsonFile}
+          onClose={() => setMenuOpen(false)}
+        />
 
-      {showDock && <ExpandingGlassDock activeTab={activeTab} onChange={setActiveTab} />}
+        <TripSettingsSheet
+          key={`ts-${settingsOpen ? activeTrip.id : 'closed'}`}
+          open={settingsOpen}
+          trip={activeTrip}
+          onSave={(patch) => {
+            handleUpdateTrip(
+              (prev) => ({
+                ...prev,
+                title: patch.title,
+                subtitle: patch.subtitle,
+                departureAt: patch.departureAt,
+                albumUrl: patch.gdriveFolderUrl || prev.albumUrl,
+                gdriveFolderUrl: patch.gdriveFolderUrl,
+                gdriveScriptUrl: patch.gdriveScriptUrl,
+                financeConfig: {
+                  ...prev.financeConfig,
+                  poolTargetPerPerson: patch.poolTargetPerPerson,
+                  fundraiseTarget: patch.fundraiseTarget,
+                  minimumDpPerPerson: patch.minimumDpPerPerson,
+                },
+              }),
+              'Trip settings updated',
+            );
+          }}
+          onCopyText={handleCopyText}
+          onClose={() => setSettingsOpen(false)}
+        />
 
-      <TripMenuSheet
-        open={menuOpen}
-        trip={activeTrip}
-        phase={phase}
-        canEdit={canEdit}
-        activeMemberName={activeMemberName}
-        onPhaseChange={(next) => {
-          setPhase(next);
-          showToast(
-            next === 'pre-trip' ? 'Switched to Countdown View' : 'Switched to Live Trail View',
-            'info',
-          );
-        }}
-        onRequestUnlock={() => requestUnlockPin()}
-        onLockEditing={() => {
-          setCanEdit(false);
-          showToast('Crew editing locked', 'info');
-        }}
-        onOpenTripSettings={openTripSettingsGated}
-        onCopyInvite={() => handleCopyInvite()}
-        onSwitchProfile={() => setRoute('who')}
-        onSwitchTrip={() => setRoute('landing')}
-        onExportExcel={handleExportExcel}
-        onExportJson={handleExportJson}
-        onImportJson={handleImportJsonFile}
-        onClose={() => setMenuOpen(false)}
-      />
-
-      <TripSettingsSheet
-        key={`ts-${settingsOpen ? activeTrip.id : 'closed'}`}
-        open={settingsOpen}
-        trip={activeTrip}
-        onSave={(patch) => {
-          handleUpdateTrip(
-            (prev) => ({
-              ...prev,
-              title: patch.title,
-              subtitle: patch.subtitle,
-              departureAt: patch.departureAt,
-              albumUrl: patch.gdriveFolderUrl || prev.albumUrl,
-              gdriveFolderUrl: patch.gdriveFolderUrl,
-              gdriveScriptUrl: patch.gdriveScriptUrl,
-              financeConfig: {
-                ...prev.financeConfig,
-                poolTargetPerPerson: patch.poolTargetPerPerson,
-                fundraiseTarget: patch.fundraiseTarget,
-                minimumDpPerPerson: patch.minimumDpPerPerson,
-              },
-            }),
-            'Trip settings updated',
-          );
-        }}
-        onCopyText={handleCopyText}
-        onClose={() => setSettingsOpen(false)}
-      />
-
-      <PinUnlockSheet
-        open={pinSheetOpen}
-        tripCode={activeTrip.code}
-        expectedHash={activeTrip.crewPinHash}
-        onUnlocked={() => {
-          setCanEdit(true);
-          setPinSheetOpen(false);
-          showToast('Crew editing unlocked', 'success');
-          if (pendingAfterUnlock) {
-            const cb = pendingAfterUnlock;
+        <PinUnlockSheet
+          open={pinSheetOpen}
+          tripCode={activeTrip.code}
+          expectedHash={activeTrip.crewPinHash}
+          onUnlocked={() => {
+            const codeUpper = activeTrip.code.toUpperCase();
+            const nextUnlocked = Array.from(new Set([...pinUnlockedCodes, codeUpper]));
+            setPinUnlockedCodes(nextUnlocked);
+            if (activeMemberId) {
+              persistSession(activeTrip.code, activeMemberId, nextUnlocked);
+            }
+            setPinSheetOpen(false);
+            showToast('Crew editing unlocked', 'success');
+            if (pendingAfterUnlock) {
+              const cb = pendingAfterUnlock;
+              setPendingAfterUnlock(null);
+              cb();
+            }
+          }}
+          onClose={() => {
+            setPinSheetOpen(false);
             setPendingAfterUnlock(null);
-            cb();
+          }}
+        />
+
+        <ConfirmDialog
+          open={Boolean(pendingImportTrip)}
+          title="Import shared trip backup?"
+          description={
+            pendingImportTrip
+              ? `Update "${pendingImportTrip.title}" (${pendingImportTrip.code})? Your local cover photo, personal wallet, and private packing list stay untouched.`
+              : ''
           }
-        }}
-        onClose={() => {
-          setPinSheetOpen(false);
-          setPendingAfterUnlock(null);
-        }}
-      />
+          confirmLabel="Import Update"
+          onCancel={() => setPendingImportTrip(null)}
+          onConfirm={() => void confirmImportJson()}
+        />
 
-      <ConfirmDialog
-        open={Boolean(pendingImportTrip)}
-        title="Import shared trip backup?"
-        description={
-          pendingImportTrip
-            ? `Update "${pendingImportTrip.title}" (${pendingImportTrip.code})? Your local cover photo, personal wallet, and private packing list stay untouched.`
-            : ''
-        }
-        confirmLabel="Import Update"
-        onCancel={() => setPendingImportTrip(null)}
-        onConfirm={() => void confirmImportJson()}
-      />
-
-      <Toast
-        open={toast.open}
-        message={toast.message}
-        tone={toast.tone}
-        onClose={() => setToast((prev) => ({ ...prev, open: false }))}
-      />
+        <Toast
+          open={toast.open}
+          message={toast.message}
+          tone={toast.tone}
+          onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+        />
       </div>
     </OverlayProvider>
   );

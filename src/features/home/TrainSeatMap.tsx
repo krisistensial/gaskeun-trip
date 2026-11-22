@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { Avatar, Badge, Button, GlassCard } from '../../components/atoms';
 import type { TrainCarLayout, TransportPod, TransportSlot, TripMember } from '../../types/trip';
 import './home.css';
@@ -27,6 +27,39 @@ export function buildTrainSlotsForLayout(
   return result;
 }
 
+/**
+ * Pure Smart Assign / Auto-Swap helper for KAI Train Seats.
+ * Guarantees no crew member ever occupies 2 seats simultaneously:
+ * - Assigning `memberId` who already sits in `existingIdx` swaps `existingIdx`
+ *   with `targetSlotIndex` (2-way swap if target was occupied, clean move if empty).
+ * - Passing `null` clears `targetSlotIndex`.
+ */
+export function assignOrSwapTrainSeat(
+  slots: TransportSlot[],
+  targetSlotIndex: number,
+  memberId: string | null,
+): TransportSlot[] {
+  if (targetSlotIndex < 0 || targetSlotIndex >= slots.length) return slots;
+  const next = slots.map((s) => ({ ...s }));
+
+  if (!memberId) {
+    next[targetSlotIndex].memberId = null;
+    return next;
+  }
+
+  const existingIdx = next.findIndex((s) => s.memberId === memberId);
+  if (existingIdx === targetSlotIndex) return next;
+
+  const previousOccupant = next[targetSlotIndex].memberId;
+  next[targetSlotIndex].memberId = memberId;
+
+  if (existingIdx >= 0) {
+    next[existingIdx].memberId = previousOccupant;
+  }
+
+  return next;
+}
+
 function inferLayout(pod: TransportPod): TrainCarLayout {
   if (pod.trainLayout) return pod.trainLayout;
   const rowNums = pod.slots
@@ -37,10 +70,10 @@ function inferLayout(pod: TransportPod): TrainCarLayout {
   const endRow = rowNums.length > 0 ? Math.max(...rowNums) : startRow + 2;
   return {
     format: hasE ? '3-2' : '2-2',
-    carNumber: pod.label.includes('Car') ? pod.label.split('·').pop()?.trim() || 'Car 1' : 'Car 1',
+    carNumber: 'Coach 1',
     startRow,
     endRow,
-    facingRows: true,
+    facingRows: false,
   };
 }
 
@@ -68,6 +101,9 @@ export function TrainSeatMap({
   for (let r = layout.startRow; r <= layout.endRow; r += 1) {
     rows.push(r);
   }
+
+  // Strip duplicate coach/car suffix from title if user typed it
+  const cleanTitle = pod.label.replace(/\s*·\s*(Car|Coach)\s*\w+$/i, '').trim() || pod.label;
 
   const slotIndexByCode = new Map<string, number>();
   pod.slots.forEach((slot, idx) => {
@@ -103,6 +139,8 @@ export function TrainSeatMap({
           <>
             <Avatar
               initials={member.initials}
+              name={member.name}
+              src={member.avatarDataUrl}
               size="sm"
               bg={member.avatarBg}
               color={member.avatarColor}
@@ -121,7 +159,7 @@ export function TrainSeatMap({
 
   return (
     <GlassCard variant="clear" padding="md" className="kai-car-card">
-      {/* Train Car Header */}
+      {/* Train Car Header — single clean Coach badge, zero duplication */}
       <div className="kai-car-head">
         <div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -132,18 +170,20 @@ export function TrainSeatMap({
                 fontWeight: 600,
               }}
             >
-              {pod.label}
+              {cleanTitle}
             </span>
             <Badge tone="matcha">{layout.carNumber}</Badge>
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 2 }}>
             Layout {layout.format} · Rows {layout.startRow}–{layout.endRow}
-            {layout.facingRows ? ' · Facing rows' : ''}
           </div>
         </div>
 
         {editingCrew && (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Button variant="danger" size="sm" onClick={onDeletePod} aria-label="Remove train car">
+              <Trash2 size={13} strokeWidth={2} />
+            </Button>
             <Button
               variant="glass"
               size="sm"
@@ -152,66 +192,38 @@ export function TrainSeatMap({
             >
               Layout
             </Button>
-            <Button variant="danger" size="sm" onClick={onDeletePod}>
-              <Trash2 size={13} strokeWidth={2} />
-            </Button>
           </div>
         )}
       </div>
 
-      {/* Column Headers with Window / Aisle Labels */}
+      {/* Clean Column Headers: A B C | Aisle | D E (zero WINDOW labels) */}
       <div className={`kai-grid kai-grid--${layout.format} kai-col-headers`}>
-        <span className="kai-window-tag">Window</span>
-        {leftCols.slice(1).map((c) => (
+        {leftCols.map((c) => (
           <span key={`lh-${c}`} className="kai-col-tag">
             {c}
           </span>
         ))}
         <span className="kai-aisle-head">Aisle</span>
-        {rightCols.slice(0, -1).map((c) => (
+        {rightCols.map((c) => (
           <span key={`rh-${c}`} className="kai-col-tag">
             {c}
           </span>
         ))}
-        <span className="kai-window-tag">Window</span>
       </div>
 
-      {/* Seat Rows */}
+      {/* Clean KAI Seat Rows (zero facing arrows or facing text) */}
       <div className="kai-rows">
-        {rows.map((rowNum, rowIndex) => {
-          const isFacingDown = layout.facingRows && rowIndex % 2 === 0;
-          const showFacingPairDivider =
-            layout.facingRows && rowIndex % 2 === 0 && rowIndex < rows.length - 1;
+        {rows.map((rowNum) => (
+          <div key={rowNum} className={`kai-grid kai-grid--${layout.format}`}>
+            {leftCols.map((col) => renderSeat(rowNum, col))}
 
-          return (
-            <div key={rowNum} className="kai-row-group">
-              <div className={`kai-grid kai-grid--${layout.format}`}>
-                {leftCols.map((col) => renderSeat(rowNum, col))}
-
-                <div className="kai-aisle-cell" aria-label={`Row ${rowNum}`}>
-                  <span className="kai-aisle-num">{rowNum}</span>
-                  {layout.facingRows && (
-                    <span className="kai-facing-arrow" aria-hidden="true">
-                      {isFacingDown ? (
-                        <ArrowDown size={11} strokeWidth={2.2} />
-                      ) : (
-                        <ArrowUp size={11} strokeWidth={2.2} />
-                      )}
-                    </span>
-                  )}
-                </div>
-
-                {rightCols.map((col) => renderSeat(rowNum, col))}
-              </div>
-
-              {showFacingPairDivider && (
-                <div className="kai-facing-strip" aria-hidden="true">
-                  <span>Facing seats</span>
-                </div>
-              )}
+            <div className="kai-aisle-cell" aria-label={`Row ${rowNum}`}>
+              <span className="kai-aisle-num">{rowNum}</span>
             </div>
-          );
-        })}
+
+            {rightCols.map((col) => renderSeat(rowNum, col))}
+          </div>
+        ))}
       </div>
     </GlassCard>
   );

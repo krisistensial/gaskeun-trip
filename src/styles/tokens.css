@@ -67,6 +67,7 @@
   /* D. Typography (Self-Hosted Offline Fonts) */
   --font-display: 'Fredoka', ui-rounded, 'Segoe UI', system-ui, sans-serif;
   --font-ui: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
 
   --text-hero: 2.125rem;      /* 34px */
   --text-spotlight: 1.75rem;  /* 28px */

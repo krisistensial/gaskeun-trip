@@ -168,20 +168,22 @@ export function PrepScreen({
           description={
             tab === 'personal'
               ? 'Add items below — saved privately on this device.'
-              : 'Add shared prep tasks for tickets, gear, and bookings.'
+              : 'Shared crew prep tasks will appear here.'
           }
         />
       ) : (
         <div className="prep-list">
           {activeTasks.map((task) => {
             const pic = task.assigneeId ? memberById.get(task.assigneeId) : undefined;
+            const isEditableRow = tab === 'personal' || canEdit;
             return (
               <div key={task.id} className={`prep-item ${task.done ? 'prep-item--done' : ''}`}>
                 <button
                   type="button"
+                  disabled={!isEditableRow}
                   aria-label={`Mark ${task.title} ${task.done ? 'incomplete' : 'complete'}`}
                   className={`prep-check ${task.done ? 'prep-check--done' : ''}`}
-                  onClick={() => handleToggle(task.id)}
+                  onClick={() => isEditableRow && handleToggle(task.id)}
                 >
                   {task.done && <Check size={13} strokeWidth={2.6} />}
                 </button>
@@ -189,19 +191,23 @@ export function PrepScreen({
                 <input
                   className="prep-item__title"
                   value={task.title}
+                  readOnly={!isEditableRow}
                   aria-label="Task title"
-                  onChange={(e) => handleRename(task.id, e.target.value)}
+                  onChange={(e) => isEditableRow && handleRename(task.id, e.target.value)}
                 />
 
                 {tab === 'group' && (
                   <button
                     type="button"
+                    disabled={!canEdit}
                     aria-label="Assign member"
-                    onClick={() => guardGroupEdit(() => setPicPickerTaskId(task.id))}
+                    onClick={() => canEdit && setPicPickerTaskId(task.id)}
                     style={{ display: 'inline-flex', alignItems: 'center' }}
                   >
                     <Avatar
                       initials={pic?.initials ?? '+'}
+                      name={pic?.name}
+                      src={pic?.avatarDataUrl}
                       size="sm"
                       bg={pic?.avatarBg ?? '#EAEFED'}
                       color={pic?.avatarColor ?? '#546860'}
@@ -209,66 +215,70 @@ export function PrepScreen({
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  aria-label={`Delete ${task.title}`}
-                  onClick={() => handleDelete(task.id)}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 14,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--text-muted)',
-                  }}
-                >
-                  <Trash2 size={14} strokeWidth={1.9} />
-                </button>
+                {isEditableRow && (
+                  <button
+                    type="button"
+                    aria-label={`Delete ${task.title}`}
+                    onClick={() => handleDelete(task.id)}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    <Trash2 size={14} strokeWidth={1.9} />
+                  </button>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Inline Quick-Add Pill */}
-      <form className="prep-quick-add" onSubmit={handleQuickAdd}>
-        <input
-          className="prep-quick-input"
-          placeholder={
-            tab === 'personal' ? 'Add personal packing item...' : 'Add shared crew task...'
-          }
-          value={newTitle}
-          onChange={(e) => setNewTitle(e.target.value)}
-        />
-        {tab === 'group' && trip.members.length > 0 && (
-          <select
-            aria-label="Assign new task"
-            value={newAssigneeId}
-            onChange={(e) => setNewAssigneeId(e.target.value)}
-            style={{
-              height: 30,
-              borderRadius: 15,
-              border: '1px solid var(--hairline)',
-              background: 'var(--brand-sage-soft)',
-              color: 'var(--brand-forest)',
-              fontSize: 11.5,
-              fontWeight: 600,
-              padding: '0 8px',
-              outline: 'none',
-            }}
-          >
-            {trip.members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <button type="submit" className="prep-quick-btn tactile" aria-label="Add prep item">
-          <Plus size={18} strokeWidth={2.2} />
-        </button>
-      </form>
+      {/* Inline Quick-Add Pill — ALWAYS open on Personal, Editor-only on Group */}
+      {(tab === 'personal' || canEdit) && (
+        <form className="prep-quick-add" onSubmit={handleQuickAdd}>
+          <input
+            className="prep-quick-input"
+            placeholder={
+              tab === 'personal' ? 'Add personal packing item...' : 'Add shared crew task...'
+            }
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+          />
+          {tab === 'group' && trip.members.length > 0 && (
+            <select
+              aria-label="Assign new task"
+              value={newAssigneeId}
+              onChange={(e) => setNewAssigneeId(e.target.value)}
+              style={{
+                height: 30,
+                borderRadius: 15,
+                border: '1px solid var(--hairline)',
+                background: 'var(--brand-sage-soft)',
+                color: 'var(--brand-forest)',
+                fontSize: 11.5,
+                fontWeight: 600,
+                padding: '0 8px',
+                outline: 'none',
+              }}
+            >
+              {trip.members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <button type="submit" className="prep-quick-btn tactile" aria-label="Add prep item">
+            <Plus size={18} strokeWidth={2.2} />
+          </button>
+        </form>
+      )}
 
       {/* Group PIC Avatar Picker Sheet */}
       <LiquidBottomSheet
@@ -286,7 +296,14 @@ export function PrepScreen({
                 className="slot-picker-option tactile"
                 onClick={() => handleAssignPic(picPickerTaskId, m.id)}
               >
-                <Avatar initials={m.initials} size="sm" bg={m.avatarBg} color={m.avatarColor} />
+                <Avatar
+                  initials={m.initials}
+                  name={m.name}
+                  src={m.avatarDataUrl}
+                  size="sm"
+                  bg={m.avatarBg}
+                  color={m.avatarColor}
+                />
                 <span>{m.name}</span>
               </button>
             ))}

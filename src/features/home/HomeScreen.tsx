@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
+  ArrowLeftRight,
   ArrowUpRight,
   BedDouble,
   Bike,
@@ -41,7 +42,7 @@ import {
   StayEditorSheet,
   TrainPassEditorSheet,
 } from './CrewEditors';
-import { TrainSeatMap } from './TrainSeatMap';
+import { assignOrSwapTrainSeat, TrainSeatMap } from './TrainSeatMap';
 import './home.css';
 
 interface CountdownParts {
@@ -247,19 +248,42 @@ export function HomeScreen({
     slotIndex: number,
     memberId: string | null,
   ) => {
+    const targetPod = trip.transportPods.find((p) => p.id === podId);
+    let toastMsg = 'Transport slot updated';
+    if (targetPod?.mode === 'train') {
+      const prevOccupantId = targetPod.slots[slotIndex]?.memberId ?? null;
+      const existingIdx = memberId
+        ? targetPod.slots.findIndex((s) => s.memberId === memberId)
+        : -1;
+      if (!memberId) {
+        toastMsg = 'Seat cleared';
+      } else if (existingIdx >= 0 && existingIdx !== slotIndex && prevOccupantId) {
+        toastMsg = 'Seats swapped';
+      } else if (existingIdx >= 0 && existingIdx !== slotIndex) {
+        toastMsg = 'Seat moved';
+      } else {
+        toastMsg = 'Seat assigned';
+      }
+    }
+
     onUpdateTrip(
       (prev) => ({
         ...prev,
-        transportPods: prev.transportPods.map((pod) =>
-          pod.id !== podId
-            ? pod
-            : {
-                ...pod,
-                slots: pod.slots.map((s, idx) => (idx === slotIndex ? { ...s, memberId } : s)),
-              },
-        ),
+        transportPods: prev.transportPods.map((pod) => {
+          if (pod.id !== podId) return pod;
+          if (pod.mode === 'train') {
+            return {
+              ...pod,
+              slots: assignOrSwapTrainSeat(pod.slots, slotIndex, memberId),
+            };
+          }
+          return {
+            ...pod,
+            slots: pod.slots.map((s, idx) => (idx === slotIndex ? { ...s, memberId } : s)),
+          };
+        }),
       }),
-      'Transport slot updated',
+      toastMsg,
     );
   };
 
@@ -598,6 +622,14 @@ export function HomeScreen({
                         style={{ height: `${heightPct}%` }}
                       />
                     </span>
+                    <Avatar
+                      initials={entry.member.initials}
+                      name={entry.member.name}
+                      src={entry.member.avatarDataUrl}
+                      size="sm"
+                      bg={entry.member.avatarBg}
+                      color={entry.member.avatarColor}
+                    />
                     <span className="bar-col__name">{entry.member.name}</span>
                   </button>
                 );
@@ -616,14 +648,16 @@ export function HomeScreen({
               {trip.members.length} riders · {trip.stays.length} stays
             </span>
           </div>
-          <Button
-            variant={editingCrew ? 'matcha' : 'glass'}
-            size="sm"
-            leftIcon={<Pencil size={13} strokeWidth={2} />}
-            onClick={() => requireEdit(() => setEditingCrew((prev) => !prev))}
-          >
-            {editingCrew ? 'Done' : 'Edit'}
-          </Button>
+          {canEdit && (
+            <Button
+              variant={editingCrew ? 'matcha' : 'glass'}
+              size="sm"
+              leftIcon={<Pencil size={13} strokeWidth={2} />}
+              onClick={() => requireEdit(() => setEditingCrew((prev) => !prev))}
+            >
+              {editingCrew ? 'Done' : 'Edit'}
+            </Button>
+          )}
         </div>
 
         {editingCrew && (
@@ -762,6 +796,8 @@ export function HomeScreen({
                         >
                           <Avatar
                             initials={m?.initials ?? '?'}
+                            name={m?.name}
+                            src={m?.avatarDataUrl}
                             size="sm"
                             bg={m?.avatarBg ?? '#EAEFED'}
                             color={m?.avatarColor ?? '#546860'}
@@ -867,6 +903,8 @@ export function HomeScreen({
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                           <Avatar
                             initials={m?.initials ?? '?'}
+                            name={m?.name}
+                            src={m?.avatarDataUrl}
                             size="sm"
                             bg={m?.avatarBg ?? '#EAEFED'}
                             color={m?.avatarColor ?? '#546860'}
@@ -969,6 +1007,7 @@ export function HomeScreen({
                         key={mid}
                         initials={m.initials}
                         name={m.name}
+                        src={m.avatarDataUrl}
                         size="sm"
                         bg={m.avatarBg}
                         color={m.avatarColor}
@@ -1003,26 +1042,28 @@ export function HomeScreen({
         onClose={() => setTitleSheetOpen(false)}
       >
         <div className="gk-menu-list">
-          <button
-            type="button"
-            className="gk-menu-item"
-            onClick={() => {
-              setTitleSheetOpen(false);
-              onOpenTripSettings();
-            }}
-          >
-            <span className="gk-menu-item__left">
-              <span className="gk-menu-item__icon">
-                <Settings2 size={18} strokeWidth={1.8} />
+          {canEdit && (
+            <button
+              type="button"
+              className="gk-menu-item"
+              onClick={() => {
+                setTitleSheetOpen(false);
+                onOpenTripSettings();
+              }}
+            >
+              <span className="gk-menu-item__left">
+                <span className="gk-menu-item__icon">
+                  <Settings2 size={18} strokeWidth={1.8} />
+                </span>
+                <span>
+                  <div className="gk-menu-item__title">Edit Trip Details</div>
+                  <div className="gk-menu-item__sub">
+                    Update title, subtitle, countdown &amp; targets
+                  </div>
+                </span>
               </span>
-              <span>
-                <div className="gk-menu-item__title">Edit Trip Details</div>
-                <div className="gk-menu-item__sub">
-                  Update title, subtitle, countdown &amp; targets
-                </div>
-              </span>
-            </span>
-          </button>
+            </button>
+          )}
 
           <button
             type="button"
@@ -1094,63 +1135,122 @@ export function HomeScreen({
           </p>
         )}
 
-        <div style={{ marginTop: 14 }}>
-          <Button
-            variant="glass"
-            size="md"
-            fullWidth
-            leftIcon={<Pencil size={15} strokeWidth={1.8} />}
-            onClick={() => {
-              setTrainSheetOpen(false);
-              requireEdit(() => setTrainEditorOpen(true));
-            }}
-          >
-            {trip.trainPass ? 'Edit Train Pass' : 'Add Train Pass'}
-          </Button>
-        </div>
+        {canEdit && (
+          <div style={{ marginTop: 14 }}>
+            <Button
+              variant="glass"
+              size="md"
+              fullWidth
+              leftIcon={<Pencil size={15} strokeWidth={1.8} />}
+              onClick={() => {
+                setTrainSheetOpen(false);
+                requireEdit(() => setTrainEditorOpen(true));
+              }}
+            >
+              {trip.trainPass ? 'Edit Train Pass' : 'Add Train Pass'}
+            </Button>
+          </div>
+        )}
       </LiquidBottomSheet>
 
-      {/* Inline Transport Slot Avatar Picker Sheet (Portal) */}
+      {/* Inline Transport Slot Avatar Picker Sheet (Portal + Smart Train Seat Swap) */}
       <LiquidBottomSheet
         open={Boolean(slotPicker)}
         title="Assign Rider"
         subtitle={slotPicker?.label}
         onClose={() => setSlotPicker(null)}
       >
-        {slotPicker && (
-          <div className="slot-picker-grid">
-            {trip.members.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                className="slot-picker-option tactile"
-                onClick={() => {
-                  handleUpdateTransportSlot(slotPicker.podId, slotPicker.slotIndex, m.id);
-                  setSlotPicker(null);
-                }}
+        {slotPicker &&
+          (() => {
+            const activeSlotPod = trip.transportPods.find((p) => p.id === slotPicker.podId);
+            const isTrainPicker = activeSlotPod?.mode === 'train';
+            const currentOccupantId = activeSlotPod?.slots[slotPicker.slotIndex]?.memberId ?? null;
+            const currentOccupant = currentOccupantId
+              ? memberById.get(currentOccupantId)
+              : undefined;
+
+            return (
+              <div
+                className={`slot-picker-grid ${isTrainPicker ? 'slot-picker-grid--train' : ''}`}
               >
-                <Avatar
-                  initials={m.initials}
-                  size="sm"
-                  bg={m.avatarBg}
-                  color={m.avatarColor}
-                  variant={m.status === 'tentative' ? 'tentative' : 'solid'}
-                />
-                <span>{m.status === 'tentative' ? `${m.name}?` : m.name}</span>
-              </button>
-            ))}
-            <button
-              type="button"
-              className="slot-picker-option tactile"
-              onClick={() => {
-                handleUpdateTransportSlot(slotPicker.podId, slotPicker.slotIndex, null);
-                setSlotPicker(null);
-              }}
-            >
-              <span style={{ color: 'var(--text-muted)' }}>Clear slot</span>
-            </button>
-          </div>
-        )}
+                {trip.members.map((m) => {
+                  const isCurrent = m.id === currentOccupantId;
+                  const existingSeat = isTrainPicker
+                    ? activeSlotPod?.slots.find((s) => s.memberId === m.id)?.role
+                    : undefined;
+
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className={`slot-picker-option tactile ${isCurrent ? 'slot-picker-option--current' : ''}`}
+                      onClick={() => {
+                        handleUpdateTransportSlot(slotPicker.podId, slotPicker.slotIndex, m.id);
+                        setSlotPicker(null);
+                      }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                        <Avatar
+                          initials={m.initials}
+                          name={m.name}
+                          src={m.avatarDataUrl}
+                          size="sm"
+                          bg={m.avatarBg}
+                          color={m.avatarColor}
+                          variant={m.status === 'tentative' ? 'tentative' : 'solid'}
+                        />
+                        <span>{m.status === 'tentative' ? `${m.name}?` : m.name}</span>
+                      </span>
+
+                      {isTrainPicker && (
+                        <span>
+                          {isCurrent ? (
+                            <Badge tone="matcha">Current</Badge>
+                          ) : existingSeat && currentOccupant ? (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                color: 'var(--brand-matcha)',
+                              }}
+                            >
+                              <ArrowLeftRight size={12} strokeWidth={2} />
+                              <span>
+                                Seat {existingSeat} · Swap with {currentOccupant.name}
+                              </span>
+                            </span>
+                          ) : existingSeat ? (
+                            <Badge tone="neutral">Seat {existingSeat}</Badge>
+                          ) : currentOccupant ? (
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                              Swap with {currentOccupant.name}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                              No seat
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  className="slot-picker-option tactile"
+                  onClick={() => {
+                    handleUpdateTransportSlot(slotPicker.podId, slotPicker.slotIndex, null);
+                    setSlotPicker(null);
+                  }}
+                >
+                  <span style={{ color: 'var(--text-muted)' }}>Clear slot</span>
+                </button>
+              </div>
+            );
+          })()}
       </LiquidBottomSheet>
 
       {/* Full Crew / Train Pass / Pod / Stay Editor Sheets (All Portaled!) */}

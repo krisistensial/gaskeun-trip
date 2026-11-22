@@ -1,11 +1,12 @@
 import './atoms.css';
 
 export type AvatarVariant = 'solid' | 'selected' | 'tentative' | 'passenger';
-export type AvatarSize = 'sm' | 'md' | 'lg';
+export type AvatarSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export interface AvatarProps {
   initials: string;
   name?: string;
+  src?: string;
   showLabel?: boolean;
   variant?: AvatarVariant;
   size?: AvatarSize;
@@ -17,6 +18,7 @@ export interface AvatarProps {
 export function Avatar({
   initials,
   name,
+  src,
   showLabel = false,
   variant = 'solid',
   size = 'md',
@@ -30,7 +32,11 @@ export function Avatar({
       style={{ backgroundColor: bg, color }}
       aria-label={name ?? initials}
     >
-      {initials}
+      {src ? (
+        <img src={src} alt={name ?? initials} className="gk-avatar__img" />
+      ) : (
+        initials
+      )}
       {variant === 'passenger' && <span className="gk-avatar__dot" aria-hidden="true" />}
     </span>
   );

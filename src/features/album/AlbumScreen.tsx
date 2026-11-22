@@ -415,6 +415,15 @@ export function AlbumScreen({
 
             <div style={{ display: 'flex', gap: 10 }} onClick={(e) => e.stopPropagation()}>
               <Button
+                variant="danger"
+                size="md"
+                aria-label="Delete photo"
+                leftIcon={<Trash2 size={16} strokeWidth={2} />}
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete
+              </Button>
+              <Button
                 variant="glass"
                 size="md"
                 fullWidth
@@ -422,14 +431,6 @@ export function AlbumScreen({
                 onClick={() => handleDownload(lightboxPhoto)}
               >
                 Download
-              </Button>
-              <Button
-                variant="danger"
-                size="md"
-                leftIcon={<Trash2 size={16} strokeWidth={2} />}
-                onClick={() => setConfirmDelete(true)}
-              >
-                Delete
               </Button>
             </div>
           </div>,

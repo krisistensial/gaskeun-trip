@@ -92,41 +92,56 @@
   color: var(--text-inverse);
 }
 
-/* --- 03a Asymmetric Curved Trail Timeline --- */
+/* --- 03a True Circular C-Arc Trail Timeline --- */
 .trail-list {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-left: 30px;
+  gap: 14px;
+  padding-left: 36px;
+  padding-right: 4px;
 }
 
-.trail-rail {
+.trail-arc-svg {
   position: absolute;
-  top: 14px;
-  bottom: 14px;
-  left: 10px;
-  width: 2px;
-  background: linear-gradient(
-    180deg,
-    rgba(74, 116, 104, 0.22) 0%,
-    rgba(43, 148, 107, 0.68) 45%,
-    rgba(74, 116, 104, 0.25) 100%
-  );
-  border-radius: 2px;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 44px;
+  height: calc(100% - 24px);
+  pointer-events: none;
+  overflow: visible;
 }
 
 .trail-item {
   position: relative;
+  transition: transform var(--dur-normal) var(--ease-spring);
 }
 
 .trail-item__dot {
   position: absolute;
-  left: -30px;
+  left: -36px;
   top: 18px;
-  width: 22px;
+  width: 28px;
+  height: 28px;
   display: flex;
+  align-items: center;
   justify-content: center;
+  border-radius: 50%;
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+
+.trail-item__dot--btn {
+  cursor: pointer;
+}
+
+.trail-item__dot--btn:active {
+  transform: scale(0.88);
+}
+
+.trail-item__card-wrap {
+  transform-origin: left center;
+  transition: transform var(--dur-normal) var(--ease-spring);
 }
 
 .trail-past-card {
@@ -327,55 +342,121 @@
 .notes-canvas {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   min-height: 220px;
 }
 
-.note-block-row {
+/* Seamless Single-Flow Apple-Notes-style Rich Canvas (Zero focus boxes/outlines) */
+.notes-rich-canvas {
+  width: 100%;
+  min-height: 196px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  caret-color: var(--brand-matcha);
+  word-break: break-word;
+}
+
+.notes-rich-canvas:focus,
+.notes-rich-canvas:focus-visible {
+  outline: none;
+  border: none;
+  box-shadow: none;
+}
+
+.notes-rich-canvas:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.notes-rich-canvas h1 {
+  margin: 0.25em 0 0.2em;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.notes-rich-canvas h2 {
+  margin: 0.25em 0 0.15em;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.notes-rich-canvas ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.notes-rich-canvas li {
+  margin: 2px 0;
+}
+
+.note-check-line {
   display: flex;
   align-items: flex-start;
   gap: 9px;
+  margin: 4px 0;
 }
 
-.note-checkbox {
-  width: 19px;
-  height: 19px;
-  margin-top: 2px;
+.note-check-box {
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
   border-radius: 6px;
   flex-shrink: 0;
+  border: 1.6px solid var(--brand-matcha);
+  background: rgba(255, 255, 255, 0.85);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1.5px solid var(--brand-matcha);
-  background: rgba(255, 255, 255, 0.8);
-  color: #FFFFFF;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--dur-fast) ease;
 }
 
-.note-checkbox--checked {
+.note-check-line[data-checked='true'] .note-check-box {
   background: var(--brand-matcha);
 }
 
-.note-input {
+.note-check-line[data-checked='true'] .note-check-box::after {
+  content: '';
+  width: 5px;
+  height: 9px;
+  border: solid #FFFFFF;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translateY(-1px);
+}
+
+.note-check-text {
   flex: 1;
   min-width: 0;
-  border: none;
-  background: transparent;
   outline: none;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--text-primary);
 }
 
-.note-input--h1 {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 700;
+.note-check-line[data-checked='true'] .note-check-text {
+  color: var(--text-muted);
+  text-decoration: line-through;
 }
 
-.note-input--h2 {
-  font-family: var(--font-display);
-  font-size: 16.5px;
-  font-weight: 600;
+.detail-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.detail-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* --- 05 Route Map View --- */

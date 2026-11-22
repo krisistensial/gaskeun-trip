@@ -81,8 +81,8 @@
 }
 
 .gate-code-input-wrap:focus-within {
-  border-color: var(--brand-matcha);
-  box-shadow: 0 0 0 3px rgba(74, 116, 104, 0.14);
+  border-color: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 8px 20px -10px rgba(31, 45, 39, 0.14);
 }
 
 .gate-code-input {
@@ -90,13 +90,22 @@
   min-width: 0;
   border: none;
   background: transparent;
-  outline: none;
+  outline: none !important;
+  box-shadow: none !important;
+  caret-color: var(--brand-matcha);
   font-family: var(--font-display);
   font-size: 22px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-primary);
+}
+
+.gate-code-input:focus,
+.gate-code-input:focus-visible {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .gate-code-input::placeholder {

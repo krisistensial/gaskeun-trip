@@ -66,7 +66,9 @@ export function buildTripWorkbook(trip: SharedTrip): XLSX.WorkBook {
       End: item.endTime || '',
       Type: item.type.toUpperCase(),
       Title: stripHtmlToPlainText(item.title),
-      Notes: notesToPlainText(item.notes) || stripHtmlToPlainText(item.locationHint),
+      Notes:
+        (item.notesHtml ? stripHtmlToPlainText(item.notesHtml) : notesToPlainText(item.notes)) ||
+        stripHtmlToPlainText(item.locationHint),
       'Est. Cost (IDR)': item.costEstimate ?? 0,
       'Maps URL': item.mapsUrl || '',
     };

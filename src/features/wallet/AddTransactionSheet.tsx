@@ -203,6 +203,8 @@ export function AddTransactionSheet({
                   >
                     <Avatar
                       initials={m.initials}
+                      name={m.name}
+                      src={m.avatarDataUrl}
                       size="sm"
                       bg={memberId === m.id ? '#E3EDE6' : m.avatarBg}
                       color={memberId === m.id ? '#2D4A42' : m.avatarColor}
@@ -298,6 +300,8 @@ export function AddTransactionSheet({
                       >
                         <Avatar
                           initials={m.initials}
+                          name={m.name}
+                          src={m.avatarDataUrl}
                           size="sm"
                           bg={paidByMemberId === m.id ? '#E3EDE6' : m.avatarBg}
                           color={paidByMemberId === m.id ? '#2D4A42' : m.avatarColor}
@@ -327,6 +331,16 @@ export function AddTransactionSheet({
           />
 
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            {editingTx && (
+              <Button
+                variant="danger"
+                size="lg"
+                aria-label="Delete transaction"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 size={17} strokeWidth={2} />
+              </Button>
+            )}
             <Button
               type="submit"
               variant="matcha"
@@ -336,11 +350,6 @@ export function AddTransactionSheet({
             >
               {editingTx ? 'Update Transaction' : 'Save Transaction'}
             </Button>
-            {editingTx && (
-              <Button variant="danger" size="lg" onClick={() => setConfirmDelete(true)}>
-                <Trash2 size={17} strokeWidth={2} />
-              </Button>
-            )}
           </div>
         </form>
 
