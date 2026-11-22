@@ -30,7 +30,12 @@ import {
 } from './services/db';
 import { exportTripToExcel } from './services/excelExporter';
 import { uploadSharedImage } from './services/mediaUploader';
-import { canEditTrip, getMemberRoleLabel, isHostMember } from './services/permissions';
+import {
+  canEditTrip,
+  getMemberRoleLabel,
+  isHostMember,
+  setMemberPasscodeInTrip,
+} from './services/permissions';
 import type { CroppedImageResult } from './services/photoCrop';
 import { clearActiveSession, loadSavedSession, saveActiveSession } from './services/session';
 import {
@@ -173,6 +178,7 @@ export default function App() {
   }, [localData?.coverBlob]);
 
   // Prefer Layer-1 shared heroCoverUrl so the whole crew sees the same cover, with offline blob cache fallback
+  const hasCustomCoverPhoto = Boolean(activeTrip.heroCoverUrl || localCoverUrl);
   const effectiveCoverUrl = activeTrip.heroCoverUrl || localCoverUrl || defaultCoverPath;
 
   const activeMemberId = localData?.activeMemberId ?? null;
@@ -267,6 +273,17 @@ export default function App() {
         members: prev.members.map((m) => (m.id === memberId ? { ...m, avatarDataUrl } : m)),
       }),
       'Profile photo updated',
+    );
+  };
+
+  const handleSetMemberPasscode = (
+    memberId: string,
+    passcode: string | undefined,
+    toastMsg?: string,
+  ) => {
+    handleUpdateTrip(
+      (prev) => setMemberPasscodeInTrip(prev, memberId, passcode),
+      toastMsg,
     );
   };
 
@@ -442,6 +459,7 @@ export default function App() {
               canEdit={canEdit}
               onSelectProfile={handleSelectProfile}
               onUpdateMemberAvatar={handleUpdateMemberAvatar}
+              onSetMemberPasscode={handleSetMemberPasscode}
               onRequestUnlockPin={() => requestUnlockPin()}
               onBack={() => setRoute('landing')}
             />
@@ -488,6 +506,7 @@ export default function App() {
               trip={activeTrip}
               phase={phase}
               coverUrl={effectiveCoverUrl}
+              hasCoverPhoto={hasCustomCoverPhoto}
               activeMemberName={activeMemberName}
               canEdit={canEdit}
               onOpenMenu={() => setMenuOpen(true)}
@@ -575,6 +594,7 @@ export default function App() {
               handleUpdateMemberAvatar(activeMember.id, avatarDataUrl);
             }
           }}
+          onSetMemberPasscode={handleSetMemberPasscode}
           onToggleEditorMember={handleToggleEditorMember}
           onRequestUnlock={() => requestUnlockPin()}
           onLockEditing={() => {

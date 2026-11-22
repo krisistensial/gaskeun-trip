@@ -8,11 +8,11 @@
   gap: 18px;
 }
 
-/* --- Full-Bleed Editorial Hero (Generous Open Photo + Boxless Serif Countdown) --- */
+/* --- Full-Bleed Editorial Hero (Elevated Magazine Countdown + Smart Photo Scrim) --- */
 .home-hero {
   position: relative;
   margin: calc(var(--safe-top) * -1 - 20px) -16px 0;
-  min-height: max(560px, 72vh);
+  min-height: clamp(470px, 64vh, 590px);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -22,7 +22,7 @@
 }
 
 .home-hero--compact {
-  min-height: max(310px, 38vh);
+  min-height: max(300px, 37vh);
 }
 
 .home-hero__bg {
@@ -34,19 +34,39 @@
   z-index: 0;
 }
 
-/* Soft editorial scrim blending cover photo smoothly into canvas for sharp legibility */
+/* Ambient default scrim (no custom cover photo) */
 .home-hero__fade {
   position: absolute;
   inset: 0;
   background: linear-gradient(
     180deg,
-    rgba(24, 36, 32, 0.14) 0%,
-    rgba(246, 248, 245, 0.04) 26%,
-    rgba(246, 248, 245, 0.42) 56%,
-    rgba(246, 248, 245, 0.86) 80%,
+    rgba(24, 36, 32, 0.08) 0%,
+    rgba(246, 248, 245, 0.04) 30%,
+    rgba(246, 248, 245, 0.44) 64%,
+    rgba(246, 248, 245, 0.88) 84%,
     #F6F8F5 100%
   );
   z-index: 1;
+}
+
+/* Smart contrast scrim when a custom cover photo is active:
+   subtle dark veil over photo center for crisp white countdown, fading cleanly into #F6F8F5 before Trip Title */
+.home-hero--photo .home-hero__fade {
+  background:
+    radial-gradient(
+      ellipse 88% 54% at 50% 42%,
+      rgba(15, 28, 24, 0.42) 0%,
+      rgba(15, 28, 24, 0.22) 56%,
+      rgba(15, 28, 24, 0) 85%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(15, 28, 24, 0.22) 0%,
+      rgba(15, 28, 24, 0.36) 44%,
+      rgba(15, 28, 24, 0.28) 64%,
+      rgba(246, 248, 245, 0.84) 84%,
+      #F6F8F5 100%
+    );
 }
 
 .home-hero__corners {
@@ -57,13 +77,19 @@
   justify-content: space-between;
 }
 
-.home-hero__spacer {
-  min-height: max(275px, 38vh);
-  flex: 1 0 auto;
+.home-hero__center {
+  position: relative;
+  z-index: 2;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0 32px;
 }
 
-.home-hero--compact .home-hero__spacer {
+.home-hero__spacer {
   min-height: max(120px, 16vh);
+  flex: 1 0 auto;
 }
 
 .home-hero__bottom {
@@ -71,7 +97,7 @@
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
 }
 
 .home-title-trigger {
@@ -100,12 +126,13 @@
   text-shadow: 0 1px 10px rgba(246, 248, 245, 0.9);
 }
 
-/* --- Boxless Editorial Floating Serif Countdown (Zero Box / Border / Glass Card) --- */
+/* --- Large Boxless Editorial Magazine Serif Countdown --- */
 .countdown-hero-card {
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 4px 0 2px;
+  padding: 0;
   background: transparent;
   border: none;
   box-shadow: none;
@@ -117,39 +144,39 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-bottom: 14px;
 }
 
 .countdown-days-val {
   font-family: var(--font-serif);
-  font-size: clamp(86px, 24vw, 96px);
+  font-size: clamp(112px, 34vw, 156px);
   font-weight: 700;
-  line-height: 0.84;
-  letter-spacing: -0.035em;
-  color: var(--brand-forest);
+  line-height: 0.88;
+  letter-spacing: -0.04em;
+  color: #1E3A32;
   font-variant-numeric: lining-nums tabular-nums;
   text-shadow:
-    0 2px 20px rgba(246, 248, 245, 0.92),
-    0 1px 4px rgba(255, 255, 255, 0.85);
+    0 3px 22px rgba(246, 248, 245, 0.88),
+    0 1px 4px rgba(255, 255, 255, 0.8);
 }
 
 .countdown-days-lbl {
-  font-size: 11px;
+  font-size: clamp(20px, 5.8vw, 26px);
   font-weight: 700;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.22em;
+  padding-left: 0.22em;
   text-transform: uppercase;
-  color: var(--brand-forest);
-  opacity: 0.82;
-  margin-top: 10px;
-  text-shadow: 0 1px 10px rgba(246, 248, 245, 0.9);
+  color: #1E3A32;
+  opacity: 0.9;
+  margin-top: 4px;
+  text-shadow: 0 2px 12px rgba(246, 248, 245, 0.88);
 }
 
 .countdown-sub-grid {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 32px;
-  padding-top: 2px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(18px, 6.5vw, 36px);
+  width: min(100%, 340px);
+  margin-top: 22px;
 }
 
 .countdown-sub-cell {
@@ -157,27 +184,46 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 52px;
 }
 
 .countdown-val {
   font-family: var(--font-serif);
-  font-size: 26px;
+  font-size: clamp(34px, 10vw, 46px);
   font-weight: 700;
-  line-height: 1.02;
-  color: var(--text-primary);
+  line-height: 1;
+  color: #1E3A32;
   font-variant-numeric: lining-nums tabular-nums;
-  text-shadow: 0 2px 14px rgba(246, 248, 245, 0.92);
+  text-shadow: 0 2px 16px rgba(246, 248, 245, 0.88);
 }
 
 .countdown-lbl {
-  font-size: 9.5px;
+  font-size: clamp(11px, 3.2vw, 13px);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
+  padding-left: 0.16em;
   text-transform: uppercase;
-  color: var(--text-secondary);
-  margin-top: 4px;
-  text-shadow: 0 1px 10px rgba(246, 248, 245, 0.9);
+  color: #1E3A32;
+  opacity: 0.86;
+  margin-top: 6px;
+  text-shadow: 0 1px 10px rgba(246, 248, 245, 0.88);
+}
+
+/* Crisp White / Ivory Countdown Typography over Custom Hero Cover Photos */
+.home-hero--photo .countdown-days-val,
+.home-hero--photo .countdown-val {
+  color: #FFFFFF;
+  text-shadow:
+    0 6px 28px rgba(10, 20, 16, 0.56),
+    0 2px 8px rgba(10, 20, 16, 0.36);
+}
+
+.home-hero--photo .countdown-days-lbl,
+.home-hero--photo .countdown-lbl {
+  color: rgba(255, 255, 255, 0.94);
+  opacity: 1;
+  text-shadow:
+    0 3px 16px rgba(10, 20, 16, 0.55),
+    0 1px 4px rgba(10, 20, 16, 0.35);
 }
 
 /* --- On-Trip Spotlight Now & Up Next --- */

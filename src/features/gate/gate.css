@@ -197,6 +197,7 @@
 }
 
 .crew-pick-card {
+  position: relative;
   height: 92px;
   padding: 10px 6px;
   border-radius: 24px;
@@ -214,6 +215,27 @@
     background-color var(--dur-fast) ease,
     border-color var(--dur-fast) ease,
     box-shadow var(--dur-fast) ease;
+}
+
+.crew-pick-card__lock {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(227, 237, 230, 0.86);
+  color: var(--brand-forest);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+}
+
+.crew-pick-card__lock--selected {
+  background: rgba(255, 255, 255, 0.22);
+  color: #FFFFFF;
+  border-color: rgba(255, 255, 255, 0.36);
 }
 
 .crew-pick-card:active {
@@ -243,6 +265,144 @@
 
 .crew-pick-card--tentative .crew-pick-card__name {
   color: var(--text-secondary);
+}
+
+/* Per-Member 4-Digit Passcode Prompt inside WhoAreYou Sheet */
+.who-sheet-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0 18px;
+}
+
+.who-pin-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 14px;
+  border-radius: 22px;
+  background: rgba(227, 237, 230, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  margin-top: 2px;
+}
+
+.who-pin-optional-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.who-pin-optional-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-forest);
+  background: rgba(227, 237, 230, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+}
+
+.who-pin-optional-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.who-pin-skip {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.who-pin-shell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 16px -8px rgba(31, 45, 39, 0.12);
+}
+
+.who-pin-shell--error {
+  border-color: rgba(207, 77, 94, 0.65);
+  background: rgba(255, 248, 249, 0.95);
+}
+
+.who-pin-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none !important;
+  box-shadow: none !important;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.42em;
+  color: var(--text-primary);
+  caret-color: var(--brand-matcha);
+}
+
+.who-pin-input:focus,
+.who-pin-input:focus-visible {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.who-pin-input::placeholder {
+  color: var(--text-muted);
+  letter-spacing: 0.36em;
+}
+
+.who-pin-eye {
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.who-pin-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.who-pin-error {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent-coral);
+  text-align: center;
+}
+
+@keyframes gaskeun-pin-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  45% { transform: translateX(6px); }
+  70% { transform: translateX(-4px); }
+  85% { transform: translateX(3px); }
+}
+
+.who-pin-shake {
+  animation: gaskeun-pin-shake 320ms ease;
 }
 
 /* --- 00c_Create_Trip --- */

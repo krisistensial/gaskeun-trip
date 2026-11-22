@@ -1,22 +1,31 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import {
   Camera,
   Check,
   Download,
+  Eye,
+  EyeOff,
   FileSpreadsheet,
   KeyRound,
   Link2,
   Lock,
   LogOut,
+  RotateCcw,
   Settings2,
   ShieldCheck,
   Upload,
   Users,
 } from 'lucide-react';
-import { Avatar, Badge, Button, LiquidBottomSheet } from '../atoms';
+import { Avatar, Badge, Button, ConfirmDialog, LiquidBottomSheet } from '../atoms';
 import { PhotoCropperSheet } from './PhotoCropperSheet';
 import { uploadSharedImage } from '../../services/mediaUploader';
-import type { TripAccessRole } from '../../services/permissions';
+import {
+  changeOwnPasscode,
+  isValidPasscode,
+  memberHasPasscode,
+  normalizePasscode,
+  type TripAccessRole,
+} from '../../services/permissions';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import type { SharedTrip, TripMember } from '../../types/trip';
 import './sheets.css';
@@ -35,6 +44,7 @@ export interface TripMenuSheetProps {
   activeMemberName: string;
   onPhaseChange: (phase: HomePhase) => void;
   onUpdateActiveAvatar: (avatarDataUrl: string) => void;
+  onSetMemberPasscode: (memberId: string, passcode: string | undefined, toastMsg?: string) => void;
   onToggleEditorMember: (memberId: string) => void;
   onRequestUnlock: () => void;
   onLockEditing: () => void;
@@ -60,6 +70,7 @@ export function TripMenuSheet({
   activeMemberName,
   onPhaseChange,
   onUpdateActiveAvatar,
+  onSetMemberPasscode,
   onToggleEditorMember,
   onRequestUnlock,
   onLockEditing,
@@ -75,7 +86,33 @@ export function TripMenuSheet({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [showEditorsList, setShowEditorsList] = useState(false);
+  const [showMyPasscode, setShowMyPasscode] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
+
+  // Self-service My Passcode form state
+  const [currentPin, setCurrentPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [showOwnPins, setShowOwnPins] = useState(false);
+  const [ownPinError, setOwnPinError] = useState('');
+  const [ownShakeCount, setOwnShakeCount] = useState(0);
+
+  // Host per-member Set PIN & Reset PIN confirmation state
+  const [hostPinTargetId, setHostPinTargetId] = useState<string | null>(null);
+  const [hostPinValue, setHostPinValue] = useState('');
+  const [hostShowPin, setHostShowPin] = useState(false);
+  const [confirmResetMember, setConfirmResetMember] = useState<TripMember | null>(null);
+
+  const resetLocalPanels = () => {
+    setShowEditorsList(false);
+    setShowMyPasscode(false);
+    setCurrentPin('');
+    setNewPin('');
+    setOwnPinError('');
+    setShowOwnPins(false);
+    setHostPinTargetId(null);
+    setHostPinValue('');
+    setConfirmResetMember(null);
+  };
 
   const handleCroppedAvatar = async (cropped: CroppedImageResult) => {
     setCropFile(null);
@@ -89,6 +126,51 @@ export function TripMenuSheet({
     onUpdateActiveAvatar(uploaded.url);
   };
 
+  const activeHasPasscode = memberHasPasscode(activeMember);
+
+  const handleSaveOwnPasscode = (e: FormEvent) => {
+    e.preventDefault();
+    if (!activeMember) return;
+    const res = changeOwnPasscode(trip, activeMember.id, currentPin, newPin);
+    if (!res.ok) {
+      setOwnPinError(res.error || 'Could not update passcode');
+      setOwnShakeCount((c) => c + 1);
+      return;
+    }
+    onSetMemberPasscode(
+      activeMember.id,
+      newPin,
+      activeHasPasscode ? 'Passcode updated' : '4-digit passcode set',
+    );
+    setCurrentPin('');
+    setNewPin('');
+    setOwnPinError('');
+    setShowMyPasscode(false);
+  };
+
+  const handleRemoveOwnPasscode = () => {
+    if (!activeMember) return;
+    const res = changeOwnPasscode(trip, activeMember.id, currentPin, undefined);
+    if (!res.ok) {
+      setOwnPinError(res.error || 'Current passcode is incorrect');
+      setOwnShakeCount((c) => c + 1);
+      return;
+    }
+    onSetMemberPasscode(activeMember.id, undefined, 'Passcode removed');
+    setCurrentPin('');
+    setNewPin('');
+    setOwnPinError('');
+    setShowMyPasscode(false);
+  };
+
+  const handleHostSavePin = (member: TripMember) => {
+    if (!isValidPasscode(hostPinValue)) return;
+    onSetMemberPasscode(member.id, hostPinValue, `Passcode set for ${member.name}`);
+    setHostPinTargetId(null);
+    setHostPinValue('');
+    setHostShowPin(false);
+  };
+
   const editorIds = new Set(trip.editorMemberIds ?? []);
 
   return (
@@ -97,7 +179,7 @@ export function TripMenuSheet({
       title="Profile & Settings"
       subtitle={`${trip.title} · Code ${trip.code}`}
       onClose={() => {
-        setShowEditorsList(false);
+        resetLocalPanels();
         onClose();
       }}
     >
@@ -158,8 +240,13 @@ export function TripMenuSheet({
             <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600 }}>
               {activeMemberName}
             </div>
-            <div style={{ marginTop: 3 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
               <Badge tone={roleLabel === 'Viewer' ? 'neutral' : 'mint'}>{roleLabel}</Badge>
+              {activeMember && activeHasPasscode && (
+                <Badge tone="matcha" icon={<Lock size={10} strokeWidth={2.2} />}>
+                  PIN On
+                </Badge>
+              )}
             </div>
           </div>
         </div>
@@ -211,7 +298,138 @@ export function TripMenuSheet({
       </div>
 
       <div className="gk-menu-list">
-        {/* Host-Only: Manage Editors */}
+        {/* Self-Service: My Passcode (for logged-in crew member) */}
+        {activeMember && (
+          <>
+            <button
+              type="button"
+              className="gk-menu-item"
+              onClick={() => {
+                setOwnPinError('');
+                setCurrentPin('');
+                setNewPin('');
+                setShowMyPasscode((v) => !v);
+              }}
+            >
+              <span className="gk-menu-item__left">
+                <span className="gk-menu-item__icon">
+                  <Lock size={18} strokeWidth={1.8} />
+                </span>
+                <span>
+                  <div className="gk-menu-item__title">My Passcode</div>
+                  <div className="gk-menu-item__sub">
+                    {activeHasPasscode
+                      ? 'Change or remove your 4-digit profile PIN'
+                      : 'Add a 4-digit code to protect your profile'}
+                  </div>
+                </span>
+              </span>
+              <Badge tone={activeHasPasscode ? 'mint' : 'neutral'}>
+                {activeHasPasscode ? 'Protected' : 'Off'}
+              </Badge>
+            </button>
+
+            {showMyPasscode && (
+              <form
+                key={ownShakeCount}
+                className={`menu-pin-panel ${ownShakeCount > 0 ? 'who-pin-shake' : ''}`}
+                onSubmit={handleSaveOwnPasscode}
+              >
+                {activeHasPasscode && (
+                  <div className="menu-pin-field">
+                    <label htmlFor="own-current-pin" className="gk-field__label">
+                      CURRENT PASSCODE
+                    </label>
+                    <div className="menu-pin-shell">
+                      <input
+                        id="own-current-pin"
+                        type={showOwnPins ? 'text' : 'password'}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        placeholder="••••"
+                        value={currentPin}
+                        className="menu-pin-input"
+                        onChange={(e) => {
+                          setOwnPinError('');
+                          setCurrentPin(normalizePasscode(e.target.value));
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="menu-pin-eye"
+                        aria-label={showOwnPins ? 'Hide passcodes' : 'Show passcodes'}
+                        onClick={() => setShowOwnPins((s) => !s)}
+                      >
+                        {showOwnPins ? <EyeOff size={15} strokeWidth={1.9} /> : <Eye size={15} strokeWidth={1.9} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="menu-pin-field">
+                  <label htmlFor="own-new-pin" className="gk-field__label">
+                    {activeHasPasscode ? 'NEW 4-DIGIT PASSCODE' : 'SET 4-DIGIT PASSCODE'}
+                  </label>
+                  <div className="menu-pin-shell">
+                    <input
+                      id="own-new-pin"
+                      type={showOwnPins ? 'text' : 'password'}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={4}
+                      placeholder="••••"
+                      value={newPin}
+                      className="menu-pin-input"
+                      onChange={(e) => {
+                        setOwnPinError('');
+                        setNewPin(normalizePasscode(e.target.value));
+                      }}
+                    />
+                    {!activeHasPasscode && (
+                      <button
+                        type="button"
+                        className="menu-pin-eye"
+                        aria-label={showOwnPins ? 'Hide passcode' : 'Show passcode'}
+                        onClick={() => setShowOwnPins((s) => !s)}
+                      >
+                        {showOwnPins ? <EyeOff size={15} strokeWidth={1.9} /> : <Eye size={15} strokeWidth={1.9} />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {ownPinError && <p className="menu-pin-error">{ownPinError}</p>}
+
+                <div className="menu-pin-actions">
+                  {activeHasPasscode && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      disabled={currentPin.length < 4}
+                      onClick={handleRemoveOwnPasscode}
+                    >
+                      Remove PIN
+                    </Button>
+                  )}
+                  <Button
+                    type="submit"
+                    variant="matcha"
+                    size="sm"
+                    fullWidth={!activeHasPasscode}
+                    disabled={
+                      newPin.length < 4 || (activeHasPasscode && currentPin.length < 4)
+                    }
+                  >
+                    {activeHasPasscode ? 'Update PIN' : 'Save Passcode'}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </>
+        )}
+
+        {/* Host-Only: Manage Editors & Crew Passcodes */}
         {isHost && (
           <>
             <button
@@ -224,9 +442,9 @@ export function TripMenuSheet({
                   <ShieldCheck size={18} strokeWidth={1.8} />
                 </span>
                 <span>
-                  <div className="gk-menu-item__title">Manage Editors</div>
+                  <div className="gk-menu-item__title">Crew Access &amp; Editors</div>
                   <div className="gk-menu-item__sub">
-                    Choose who can edit shared trip data
+                    Manage editors and set or reset member passcodes
                   </div>
                 </span>
               </span>
@@ -236,66 +454,118 @@ export function TripMenuSheet({
             </button>
 
             {showEditorsList && (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 6,
-                  padding: 10,
-                  borderRadius: 20,
-                  background: 'rgba(227, 237, 230, 0.45)',
-                }}
-              >
+              <div className="menu-crew-panel">
                 {trip.members.map((m) => {
                   const isCreator = Boolean(m.isCreator);
                   const isEd = isCreator || editorIds.has(m.id);
+                  const hasPin = memberHasPasscode(m);
+                  const isSettingHostPin = hostPinTargetId === m.id;
+
                   return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      disabled={isCreator}
-                      onClick={() => onToggleEditorMember(m.id)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '8px 10px',
-                        borderRadius: 16,
-                        background: 'rgba(255, 255, 255, 0.78)',
-                        opacity: isCreator ? 0.85 : 1,
-                      }}
-                    >
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
-                        <Avatar
-                          initials={m.initials}
-                          name={m.name}
-                          src={m.avatarDataUrl}
-                          size="sm"
-                          bg={m.avatarBg}
-                          color={m.avatarColor}
-                        />
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>{m.name}</span>
-                      </span>
-                      {isCreator ? (
-                        <Badge tone="matcha">Host</Badge>
-                      ) : (
-                        <span
-                          style={{
-                            width: 22,
-                            height: 22,
-                            borderRadius: 8,
-                            border: '1.6px solid var(--brand-matcha)',
-                            background: isEd ? 'var(--brand-matcha)' : 'transparent',
-                            color: '#FFFFFF',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
+                    <div key={m.id} className="menu-crew-row-card">
+                      <div className="menu-crew-row-top">
+                        <button
+                          type="button"
+                          disabled={isCreator}
+                          onClick={() => onToggleEditorMember(m.id)}
+                          className="menu-crew-member-btn"
+                          style={{ opacity: isCreator ? 0.9 : 1 }}
                         >
-                          {isEd && <Check size={13} strokeWidth={2.6} />}
-                        </span>
+                          <Avatar
+                            initials={m.initials}
+                            name={m.name}
+                            src={m.avatarDataUrl}
+                            size="sm"
+                            bg={m.avatarBg}
+                            color={m.avatarColor}
+                          />
+                          <span className="menu-crew-member-name">
+                            {m.name}
+                            {hasPin && (
+                              <Lock
+                                size={11}
+                                strokeWidth={2.2}
+                                color="var(--brand-matcha)"
+                                style={{ marginLeft: 5, verticalAlign: '-1px' }}
+                              />
+                            )}
+                          </span>
+                        </button>
+
+                        <div className="menu-crew-controls">
+                          {hasPin ? (
+                            <button
+                              type="button"
+                              className="menu-pin-chip menu-pin-chip--reset tactile"
+                              onClick={() => setConfirmResetMember(m)}
+                            >
+                              <RotateCcw size={11} strokeWidth={2.2} />
+                              <span>Reset PIN</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="menu-pin-chip tactile"
+                              onClick={() => {
+                                setHostPinTargetId(isSettingHostPin ? null : m.id);
+                                setHostPinValue('');
+                                setHostShowPin(false);
+                              }}
+                            >
+                              <KeyRound size={11} strokeWidth={2.2} />
+                              <span>Set PIN</span>
+                            </button>
+                          )}
+
+                          {isCreator ? (
+                            <Badge tone="matcha">Host</Badge>
+                          ) : (
+                            <button
+                              type="button"
+                              aria-label={isEd ? `Remove ${m.name} as editor` : `Make ${m.name} an editor`}
+                              onClick={() => onToggleEditorMember(m.id)}
+                              className={`menu-editor-check ${isEd ? 'menu-editor-check--on' : ''}`}
+                            >
+                              {isEd && <Check size={13} strokeWidth={2.6} />}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {isSettingHostPin && (
+                        <div className="menu-host-pin-inline">
+                          <div className="menu-pin-shell menu-pin-shell--compact">
+                            <input
+                              type={hostShowPin ? 'text' : 'password'}
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={4}
+                              placeholder="4 digits"
+                              aria-label={`Set 4-digit passcode for ${m.name}`}
+                              value={hostPinValue}
+                              className="menu-pin-input menu-pin-input--compact"
+                              onChange={(e) => setHostPinValue(normalizePasscode(e.target.value))}
+                            />
+                            <button
+                              type="button"
+                              className="menu-pin-eye"
+                              aria-label={hostShowPin ? 'Hide passcode' : 'Show passcode'}
+                              onClick={() => setHostShowPin((s) => !s)}
+                            >
+                              {hostShowPin ? <EyeOff size={14} strokeWidth={1.9} /> : <Eye size={14} strokeWidth={1.9} />}
+                            </button>
+                          </div>
+                          <Button
+                            variant="matcha"
+                            size="sm"
+                            disabled={hostPinValue.length < 4}
+                            onClick={() => handleHostSavePin(m)}
+                          >
+                            Save
+                          </Button>
+                        </div>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -309,6 +579,7 @@ export function TripMenuSheet({
             type="button"
             className="gk-menu-item"
             onClick={() => {
+              resetLocalPanels();
               onClose();
               onOpenTripSettings();
             }}
@@ -333,6 +604,7 @@ export function TripMenuSheet({
             type="button"
             className="gk-menu-item"
             onClick={() => {
+              resetLocalPanels();
               onClose();
               if (pinUnlocked) onLockEditing();
               else onRequestUnlock();
@@ -365,6 +637,7 @@ export function TripMenuSheet({
           className="gk-menu-item"
           onClick={() => {
             onCopyInvite();
+            resetLocalPanels();
             onClose();
           }}
         >
@@ -384,6 +657,7 @@ export function TripMenuSheet({
           className="gk-menu-item"
           onClick={() => {
             onExportExcel();
+            resetLocalPanels();
             onClose();
           }}
         >
@@ -405,6 +679,7 @@ export function TripMenuSheet({
           className="gk-menu-item"
           onClick={() => {
             onExportJson();
+            resetLocalPanels();
             onClose();
           }}
         >
@@ -444,6 +719,7 @@ export function TripMenuSheet({
             if (file) {
               onImportJson(file);
               e.target.value = '';
+              resetLocalPanels();
               onClose();
             }
           }}
@@ -453,6 +729,7 @@ export function TripMenuSheet({
           type="button"
           className="gk-menu-item"
           onClick={() => {
+            resetLocalPanels();
             onClose();
             onSwitchProfile();
           }}
@@ -472,6 +749,7 @@ export function TripMenuSheet({
           type="button"
           className="gk-menu-item"
           onClick={() => {
+            resetLocalPanels();
             onClose();
             onLeaveTrip();
           }}
@@ -492,12 +770,36 @@ export function TripMenuSheet({
           </span>
         </button>
       </div>
+
       <PhotoCropperSheet
         open={Boolean(cropFile)}
         file={cropFile}
         preset="avatar"
         onCancel={() => setCropFile(null)}
         onConfirm={(res) => void handleCroppedAvatar(res)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(confirmResetMember)}
+        title={confirmResetMember ? `Reset ${confirmResetMember.name}'s PIN?` : ''}
+        description={
+          confirmResetMember
+            ? `${confirmResetMember.name} will be able to sign in without a passcode and set a new one anytime.`
+            : ''
+        }
+        confirmLabel="Reset PIN"
+        destructive
+        onCancel={() => setConfirmResetMember(null)}
+        onConfirm={() => {
+          if (confirmResetMember) {
+            onSetMemberPasscode(
+              confirmResetMember.id,
+              undefined,
+              `${confirmResetMember.name}'s passcode reset`,
+            );
+          }
+          setConfirmResetMember(null);
+        }}
       />
     </LiquidBottomSheet>
   );

@@ -2,7 +2,7 @@
 
 > **App:** GASKEUN! Group Travel PWA (`vite-plugin-pwa`, base path `/gaskeun-trip/`, deployed via GitHub Pages).
 > **Pilot Trip:** `SOLO-27` (Solo – Jogja, Feb 11–14, 2027 · Default Crew PIN: `1234`).
-> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–6.
+> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–7.
 
 ---
 
@@ -28,10 +28,15 @@
 
 ---
 
-## 3. Field-Test Polish Patterns (Batches 1–6)
+## 3. Field-Test Polish Patterns (Batches 1–7)
 
+- **Access Gate & Per-Member Passcode Guard (Batch 7 — `WhoAreYouScreen.tsx`, `TripMenuSheet.tsx`, `permissions.ts`):**
+  - Optional 4-digit `passcode?: string` per `TripMember` in Layer 1 (`SharedTrip.members`).
+  - Subtle `Lock` badge on protected crew cards; `Join as [Name]?` verifies 4-digit passcode (numeric keypad, masked with eye toggle, shake + error on mismatch) or offers optional first-time lock for unprotected profiles.
+  - Self-service **`My Passcode`** (set/update/remove after verifying current PIN) and Host-only **`Crew Access & Editors`** (`Set PIN` / confirmed `Reset PIN`). Auto-restored sessions never re-prompt for PIN until `Switch Profile`.
 - **Home (`src/features/home/`):**
-  - Boxless editorial serif countdown over full-bleed hero cover, KAI 3–2 / 2–2 Train Seat Map with one-tap seat swap (`TrainSeatMap.tsx`), editable Crew/Pods/Stays/Train Pass.
+  - **Large Editorial Hero Countdown (Batch 7):** Boxless magazine-scale Playfair serif countdown elevated & centered over hero photo (`DAYS` `clamp(112px, 34vw, 156px)`, `HOURS/MINS/SECS` `clamp(34px, 10vw, 46px)`), crisp white text + soft dark scrim over custom cover photos (`home-hero--photo`) and deep Matcha `#1E3A32` without a cover photo.
+  - KAI 3–2 / 2–2 Train Seat Map with one-tap seat swap (`TrainSeatMap.tsx`), editable Crew/Pods/Stays/Train Pass.
   - **Full-Bleed Photo Cards (Batch 6):** `Now` Spotlight card renders stop photos as `position: absolute; inset: 0; object-fit: cover` with dark gradient scrim (`z-index: 1`) and high-contrast white typography + frosted glass `Route` pill (`z-index: 2`) — never increases card height/width.
 - **Plan (`src/features/plan/`):**
   - Frozen header + 60fps rAF **Dotted Circular C-Arc Trail** (`arcMath.ts`) with magnetic center snap & depth scale/dimming, 3-column Table + 3-sheet `.xlsx` export (`excelExporter.ts`), unified `RouteMapView` (Leaflet + offline SVG trail), seamless `contentEditable` notes, and **Full-Bleed Photo Cards** matching non-photo card dimensions.

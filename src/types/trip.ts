@@ -14,6 +14,8 @@ export interface TripMember {
   avatarBg: string;
   avatarColor: string;
   avatarDataUrl?: string;
+  /** Optional 4-digit numeric passcode protecting this crew profile from accidental login */
+  passcode?: string;
   role: MemberRole;
   status: MemberStatus;
   isCreator?: boolean;

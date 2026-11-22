@@ -73,6 +73,7 @@ export interface HomeScreenProps {
   trip: SharedTrip;
   phase: HomePhase;
   coverUrl: string;
+  hasCoverPhoto: boolean;
   activeMemberName: string;
   canEdit: boolean;
   onOpenMenu: () => void;
@@ -89,6 +90,7 @@ export function HomeScreen({
   trip,
   phase,
   coverUrl,
+  hasCoverPhoto,
   activeMemberName,
   canEdit,
   onOpenMenu,
@@ -337,7 +339,15 @@ export function HomeScreen({
   return (
     <div className="home-root">
       {/* Full-Bleed Customizable Editorial Hero (Zero Top Bar) */}
-      <section className={`home-hero ${phase === 'on-trip' ? 'home-hero--compact' : ''}`}>
+      <section
+        className={[
+          'home-hero',
+          phase === 'on-trip' ? 'home-hero--compact' : '',
+          hasCoverPhoto ? 'home-hero--photo' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
         <img src={coverUrl} alt="" className="home-hero__bg" />
         <div className="home-hero__fade" aria-hidden="true" />
 
@@ -365,11 +375,9 @@ export function HomeScreen({
           }}
         />
 
-        <div className="home-hero__spacer" aria-hidden="true" />
-
-        <div className="home-hero__bottom">
-          {/* Boxless Editorial Floating Serif Countdown (Directly ABOVE Trip Title) */}
-          {phase === 'pre-trip' && (
+        {/* Boxless Editorial Magazine Serif Countdown — Elevated & Centered over Hero Photo */}
+        {phase === 'pre-trip' ? (
+          <div className="home-hero__center">
             <div className="countdown-hero-card" aria-label="Departure countdown">
               <div className="countdown-days-block">
                 <span className="countdown-days-val">{countdown.days}</span>
@@ -390,8 +398,12 @@ export function HomeScreen({
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        ) : (
+          <div className="home-hero__spacer" aria-hidden="true" />
+        )}
 
+        <div className="home-hero__bottom">
           <div>
             <button
               type="button"

@@ -1,8 +1,14 @@
-import { useRef, useState } from 'react';
-import { Camera, Lock, UserRound } from 'lucide-react';
+import { useRef, useState, type FormEvent } from 'react';
+import { Camera, Eye, EyeOff, KeyRound, Lock, UserRound } from 'lucide-react';
 import { Avatar, Button, CornerOrb, LiquidBottomSheet } from '../../components/atoms';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import { uploadSharedImage } from '../../services/mediaUploader';
+import {
+  isValidPasscode,
+  memberHasPasscode,
+  normalizePasscode,
+  verifyMemberPasscode,
+} from '../../services/permissions';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import type { SharedTrip, TripMember } from '../../types/trip';
 import './gate.css';
@@ -13,6 +19,7 @@ export interface WhoAreYouScreenProps {
   canEdit: boolean;
   onSelectProfile: (memberId: string) => void;
   onUpdateMemberAvatar: (memberId: string, avatarDataUrl: string) => void;
+  onSetMemberPasscode: (memberId: string, passcode: string | undefined, toastMsg?: string) => void;
   onRequestUnlockPin: () => void;
   onBack: () => void;
 }
@@ -23,11 +30,17 @@ export function WhoAreYouScreen({
   canEdit,
   onSelectProfile,
   onUpdateMemberAvatar,
+  onSetMemberPasscode,
   onRequestUnlockPin,
   onBack,
 }: WhoAreYouScreenProps) {
   const [pendingPickId, setPendingPickId] = useState<string | null>(null);
   const [cropFile, setCropFile] = useState<File | null>(null);
+  const [pinInput, setPinInput] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [showOptionalSetup, setShowOptionalSetup] = useState(false);
+  const [pinError, setPinError] = useState('');
+  const [shakeCount, setShakeCount] = useState(0);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const pendingMember: TripMember | undefined =
@@ -35,6 +48,29 @@ export function WhoAreYouScreen({
       ? trip.members.find((m) => m.id === pendingPickId)
       : undefined;
   const pendingName = pendingPickId === 'guest' ? 'Guest' : pendingMember?.name ?? '';
+  const pendingRequiresPin = memberHasPasscode(pendingMember);
+
+  const openProfileSheet = (id: string) => {
+    setPendingPickId(id);
+    setPinInput('');
+    setShowPin(false);
+    setShowOptionalSetup(false);
+    setPinError('');
+    setShakeCount(0);
+  };
+
+  const closeProfileSheet = () => {
+    setPendingPickId(null);
+    setPinInput('');
+    setShowPin(false);
+    setShowOptionalSetup(false);
+    setPinError('');
+  };
+
+  const triggerPinError = (msg: string) => {
+    setPinError(msg);
+    setShakeCount((c) => c + 1);
+  };
 
   const handleCroppedAvatar = async (cropped: CroppedImageResult) => {
     setCropFile(null);
@@ -47,6 +83,35 @@ export function WhoAreYouScreen({
       fileName: `avatar-${pendingMember.name.toLowerCase()}.jpg`,
     });
     onUpdateMemberAvatar(pendingMember.id, uploaded.url);
+  };
+
+  const handleConfirmJoin = (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!pendingPickId) return;
+
+    if (pendingMember) {
+      if (pendingRequiresPin) {
+        if (!isValidPasscode(pinInput)) {
+          triggerPinError('Enter your 4-digit passcode');
+          return;
+        }
+        if (!verifyMemberPasscode(pendingMember, pinInput)) {
+          triggerPinError('Incorrect passcode. Ask your host to reset it.');
+          setPinInput('');
+          return;
+        }
+      } else if (showOptionalSetup && pinInput.length > 0) {
+        if (!isValidPasscode(pinInput)) {
+          triggerPinError('Enter all 4 digits, or clear to continue without a passcode');
+          return;
+        }
+        onSetMemberPasscode(pendingMember.id, pinInput, 'Personal 4-digit passcode saved');
+      }
+    }
+
+    const chosen = pendingPickId;
+    closeProfileSheet();
+    onSelectProfile(chosen);
   };
 
   return (
@@ -67,6 +132,7 @@ export function WhoAreYouScreen({
           {trip.members.map((member) => {
             const isSelected = selectedMemberId === member.id;
             const isTentative = member.status === 'tentative';
+            const hasPin = memberHasPasscode(member);
             return (
               <button
                 key={member.id}
@@ -78,8 +144,18 @@ export function WhoAreYouScreen({
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                onClick={() => setPendingPickId(member.id)}
+                onClick={() => openProfileSheet(member.id)}
               >
+                {hasPin && (
+                  <span
+                    className={`crew-pick-card__lock ${
+                      isSelected ? 'crew-pick-card__lock--selected' : ''
+                    }`}
+                    aria-label="Passcode protected"
+                  >
+                    <Lock size={10.5} strokeWidth={2.3} />
+                  </span>
+                )}
                 <Avatar
                   initials={member.initials}
                   name={member.name}
@@ -99,7 +175,7 @@ export function WhoAreYouScreen({
           <button
             type="button"
             className={`crew-pick-card ${selectedMemberId === 'guest' ? 'crew-pick-card--selected' : ''}`}
-            onClick={() => setPendingPickId('guest')}
+            onClick={() => openProfileSheet('guest')}
           >
             <span
               className="gk-avatar gk-avatar--md gk-avatar--solid"
@@ -128,113 +204,219 @@ export function WhoAreYouScreen({
         <p className="gate-footer-note">Tap your profile to continue</p>
       </div>
 
-      {/* Crystal Liquid Profile Join Confirmation + Optional Face Photo Upload */}
+      {/* Crystal Liquid Profile Join Confirmation + 4-Digit Passcode Guard */}
       <LiquidBottomSheet
         open={Boolean(pendingPickId)}
         title={pendingName ? `Join as ${pendingName}?` : ''}
         subtitle={trip.title}
-        onClose={() => setPendingPickId(null)}
+        onClose={closeProfileSheet}
       >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 12,
-            padding: '6px 0 18px',
-          }}
-        >
-          {pendingMember ? (
-            <>
-              <button
-                type="button"
-                className="tactile"
-                onClick={() => avatarInputRef.current?.click()}
-                style={{
-                  position: 'relative',
-                  display: 'inline-flex',
-                  borderRadius: '50%',
-                }}
-                aria-label="Add or change profile photo"
-              >
-                <Avatar
-                  initials={pendingMember.initials}
-                  name={pendingMember.name}
-                  src={pendingMember.avatarDataUrl}
-                  size="xl"
-                  bg={pendingMember.avatarBg}
-                  color={pendingMember.avatarColor}
-                  variant="selected"
-                />
-                <span
+        <form onSubmit={handleConfirmJoin}>
+          <div className="who-sheet-body">
+            {pendingMember ? (
+              <>
+                <button
+                  type="button"
+                  className="tactile"
+                  onClick={() => avatarInputRef.current?.click()}
                   style={{
-                    position: 'absolute',
-                    right: -2,
-                    bottom: -2,
-                    width: 28,
-                    height: 28,
-                    borderRadius: 14,
-                    background: 'var(--brand-matcha)',
-                    color: '#FFFFFF',
-                    border: '2px solid #FFFFFF',
+                    position: 'relative',
                     display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    borderRadius: '50%',
                   }}
+                  aria-label="Add or change profile photo"
                 >
-                  <Camera size={13} strokeWidth={2} />
-                </span>
-              </button>
-              <Button
-                variant="glass"
-                size="sm"
-                leftIcon={<Camera size={13} strokeWidth={2} />}
-                onClick={() => avatarInputRef.current?.click()}
-              >
-                {pendingMember.avatarDataUrl ? 'Change photo' : 'Add photo'}
-              </Button>
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) {
-                    setCropFile(f);
-                    e.target.value = '';
-                  }
-                }}
-              />
-            </>
-          ) : (
-            <span
-              className="gk-avatar gk-avatar--xl gk-avatar--solid"
-              style={{ backgroundColor: '#EAEFED', color: '#546860' }}
-            >
-              <UserRound size={30} strokeWidth={1.8} />
-            </span>
-          )}
-        </div>
+                  <Avatar
+                    initials={pendingMember.initials}
+                    name={pendingMember.name}
+                    src={pendingMember.avatarDataUrl}
+                    size="xl"
+                    bg={pendingMember.avatarBg}
+                    color={pendingMember.avatarColor}
+                    variant="selected"
+                  />
+                  <span
+                    style={{
+                      position: 'absolute',
+                      right: -2,
+                      bottom: -2,
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      background: 'var(--brand-matcha)',
+                      color: '#FFFFFF',
+                      border: '2px solid #FFFFFF',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Camera size={13} strokeWidth={2} />
+                  </span>
+                </button>
+                <Button
+                  variant="glass"
+                  size="sm"
+                  leftIcon={<Camera size={13} strokeWidth={2} />}
+                  onClick={() => avatarInputRef.current?.click()}
+                >
+                  {pendingMember.avatarDataUrl ? 'Change photo' : 'Add photo'}
+                </Button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      setCropFile(f);
+                      e.target.value = '';
+                    }
+                  }}
+                />
 
-        <div className="gk-dialog__actions">
-          <Button variant="glass" size="lg" onClick={() => setPendingPickId(null)}>
-            Cancel
-          </Button>
-          <Button
-            variant="matcha"
-            size="lg"
-            onClick={() => {
-              if (pendingPickId) {
-                const chosen = pendingPickId;
-                setPendingPickId(null);
-                onSelectProfile(chosen);
-              }
-            }}
-          >
-            Continue
-          </Button>
-        </div>
+                {/* Required 4-Digit Passcode Prompt for Locked Profiles */}
+                {pendingRequiresPin ? (
+                  <div
+                    key={shakeCount}
+                    className={`who-pin-card ${shakeCount > 0 ? 'who-pin-shake' : ''}`}
+                  >
+                    <label htmlFor="who-passcode-input" className="gk-field__label">
+                      4-DIGIT PASSCODE
+                    </label>
+                    <div
+                      className={`who-pin-shell ${pinError ? 'who-pin-shell--error' : ''}`}
+                    >
+                      <Lock size={15} strokeWidth={2} color="var(--brand-matcha)" />
+                      <input
+                        id="who-passcode-input"
+                        type={showPin ? 'text' : 'password'}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        autoComplete="one-time-code"
+                        placeholder="••••"
+                        value={pinInput}
+                        className="who-pin-input"
+                        onChange={(e) => {
+                          setPinError('');
+                          setPinInput(normalizePasscode(e.target.value));
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="who-pin-eye"
+                        aria-label={showPin ? 'Hide passcode' : 'Show passcode'}
+                        onClick={() => setShowPin((s) => !s)}
+                      >
+                        {showPin ? <EyeOff size={16} strokeWidth={1.9} /> : <Eye size={16} strokeWidth={1.9} />}
+                      </button>
+                    </div>
+                    {pinError ? (
+                      <p className="who-pin-error">{pinError}</p>
+                    ) : (
+                      <p className="who-pin-hint">
+                        Enter your personal code to sign in as {pendingMember.name}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  /* Optional First-Time Passcode Lock for Unlocked Profiles */
+                  <div className="who-pin-optional-wrap">
+                    {!showOptionalSetup ? (
+                      <button
+                        type="button"
+                        className="who-pin-optional-toggle tactile"
+                        onClick={() => setShowOptionalSetup(true)}
+                      >
+                        <KeyRound size={13.5} strokeWidth={2} />
+                        <span>Set 4-digit passcode (optional)</span>
+                      </button>
+                    ) : (
+                      <div
+                        key={shakeCount}
+                        className={`who-pin-card ${shakeCount > 0 ? 'who-pin-shake' : ''}`}
+                      >
+                        <div className="who-pin-optional-head">
+                          <label htmlFor="who-opt-passcode" className="gk-field__label">
+                            SET 4-DIGIT PASSCODE (OPTIONAL)
+                          </label>
+                          <button
+                            type="button"
+                            className="who-pin-skip"
+                            onClick={() => {
+                              setShowOptionalSetup(false);
+                              setPinInput('');
+                              setPinError('');
+                            }}
+                          >
+                            Skip
+                          </button>
+                        </div>
+                        <div
+                          className={`who-pin-shell ${pinError ? 'who-pin-shell--error' : ''}`}
+                        >
+                          <Lock size={15} strokeWidth={2} color="var(--brand-matcha)" />
+                          <input
+                            id="who-opt-passcode"
+                            type={showPin ? 'text' : 'password'}
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={4}
+                            placeholder="••••"
+                            value={pinInput}
+                            className="who-pin-input"
+                            onChange={(e) => {
+                              setPinError('');
+                              setPinInput(normalizePasscode(e.target.value));
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="who-pin-eye"
+                            aria-label={showPin ? 'Hide passcode' : 'Show passcode'}
+                            onClick={() => setShowPin((s) => !s)}
+                          >
+                            {showPin ? <EyeOff size={16} strokeWidth={1.9} /> : <Eye size={16} strokeWidth={1.9} />}
+                          </button>
+                        </div>
+                        {pinError ? (
+                          <p className="who-pin-error">{pinError}</p>
+                        ) : (
+                          <p className="who-pin-hint">
+                            Keeps others from tapping your profile by mistake
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <span
+                className="gk-avatar gk-avatar--xl gk-avatar--solid"
+                style={{ backgroundColor: '#EAEFED', color: '#546860' }}
+              >
+                <UserRound size={30} strokeWidth={1.8} />
+              </span>
+            )}
+          </div>
+
+          <div className="gk-dialog__actions">
+            <Button variant="glass" size="lg" onClick={closeProfileSheet}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="matcha"
+              size="lg"
+              disabled={pendingRequiresPin && pinInput.length < 4}
+            >
+              Continue
+            </Button>
+          </div>
+        </form>
       </LiquidBottomSheet>
 
       <PhotoCropperSheet

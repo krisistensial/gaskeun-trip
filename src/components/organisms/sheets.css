@@ -310,3 +310,184 @@
   justify-content: center;
   gap: 10px;
 }
+
+/* ==========================================================================
+   Per-Member Passcode & Host Crew Access Controls (TripMenuSheet)
+   ========================================================================== */
+.menu-pin-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 20px;
+  background: rgba(227, 237, 230, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+}
+
+.menu-pin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.menu-pin-shell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 10px 0 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1.25px solid rgba(255, 255, 255, 0.96);
+}
+
+.menu-pin-shell--compact {
+  flex: 1;
+  height: 36px;
+  padding: 0 8px 0 10px;
+}
+
+.menu-pin-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none !important;
+  box-shadow: none !important;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  color: var(--text-primary);
+  caret-color: var(--brand-matcha);
+}
+
+.menu-pin-input--compact {
+  font-size: 14px;
+  letter-spacing: 0.22em;
+}
+
+.menu-pin-input:focus,
+.menu-pin-input:focus-visible {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.menu-pin-eye {
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.menu-pin-error {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent-coral);
+}
+
+.menu-pin-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.menu-crew-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  border-radius: 20px;
+  background: rgba(227, 237, 230, 0.45);
+}
+
+.menu-crew-row-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.menu-crew-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.menu-crew-member-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  text-align: left;
+}
+
+.menu-crew-member-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-crew-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.menu-pin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand-forest);
+  background: var(--brand-sage-tint);
+  border: 1px solid rgba(74, 116, 104, 0.18);
+}
+
+.menu-pin-chip--reset {
+  color: var(--accent-coral);
+  background: var(--accent-coral-soft);
+  border-color: rgba(207, 77, 94, 0.22);
+}
+
+.menu-editor-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  border: 1.6px solid var(--brand-matcha);
+  background: transparent;
+  color: #FFFFFF;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.menu-editor-check--on {
+  background: var(--brand-matcha);
+}
+
+.menu-host-pin-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
