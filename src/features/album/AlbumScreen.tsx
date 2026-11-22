@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle,
   ArrowUpRight,
   Check,
   Clapperboard,
@@ -32,6 +31,7 @@ import {
 import { ContentIdeaSheet } from '../../components/organisms/ContentIdeaSheet';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import { useRegisterOverlay } from '../../context/OverlayContext';
+import { useHorizontalScrollFade } from '../../hooks/useHorizontalScrollFade';
 import { formatPlatformLabel } from '../../services/contentIdeas';
 import {
   extractDriveFolderId,
@@ -118,6 +118,10 @@ export function AlbumScreen({
   const [uploading, setUploading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dayFilterRef = useRef<HTMLDivElement | null>(null);
+  const ideaFilterRef = useRef<HTMLDivElement | null>(null);
+  const dayFilterFade = useHorizontalScrollFade(dayFilterRef, [tripDays.length, albumTab]);
+  const ideaFilterFade = useHorizontalScrollFade(ideaFilterRef, [albumTab]);
   const driveFolderUrl = trip.gdriveFolderUrl || trip.albumUrl;
   const hasLinkedFolder = Boolean(extractDriveFolderId(driveFolderUrl));
   const hasSyncScript = Boolean(trip.gdriveScriptUrl?.trim());
@@ -458,47 +462,35 @@ export function AlbumScreen({
 
       {albumTab === 'photos' ? (
         <>
-          {/* Photos Toolbar: Day Filters + Drive / Upload */}
-          <div className="album-subbar">
-            <div className="plan-filter-row" role="tablist" aria-label="Filter photos by day">
+          {/* Row 2: Full-Width Edge-to-Edge Day Filter Strip (Zero button collision) */}
+          <div
+            ref={dayFilterRef}
+            data-fade={dayFilterFade.dataFade}
+            className="album-day-strip"
+            role="tablist"
+            aria-label="Filter photos by day"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={dayFilter === 'all'}
+              className={`plan-chip tactile ${dayFilter === 'all' ? 'plan-chip--active' : ''}`}
+              onClick={() => setDayFilter('all')}
+            >
+              All
+            </button>
+            {tripDays.map((day, idx) => (
               <button
+                key={day.id}
                 type="button"
-                className={`plan-chip tactile ${dayFilter === 'all' ? 'plan-chip--active' : ''}`}
-                onClick={() => setDayFilter('all')}
+                role="tab"
+                aria-selected={dayFilter === day.id}
+                className={`plan-chip tactile ${dayFilter === day.id ? 'plan-chip--active' : ''}`}
+                onClick={() => setDayFilter(day.id)}
               >
-                All
+                Day {idx + 1}
               </button>
-              {tripDays.map((day, idx) => (
-                <button
-                  key={day.id}
-                  type="button"
-                  className={`plan-chip tactile ${dayFilter === day.id ? 'plan-chip--active' : ''}`}
-                  onClick={() => setDayFilter(day.id)}
-                >
-                  Day {idx + 1}
-                </button>
-              ))}
-            </div>
-            <div className="album-actions">
-              {driveFolderUrl && (
-                <Button
-                  variant="glass"
-                  size="sm"
-                  rightIcon={<ArrowUpRight size={14} strokeWidth={2} />}
-                  onClick={() => window.open(driveFolderUrl, '_blank', 'noopener,noreferrer')}
-                >
-                  Drive
-                </Button>
-              )}
-              <Button
-                variant="matcha"
-                size="sm"
-                leftIcon={<Upload size={14} strokeWidth={2} />}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Upload
-              </Button>
-            </div>
+            ))}
           </div>
 
           <input
@@ -515,139 +507,138 @@ export function AlbumScreen({
             }}
           />
 
-          {/* Real Google Drive Health Check Status Bar */}
-          {hasSyncScript ? (
-            syncHealth.status === 'error' ? (
-              <GlassCard
-                variant="clear"
-                padding="sm"
-                style={{
-                  borderColor: 'rgba(207, 77, 94, 0.4)',
-                  background: 'rgba(255, 245, 246, 0.78)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <AlertCircle size={15} strokeWidth={2} color="var(--accent-coral)" style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-coral)' }}>
-                    Drive sync failed — {syncHealth.error}
-                  </span>
+          {/* Row 3: Unified Drive Status & Actions Capsule */}
+          <GlassCard
+            variant="clear"
+            padding="sm"
+            className={`album-drive-capsule ${
+              hasSyncScript && syncHealth.status === 'error' ? 'album-drive-capsule--error' : ''
+            }`}
+          >
+            <div className="album-drive-capsule__main">
+              {/* Left: Compact 2-line Drive status + inline Drive ↗ link */}
+              <div className="album-drive-capsule__info">
+                <div className="album-drive-capsule__top">
+                  <span
+                    className={[
+                      'album-drive-dot',
+                      hasSyncScript && syncHealth.status === 'error'
+                        ? 'album-drive-dot--error'
+                        : hasSyncScript && syncHealth.status === 'ok'
+                          ? 'album-drive-dot--ok'
+                          : 'album-drive-dot--idle',
+                    ].join(' ')}
+                    aria-hidden="true"
+                  />
+                  <span className="album-drive-capsule__label">Google Drive</span>
+                  {driveFolderUrl ? (
+                    <a
+                      href={driveFolderUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="album-drive-inline-link tactile"
+                    >
+                      <span>Drive</span>
+                      <ArrowUpRight size={11.5} strokeWidth={2.3} />
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      className="album-drive-inline-link tactile"
+                      onClick={onOpenSettings}
+                    >
+                      <span>Connect</span>
+                    </button>
+                  )}
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    leftIcon={<RefreshCw size={13} strokeWidth={2} />}
+
+                <div className="album-drive-capsule__sub">
+                  {hasSyncScript ? (
+                    syncHealth.status === 'error' ? (
+                      <span className="album-drive-capsule__err">
+                        <span>Sync failed · {syncHealth.error}</span>
+                        <button
+                          type="button"
+                          className="album-drive-settings-link"
+                          onClick={onOpenSettings}
+                        >
+                          Settings
+                        </button>
+                      </span>
+                    ) : isSyncing ? (
+                      'Checking Google Drive...'
+                    ) : (
+                      `${drivePhotos.length} ${drivePhotos.length === 1 ? 'photo' : 'photos'} synced`
+                    )
+                  ) : hasLinkedFolder ? (
+                    'Folder linked · Add Sync URL in Settings'
+                  ) : (
+                    'Saving locally until Drive sync is connected'
+                  )}
+                </div>
+              </div>
+
+              {/* Right: Tight action cluster (Circular Sync/Settings Orb + Primary Upload CTA) */}
+              <div className="album-drive-capsule__actions">
+                {hasSyncScript ? (
+                  <button
+                    type="button"
+                    disabled={isSyncing}
+                    aria-label="Sync Google Drive"
+                    className="album-sync-orb tactile"
                     onClick={() => void syncFromDrive(true)}
                   >
-                    Retry
-                  </Button>
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    leftIcon={<Settings2 size={13} strokeWidth={2} />}
+                    <RefreshCw
+                      size={15}
+                      strokeWidth={2}
+                      style={
+                        isSyncing
+                          ? { animation: 'gaskeun-spin 0.9s linear infinite' }
+                          : undefined
+                      }
+                    />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label="Drive sync settings"
+                    className="album-sync-orb tactile"
                     onClick={onOpenSettings}
                   >
-                    Settings
-                  </Button>
-                </div>
-              </GlassCard>
-            ) : (
-              <GlassCard
-                variant="clear"
-                padding="sm"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                  flexWrap: 'wrap',
-                }}
-              >
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: 'var(--text-secondary)',
-                  }}
+                    <Settings2 size={15} strokeWidth={2} />
+                  </button>
+                )}
+
+                <Button
+                  variant="matcha"
+                  size="sm"
+                  leftIcon={<Upload size={14} strokeWidth={2} />}
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      background:
-                        syncHealth.status === 'ok' ? 'var(--accent-mint)' : 'var(--accent-amber)',
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span>
-                    {isSyncing
-                      ? 'Checking Google Drive...'
-                      : `Google Drive synced · ${drivePhotos.length} ${drivePhotos.length === 1 ? 'photo' : 'photos'}`}
-                  </span>
+                  Upload
+                </Button>
+              </div>
+            </div>
+
+            {/* Slim secondary row when local pending photos are ready to push */}
+            {localPhotos.length > 0 && hasSyncScript && syncHealth.status === 'ok' && (
+              <div className="album-drive-capsule__pending">
+                <span className="album-drive-capsule__pending-text">
+                  {localPhotos.length} local {localPhotos.length === 1 ? 'photo' : 'photos'} waiting
+                  to upload
                 </span>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {localPhotos.length > 0 && syncHealth.status === 'ok' && (
-                    <Button
-                      variant="matcha"
-                      size="sm"
-                      disabled={pushingLocal}
-                      leftIcon={<CloudUpload size={13} strokeWidth={2} />}
-                      onClick={() => void handlePushAllLocalToDrive()}
-                    >
-                      {pushingLocal ? 'Pushing...' : `Push to Drive (${localPhotos.length})`}
-                    </Button>
-                  )}
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    disabled={isSyncing}
-                    leftIcon={
-                      <RefreshCw
-                        size={13}
-                        strokeWidth={2}
-                        style={isSyncing ? { animation: 'gaskeun-spin 0.9s linear infinite' } : undefined}
-                      />
-                    }
-                    onClick={() => void syncFromDrive(true)}
-                  >
-                    Sync
-                  </Button>
-                </div>
-              </GlassCard>
-            )
-          ) : (
-            <GlassCard
-              variant="clear"
-              padding="sm"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-              }}
-            >
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.35 }}>
-                {hasLinkedFolder
-                  ? 'Drive folder linked. Add your Apps Script URL to auto-sync photos here.'
-                  : 'Photos save locally until Google Drive sync is connected.'}
-              </span>
-              <Button
-                variant="glass"
-                size="sm"
-                leftIcon={<Settings2 size={13} strokeWidth={2} />}
-                onClick={onOpenSettings}
-              >
-                Connect Sync URL
-              </Button>
-            </GlassCard>
-          )}
+                <Button
+                  variant="matcha"
+                  size="sm"
+                  disabled={pushingLocal}
+                  leftIcon={<CloudUpload size={13} strokeWidth={2} />}
+                  onClick={() => void handlePushAllLocalToDrive()}
+                >
+                  {pushingLocal ? 'Pushing...' : 'Push to Drive'}
+                </Button>
+              </div>
+            )}
+          </GlassCard>
 
           {/* 2-Column Masonry Grid */}
           {allPhotos.length === 0 ? (
@@ -692,8 +683,14 @@ export function AlbumScreen({
       ) : (
         /* ==================== IDEAS TAB (Minimalist Content Inspiration Board) ==================== */
         <>
-          <div className="album-subbar">
-            <div className="plan-filter-row" role="tablist" aria-label="Filter content ideas">
+          <div className="album-ideas-bar">
+            <div
+              ref={ideaFilterRef}
+              data-fade={ideaFilterFade.dataFade}
+              className="album-ideas-filters"
+              role="tablist"
+              aria-label="Filter content ideas"
+            >
               {(
                 [
                   { id: 'all', label: 'All' },

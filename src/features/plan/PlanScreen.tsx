@@ -17,6 +17,7 @@ import {
   TrailDot,
 } from '../../components/atoms';
 import { ContentIdeaSheet } from '../../components/organisms/ContentIdeaSheet';
+import { useHorizontalScrollFade } from '../../hooks/useHorizontalScrollFade';
 import {
   formatPlatformLabel,
   mergePlanEntries,
@@ -142,11 +143,16 @@ export function PlanScreen({
 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const dayStripRef = useRef<HTMLDivElement | null>(null);
+  const filterRowRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const dotRefs = useRef<Map<string, HTMLElement>>(new Map());
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const centeredIdRef = useRef<string | null>(null);
   const userInteractedRef = useRef<boolean>(false);
+
+  const dayStripFade = useHorizontalScrollFade(dayStripRef, [trip.days.length, canEdit]);
+  const filterRowFade = useHorizontalScrollFade(filterRowRef, [viewMode]);
 
   const selectedDay = trip.days.find((d) => d.id === selectedDayId) ?? trip.days[0];
   const dayLabelStr = selectedDay?.isIdeas
@@ -539,7 +545,13 @@ export function PlanScreen({
         </header>
 
         {/* Vertical Day Strip + Dashed + Day (Editors Only) */}
-        <div className="plan-day-strip" role="tablist" aria-label="Trip days">
+        <div
+          ref={dayStripRef}
+          data-fade={dayStripFade.dataFade}
+          className="plan-day-strip"
+          role="tablist"
+          aria-label="Trip days"
+        >
           {trip.days.map((day) => (
             <DayPill
               key={day.id}
@@ -554,7 +566,13 @@ export function PlanScreen({
         </div>
 
         {/* Category Filter Pills (including Amber Content filter) */}
-        <div className="plan-filter-row" role="tablist" aria-label="Stop type filter">
+        <div
+          ref={filterRowRef}
+          data-fade={filterRowFade.dataFade}
+          className="plan-filter-row plan-filter-row--bleed"
+          role="tablist"
+          aria-label="Stop type filter"
+        >
           {(['all', 'transit', 'place', 'activity', 'content'] as const).map((f) => (
             <button
               key={f}

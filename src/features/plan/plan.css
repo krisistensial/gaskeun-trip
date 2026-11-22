@@ -84,8 +84,11 @@
 .plan-day-strip {
   display: flex;
   gap: 5px;
+  margin-inline: calc(var(--page-pad, 16px) * -1);
+  padding-inline: var(--page-pad, 16px);
   overflow-x: auto;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
   padding-bottom: 2px;
 }
 
@@ -98,6 +101,12 @@
   gap: 7px;
   overflow-x: auto;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.plan-filter-row--bleed {
+  margin-inline: calc(var(--page-pad, 16px) * -1);
+  padding-inline: var(--page-pad, 16px);
 }
 
 .plan-filter-row::-webkit-scrollbar {

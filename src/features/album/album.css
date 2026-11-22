@@ -59,11 +59,187 @@
   color: var(--text-inverse);
 }
 
-.album-subbar {
+/* Row 2 (Photos): Full-width edge-to-edge day filter strip with zero button collision */
+.album-day-strip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-inline: calc(var(--page-pad, 16px) * -1);
+  padding-inline: var(--page-pad, 16px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.album-day-strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* Row 3 (Photos): Unified Drive Status & Actions Liquid Glass Capsule */
+.album-drive-capsule {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.album-drive-capsule--error {
+  border-color: rgba(207, 77, 94, 0.42) !important;
+  background: rgba(255, 245, 246, 0.78) !important;
+}
+
+.album-drive-capsule__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.album-drive-capsule__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.album-drive-capsule__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.album-drive-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.album-drive-dot--ok {
+  background: var(--accent-mint);
+  box-shadow: 0 0 0 3px rgba(43, 148, 107, 0.18);
+}
+
+.album-drive-dot--idle {
+  background: var(--accent-amber);
+  box-shadow: 0 0 0 3px rgba(217, 145, 54, 0.18);
+}
+
+.album-drive-dot--error {
+  background: var(--accent-coral);
+  box-shadow: 0 0 0 3px rgba(207, 77, 94, 0.2);
+}
+
+.album-drive-capsule__label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.album-drive-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 21px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  background: rgba(227, 237, 230, 0.78);
+  border: 1px solid rgba(74, 116, 104, 0.16);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--brand-forest);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.album-drive-capsule__sub {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.album-drive-capsule__err {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-coral);
+  font-weight: 600;
+}
+
+.album-drive-settings-link {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--brand-forest);
+  text-decoration: underline;
+}
+
+.album-drive-capsule__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.album-sync-orb {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1.25px solid rgba(255, 255, 255, 0.94);
+  color: var(--brand-forest);
+  box-shadow: 0 6px 16px -6px rgba(31, 45, 39, 0.14);
+  flex-shrink: 0;
+}
+
+.album-sync-orb:disabled {
+  opacity: 0.6;
+}
+
+.album-drive-capsule__pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+
+.album-drive-capsule__pending-text {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Row 2 (Ideas): Compact status filter pills + + Idea CTA (anti-clip on 360px) */
+.album-ideas-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.album-ideas-filters {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.album-ideas-filters::-webkit-scrollbar {
+  display: none;
 }
 
 /* ==================== Ideas Tab — Minimalist Content Cards ==================== */

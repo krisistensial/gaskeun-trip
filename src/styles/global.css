@@ -132,6 +132,39 @@ select:active,
   display: none;
 }
 
+/* Seamless Dynamic Alpha-Mask for Horizontal Pill Sliders (transparent over Ambient Mesh) */
+[data-fade='none'] {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+[data-fade='right'] {
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%);
+}
+
+[data-fade='left'] {
+  mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 100%);
+}
+
+[data-fade='both'] {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 24px,
+    #000 calc(100% - 24px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 24px,
+    #000 calc(100% - 24px),
+    transparent 100%
+  );
+}
+
 /* Animations */
 @keyframes gaskeun-fade-up {
   from {
