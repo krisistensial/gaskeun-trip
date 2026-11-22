@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "seedVersion": 5,
+  "seedVersion": 6,
   "id": "trip-solo-jogja-2027",
   "code": "SOLO-27",
   "title": "Solo – Jogja",
@@ -764,5 +764,44 @@
     { "id": "gp-4", "title": "Group First-Aid Kit", "done": true, "assigneeId": "m-dora", "category": "Safety" },
     { "id": "gp-5", "title": "Reserve 5 motorbikes + 10 helmets in Solo", "done": false, "assigneeId": "m-rani", "category": "Transport" }
   ],
-  "updatedAt": "2026-11-21T12:00:00+07:00"
+  "contentIdeas": [
+    {
+      "id": "idea-train-pov",
+      "title": "Train Window Aesthetic POV",
+      "referenceUrl": "https://www.instagram.com/reel/DdORP-iJO_6/?dmpr=bXVxejdqd2drZzAz",
+      "platform": "instagram",
+      "notes": "Morning light through KA Bengawan window — smooth 0.5x panning shot",
+      "status": "to-shoot",
+      "showInPlan": true,
+      "dayId": "day-1",
+      "time": "10:30",
+      "createdBy": "m-kris",
+      "createdAt": "2026-11-22T09:00:00+07:00"
+    },
+    {
+      "id": "idea-convoy-rolling",
+      "title": "Convoy Rolling Transition",
+      "referenceUrl": "https://www.instagram.com/reel/Dd8nUoJAtF2/?dmpr=bG5hb2prc2JjOGIz",
+      "platform": "instagram",
+      "notes": "All 5 motorbikes rolling out together along the Bantul stretch",
+      "status": "to-shoot",
+      "showInPlan": true,
+      "dayId": "day-3",
+      "time": "09:45",
+      "createdBy": "m-kris",
+      "createdAt": "2026-11-22T09:05:00+07:00"
+    },
+    {
+      "id": "idea-group-pose",
+      "title": "Group Pose Inspiration",
+      "referenceUrl": "https://www.instagram.com/p/DfmszX0mryJ/?img_index=4&dmpr=MTRwbGY5endvMTJ6dw==",
+      "platform": "instagram",
+      "notes": "Relaxed staggered framing for all 10 riders",
+      "status": "to-shoot",
+      "showInPlan": false,
+      "createdBy": "m-kris",
+      "createdAt": "2026-11-22T09:10:00+07:00"
+    }
+  ],
+  "updatedAt": "2026-11-22T12:00:00+07:00"
 }

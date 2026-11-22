@@ -3,12 +3,19 @@ import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   ArrowUpRight,
+  Check,
+  Clapperboard,
   CloudUpload,
   Download,
+  Film,
   ImagePlus,
   Images,
+  Link2,
+  Play,
+  Plus,
   RefreshCw,
   Settings2,
+  Sparkles,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -22,8 +29,10 @@ import {
   Input,
   LiquidBottomSheet,
 } from '../../components/atoms';
+import { ContentIdeaSheet } from '../../components/organisms/ContentIdeaSheet';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import { useRegisterOverlay } from '../../context/OverlayContext';
+import { formatPlatformLabel } from '../../services/contentIdeas';
 import {
   extractDriveFolderId,
   fetchDriveAlbumWithStatus,
@@ -31,17 +40,29 @@ import {
 } from '../../services/gdriveAlbum';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import type { CroppedImageResult } from '../../services/photoCrop';
-import type { AlbumPhoto, SharedTrip } from '../../types/trip';
+import type {
+  AlbumPhoto,
+  ContentIdea,
+  ContentIdeaStatus,
+  ContentPlatform,
+  SharedTrip,
+} from '../../types/trip';
 import './album.css';
 
 export interface AlbumScreenProps {
   trip: SharedTrip;
   localPhotos: AlbumPhoto[];
+  activeMemberId: string | null;
   activeMemberName: string;
+  canEdit: boolean;
   onSaveLocalPhotos: (photos: AlbumPhoto[], toastMsg?: string) => void;
+  onUpdateTrip: (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => void;
   onOpenSettings: () => void;
   onNotify: (msg: string, tone?: 'success' | 'info' | 'error') => void;
 }
+
+type AlbumSubTab = 'photos' | 'ideas';
+type IdeaFilter = 'all' | ContentIdeaStatus;
 
 type SyncHealth =
   | { status: 'idle' }
@@ -49,21 +70,40 @@ type SyncHealth =
   | { status: 'ok' }
   | { status: 'error'; error: string };
 
+function PlatformThumbIcon({ platform }: { platform: ContentPlatform }) {
+  if (platform === 'instagram') return <Clapperboard size={22} strokeWidth={1.8} />;
+  if (platform === 'tiktok') return <Film size={22} strokeWidth={1.8} />;
+  if (platform === 'youtube') return <Play size={22} strokeWidth={1.8} />;
+  if (platform === 'pinterest') return <Sparkles size={22} strokeWidth={1.8} />;
+  return <Link2 size={22} strokeWidth={1.8} />;
+}
+
 export function AlbumScreen({
   trip,
   localPhotos,
+  activeMemberId,
   activeMemberName,
+  canEdit,
   onSaveLocalPhotos,
+  onUpdateTrip,
   onOpenSettings,
   onNotify,
 }: AlbumScreenProps) {
   const tripDays = useMemo(() => trip.days.filter((d) => !d.isIdeas), [trip.days]);
+  const [albumTab, setAlbumTab] = useState<AlbumSubTab>('photos');
+
+  // Photos tab state
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [drivePhotos, setDrivePhotos] = useState<AlbumPhoto[]>([]);
   const [syncHealth, setSyncHealth] = useState<SyncHealth>({ status: 'idle' });
   const [pushingLocal, setPushingLocal] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<AlbumPhoto | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Ideas tab state
+  const [ideaFilter, setIdeaFilter] = useState<IdeaFilter>('all');
+  const [ideaSheetOpen, setIdeaSheetOpen] = useState(false);
+  const [editingIdea, setEditingIdea] = useState<ContentIdea | null>(null);
 
   useRegisterOverlay(Boolean(lightboxPhoto));
 
@@ -143,6 +183,63 @@ export function AlbumScreen({
     if (dayFilter === 'all') return merged;
     return merged.filter((p) => p.dayId === dayFilter);
   }, [drivePhotos, localPhotos, dayFilter]);
+
+  const contentIdeas = trip.contentIdeas ?? [];
+  const filteredIdeas = useMemo(() => {
+    const sorted = [...contentIdeas].sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'to-shoot' ? -1 : 1;
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+    if (ideaFilter === 'all') return sorted;
+    return sorted.filter((i) => i.status === ideaFilter);
+  }, [contentIdeas, ideaFilter]);
+
+  const dayIndexLabel = useCallback(
+    (dayId?: string) => {
+      if (!dayId) return '';
+      const idx = tripDays.findIndex((d) => d.id === dayId);
+      if (idx >= 0) return `Day ${idx + 1}`;
+      return '';
+    },
+    [tripDays],
+  );
+
+  const handleSaveIdea = (saved: ContentIdea, isNew: boolean) => {
+    onUpdateTrip(
+      (prev) => {
+        const list = prev.contentIdeas ?? [];
+        const exists = list.some((i) => i.id === saved.id);
+        return {
+          ...prev,
+          contentIdeas: exists ? list.map((i) => (i.id === saved.id ? saved : i)) : [saved, ...list],
+        };
+      },
+      isNew ? 'Content idea added' : 'Content idea saved',
+    );
+  };
+
+  const handleDeleteIdea = (ideaId: string) => {
+    onUpdateTrip(
+      (prev) => ({
+        ...prev,
+        contentIdeas: (prev.contentIdeas ?? []).filter((i) => i.id !== ideaId),
+      }),
+      'Content idea deleted',
+    );
+  };
+
+  const handleToggleIdeaStatus = (idea: ContentIdea) => {
+    const nextStatus: ContentIdeaStatus = idea.status === 'shot' ? 'to-shoot' : 'shot';
+    onUpdateTrip(
+      (prev) => ({
+        ...prev,
+        contentIdeas: (prev.contentIdeas ?? []).map((i) =>
+          i.id === idea.id ? { ...i, status: nextStatus } : i,
+        ),
+      }),
+      nextStatus === 'shot' ? `Marked "${idea.title}" shot` : `Marked "${idea.title}" to shoot`,
+    );
+  };
 
   const handleCropConfirmed = (cropped: CroppedImageResult) => {
     const rawName = cropFile?.name || 'photo.jpg';
@@ -334,238 +431,425 @@ export function AlbumScreen({
 
   return (
     <div className="album-root">
+      {/* Header with Photos | Ideas Segmented Pill Switcher (identical style to Plan Trail | Table) */}
       <header className="album-header">
         <h1 className="album-title">Album</h1>
-        <div className="album-actions">
-          {driveFolderUrl && (
-            <Button
-              variant="glass"
-              size="sm"
-              rightIcon={<ArrowUpRight size={14} strokeWidth={2} />}
-              onClick={() => window.open(driveFolderUrl, '_blank', 'noopener,noreferrer')}
-            >
-              Drive
-            </Button>
-          )}
-          <Button
-            variant="matcha"
-            size="sm"
-            leftIcon={<Upload size={14} strokeWidth={2} />}
-            onClick={() => fileInputRef.current?.click()}
+        <div className="album-view-switch" role="tablist" aria-label="Album section">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={albumTab === 'photos'}
+            className={`album-view-btn ${albumTab === 'photos' ? 'album-view-btn--active' : ''}`}
+            onClick={() => setAlbumTab('photos')}
           >
-            Upload
-          </Button>
+            Photos
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={albumTab === 'ideas'}
+            className={`album-view-btn ${albumTab === 'ideas' ? 'album-view-btn--active' : ''}`}
+            onClick={() => setAlbumTab('ideas')}
+          >
+            Ideas
+          </button>
         </div>
       </header>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) {
-            setCropFile(f);
-            e.target.value = '';
-          }
-        }}
-      />
-
-      {/* Dynamic Day Filter Pills */}
-      <div className="plan-filter-row" role="tablist" aria-label="Filter photos by day">
-        <button
-          type="button"
-          className={`plan-chip tactile ${dayFilter === 'all' ? 'plan-chip--active' : ''}`}
-          onClick={() => setDayFilter('all')}
-        >
-          All
-        </button>
-        {tripDays.map((day, idx) => (
-          <button
-            key={day.id}
-            type="button"
-            className={`plan-chip tactile ${dayFilter === day.id ? 'plan-chip--active' : ''}`}
-            onClick={() => setDayFilter(day.id)}
-          >
-            Day {idx + 1}
-          </button>
-        ))}
-      </div>
-
-      {/* Real Google Drive Health Check Status Bar */}
-      {hasSyncScript ? (
-        syncHealth.status === 'error' ? (
-          <GlassCard
-            variant="clear"
-            padding="sm"
-            style={{
-              borderColor: 'rgba(207, 77, 94, 0.4)',
-              background: 'rgba(255, 245, 246, 0.78)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <AlertCircle size={15} strokeWidth={2} color="var(--accent-coral)" style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-coral)' }}>
-                Drive sync failed — {syncHealth.error}
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button
-                variant="glass"
-                size="sm"
-                leftIcon={<RefreshCw size={13} strokeWidth={2} />}
-                onClick={() => void syncFromDrive(true)}
+      {albumTab === 'photos' ? (
+        <>
+          {/* Photos Toolbar: Day Filters + Drive / Upload */}
+          <div className="album-subbar">
+            <div className="plan-filter-row" role="tablist" aria-label="Filter photos by day">
+              <button
+                type="button"
+                className={`plan-chip tactile ${dayFilter === 'all' ? 'plan-chip--active' : ''}`}
+                onClick={() => setDayFilter('all')}
               >
-                Retry
+                All
+              </button>
+              {tripDays.map((day, idx) => (
+                <button
+                  key={day.id}
+                  type="button"
+                  className={`plan-chip tactile ${dayFilter === day.id ? 'plan-chip--active' : ''}`}
+                  onClick={() => setDayFilter(day.id)}
+                >
+                  Day {idx + 1}
+                </button>
+              ))}
+            </div>
+            <div className="album-actions">
+              {driveFolderUrl && (
+                <Button
+                  variant="glass"
+                  size="sm"
+                  rightIcon={<ArrowUpRight size={14} strokeWidth={2} />}
+                  onClick={() => window.open(driveFolderUrl, '_blank', 'noopener,noreferrer')}
+                >
+                  Drive
+                </Button>
+              )}
+              <Button
+                variant="matcha"
+                size="sm"
+                leftIcon={<Upload size={14} strokeWidth={2} />}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Upload
               </Button>
+            </div>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) {
+                setCropFile(f);
+                e.target.value = '';
+              }
+            }}
+          />
+
+          {/* Real Google Drive Health Check Status Bar */}
+          {hasSyncScript ? (
+            syncHealth.status === 'error' ? (
+              <GlassCard
+                variant="clear"
+                padding="sm"
+                style={{
+                  borderColor: 'rgba(207, 77, 94, 0.4)',
+                  background: 'rgba(255, 245, 246, 0.78)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <AlertCircle size={15} strokeWidth={2} color="var(--accent-coral)" style={{ flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-coral)' }}>
+                    Drive sync failed — {syncHealth.error}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    leftIcon={<RefreshCw size={13} strokeWidth={2} />}
+                    onClick={() => void syncFromDrive(true)}
+                  >
+                    Retry
+                  </Button>
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    leftIcon={<Settings2 size={13} strokeWidth={2} />}
+                    onClick={onOpenSettings}
+                  >
+                    Settings
+                  </Button>
+                </div>
+              </GlassCard>
+            ) : (
+              <GlassCard
+                variant="clear"
+                padding="sm"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background:
+                        syncHealth.status === 'ok' ? 'var(--accent-mint)' : 'var(--accent-amber)',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span>
+                    {isSyncing
+                      ? 'Checking Google Drive...'
+                      : `Google Drive synced · ${drivePhotos.length} ${drivePhotos.length === 1 ? 'photo' : 'photos'}`}
+                  </span>
+                </span>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {localPhotos.length > 0 && syncHealth.status === 'ok' && (
+                    <Button
+                      variant="matcha"
+                      size="sm"
+                      disabled={pushingLocal}
+                      leftIcon={<CloudUpload size={13} strokeWidth={2} />}
+                      onClick={() => void handlePushAllLocalToDrive()}
+                    >
+                      {pushingLocal ? 'Pushing...' : `Push to Drive (${localPhotos.length})`}
+                    </Button>
+                  )}
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    disabled={isSyncing}
+                    leftIcon={
+                      <RefreshCw
+                        size={13}
+                        strokeWidth={2}
+                        style={isSyncing ? { animation: 'gaskeun-spin 0.9s linear infinite' } : undefined}
+                      />
+                    }
+                    onClick={() => void syncFromDrive(true)}
+                  >
+                    Sync
+                  </Button>
+                </div>
+              </GlassCard>
+            )
+          ) : (
+            <GlassCard
+              variant="clear"
+              padding="sm"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+              }}
+            >
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                {hasLinkedFolder
+                  ? 'Drive folder linked. Add your Apps Script URL to auto-sync photos here.'
+                  : 'Photos save locally until Google Drive sync is connected.'}
+              </span>
               <Button
                 variant="glass"
                 size="sm"
                 leftIcon={<Settings2 size={13} strokeWidth={2} />}
                 onClick={onOpenSettings}
               >
-                Settings
+                Connect Sync URL
               </Button>
-            </div>
-          </GlassCard>
-        ) : (
-          <GlassCard
-            variant="clear"
-            padding="sm"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
-              flexWrap: 'wrap',
-            }}
-          >
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                fontSize: 12,
-                fontWeight: 600,
-                color: 'var(--text-secondary)',
-              }}
-            >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background:
-                    syncHealth.status === 'ok' ? 'var(--accent-mint)' : 'var(--accent-amber)',
-                  flexShrink: 0,
-                }}
-              />
-              <span>
-                {isSyncing
-                  ? 'Checking Google Drive...'
-                  : `Google Drive synced · ${drivePhotos.length} ${drivePhotos.length === 1 ? 'photo' : 'photos'}`}
-              </span>
-            </span>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              {localPhotos.length > 0 && syncHealth.status === 'ok' && (
+            </GlassCard>
+          )}
+
+          {/* 2-Column Masonry Grid */}
+          {allPhotos.length === 0 ? (
+            <EmptyState
+              icon={<Images size={22} strokeWidth={1.8} />}
+              title="No trip photos yet"
+              description="Upload highlights from your gallery — original quality is preserved for sharing."
+              action={
                 <Button
                   variant="matcha"
                   size="sm"
-                  disabled={pushingLocal}
-                  leftIcon={<CloudUpload size={13} strokeWidth={2} />}
-                  onClick={() => void handlePushAllLocalToDrive()}
+                  leftIcon={<ImagePlus size={15} strokeWidth={2} />}
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  {pushingLocal ? 'Pushing...' : `Push to Drive (${localPhotos.length})`}
+                  Upload First Photo
                 </Button>
-              )}
-              <Button
-                variant="glass"
-                size="sm"
-                disabled={isSyncing}
-                leftIcon={
-                  <RefreshCw
-                    size={13}
-                    strokeWidth={2}
-                    style={isSyncing ? { animation: 'gaskeun-spin 0.9s linear infinite' } : undefined}
-                  />
-                }
-                onClick={() => void syncFromDrive(true)}
-              >
-                Sync
-              </Button>
+              }
+            />
+          ) : (
+            <div className="album-masonry">
+              {allPhotos.map((photo) => (
+                <button
+                  key={photo.id}
+                  type="button"
+                  className="album-card"
+                  onClick={() => setLightboxPhoto(photo)}
+                >
+                  <img src={photo.url} alt={photo.caption} className="album-card__img" loading="lazy" />
+                  {photo.source === 'local' && (
+                    <span className="album-card__badge">
+                      <Badge tone="neutral">Local</Badge>
+                    </span>
+                  )}
+                  <span className="album-card__caption">
+                    {photo.caption} · {photo.uploaderName}
+                  </span>
+                </button>
+              ))}
             </div>
-          </GlassCard>
-        )
+          )}
+        </>
       ) : (
-        <GlassCard
-          variant="clear"
-          padding="sm"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10,
-          }}
-        >
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.35 }}>
-            {hasLinkedFolder
-              ? 'Drive folder linked. Add your Apps Script URL to auto-sync photos here.'
-              : 'Photos save locally until Google Drive sync is connected.'}
-          </span>
-          <Button
-            variant="glass"
-            size="sm"
-            leftIcon={<Settings2 size={13} strokeWidth={2} />}
-            onClick={onOpenSettings}
-          >
-            Connect Sync URL
-          </Button>
-        </GlassCard>
-      )}
-
-      {/* 2-Column Masonry Grid */}
-      {allPhotos.length === 0 ? (
-        <EmptyState
-          icon={<Images size={22} strokeWidth={1.8} />}
-          title="No trip photos yet"
-          description="Upload highlights from your gallery — crop and compress automatically for fast sharing."
-          action={
+        /* ==================== IDEAS TAB (Minimalist Content Inspiration Board) ==================== */
+        <>
+          <div className="album-subbar">
+            <div className="plan-filter-row" role="tablist" aria-label="Filter content ideas">
+              {(
+                [
+                  { id: 'all', label: 'All' },
+                  { id: 'to-shoot', label: 'To Shoot' },
+                  { id: 'shot', label: 'Shot' },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={ideaFilter === f.id}
+                  className={`plan-chip tactile ${ideaFilter === f.id ? 'plan-chip--active' : ''}`}
+                  onClick={() => setIdeaFilter(f.id)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
             <Button
               variant="matcha"
               size="sm"
-              leftIcon={<ImagePlus size={15} strokeWidth={2} />}
-              onClick={() => fileInputRef.current?.click()}
+              leftIcon={<Plus size={14} strokeWidth={2.2} />}
+              onClick={() => {
+                setEditingIdea(null);
+                setIdeaSheetOpen(true);
+              }}
             >
-              Upload First Photo
+              Idea
             </Button>
-          }
-        />
-      ) : (
-        <div className="album-masonry">
-          {allPhotos.map((photo) => (
-            <button
-              key={photo.id}
-              type="button"
-              className="album-card"
-              onClick={() => setLightboxPhoto(photo)}
-            >
-              <img src={photo.url} alt={photo.caption} className="album-card__img" loading="lazy" />
-              {photo.source === 'local' && (
-                <span className="album-card__badge">
-                  <Badge tone="neutral">Local</Badge>
-                </span>
-              )}
-              <span className="album-card__caption">
-                {photo.caption} · {photo.uploaderName}
-              </span>
-            </button>
-          ))}
-        </div>
+          </div>
+
+          {filteredIdeas.length === 0 ? (
+            <EmptyState
+              icon={<Clapperboard size={22} strokeWidth={1.8} />}
+              title={ideaFilter === 'all' ? 'No content ideas yet' : 'No matching ideas'}
+              description="Save IG Reels, TikTok transitions, or group pose inspiration so the crew never forgets a shot."
+              action={
+                <Button
+                  variant="matcha"
+                  size="sm"
+                  leftIcon={<Plus size={14} strokeWidth={2.2} />}
+                  onClick={() => {
+                    setEditingIdea(null);
+                    setIdeaSheetOpen(true);
+                  }}
+                >
+                  Add First Idea
+                </Button>
+              }
+            />
+          ) : (
+            <div className="idea-list">
+              {filteredIdeas.map((idea) => {
+                const isShot = idea.status === 'shot';
+                const planDayText = idea.showInPlan ? dayIndexLabel(idea.dayId) : '';
+                const platLabel = formatPlatformLabel(idea.platform, idea.referenceUrl);
+
+                return (
+                  <GlassCard
+                    key={idea.id}
+                    variant="clear"
+                    padding="sm"
+                    interactive
+                    className={`idea-card ${isShot ? 'idea-card--shot' : ''}`}
+                    onClick={() => {
+                      setEditingIdea(idea);
+                      setIdeaSheetOpen(true);
+                    }}
+                  >
+                    <div className="idea-card__thumb">
+                      {idea.thumbnailUrl ? (
+                        <img
+                          src={idea.thumbnailUrl}
+                          alt={idea.title}
+                          className="idea-card__thumb-img"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div
+                          className={`idea-card__thumb-placeholder idea-card__thumb-placeholder--${idea.platform}`}
+                          aria-hidden="true"
+                        >
+                          <PlatformThumbIcon platform={idea.platform} />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="idea-card__body">
+                      <div className="idea-card__badges">
+                        <Badge tone="neutral">{platLabel}</Badge>
+                        {idea.showInPlan && (
+                          <Badge tone="amber">
+                            In Plan{planDayText ? ` · ${planDayText}` : ''}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <h3 className={`idea-card__title ${isShot ? 'idea-card__title--shot' : ''}`}>
+                        {idea.title}
+                      </h3>
+
+                      {idea.notes && <p className="idea-card__notes">{idea.notes}</p>}
+
+                      <div className="idea-card__actions">
+                        {idea.referenceUrl && (
+                          <a
+                            href={idea.referenceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="idea-watch-btn tactile"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span>Watch</span>
+                            <ArrowUpRight size={13} strokeWidth={2.2} />
+                          </a>
+                        )}
+
+                        <button
+                          type="button"
+                          className={`idea-toggle-btn tactile ${
+                            isShot ? 'idea-toggle-btn--shot' : ''
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleIdeaStatus(idea);
+                          }}
+                        >
+                          {isShot && <Check size={12.5} strokeWidth={2.6} />}
+                          <span>{isShot ? 'Shot' : 'To Shoot'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </GlassCard>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
+
+      {/* Content Idea Add/Edit Sheet */}
+      <ContentIdeaSheet
+        open={ideaSheetOpen}
+        trip={trip}
+        idea={editingIdea}
+        activeMemberId={activeMemberId}
+        activeMemberName={activeMemberName}
+        canEditTrip={canEdit}
+        onSave={handleSaveIdea}
+        onDelete={handleDeleteIdea}
+        onClose={() => {
+          setIdeaSheetOpen(false);
+          setEditingIdea(null);
+        }}
+      />
 
       {/* Interactive Photo Cropper Sheet (Original | 4:5 | 1:1 | 16:9) */}
       <PhotoCropperSheet

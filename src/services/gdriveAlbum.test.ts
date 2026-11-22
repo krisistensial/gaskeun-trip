@@ -60,9 +60,10 @@ describe('Google Drive Album Bridge helpers & diagnostics', () => {
     });
   });
 
-  it('identifies [ASSET- filenames so card/avatar uploads never pollute Album', () => {
+  it('identifies [ASSET- filenames so card/avatar/idea uploads never pollute Album', () => {
     expect(isAssetFileName('[ASSET-hero]__day-1__Trip__Kris__Cover.jpg')).toBe(true);
     expect(isAssetFileName('[ASSET-plan]__day-3__Sat__Kris__Ganjuran.jpg')).toBe(true);
+    expect(isAssetFileName('[ASSET-idea]__asset__idea__Kris__Convoy.jpg')).toBe(true);
     expect(isAssetFileName('[asset-avatar]__Kris.jpg')).toBe(true);
     expect(isAssetFileName('day-3__Day 3__Kris__Goa Maria Ganjuran.jpg')).toBe(false);
   });

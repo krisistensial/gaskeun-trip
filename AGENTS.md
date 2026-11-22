@@ -2,7 +2,7 @@
 
 > **App:** GASKEUN! Group Travel PWA (`vite-plugin-pwa`, base path `/gaskeun-trip/`, deployed via GitHub Pages).
 > **Pilot Trip:** `SOLO-27` (Solo – Jogja, Feb 11–14, 2027 · Default Crew PIN: `1234`).
-> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–7.
+> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–8.
 
 ---
 
@@ -28,8 +28,12 @@
 
 ---
 
-## 3. Field-Test Polish Patterns (Batches 1–7)
+## 3. Field-Test Polish Patterns (Batches 1–8)
 
+- **Content Ideas & Amber Plan Rundown Cards (Batch 8 — `AlbumScreen.tsx`, `ContentIdeaSheet.tsx`, `PlanScreen.tsx`, `contentIdeas.ts`):**
+  - Layer-1 `SharedTrip.contentIdeas?: ContentIdea[]` (minimalist schema: `title`, `referenceUrl`, `platform`, `notes?`, `thumbnailUrl?`, `status: 'to-shoot' | 'shot'`, `showInPlan`, `dayId?`, `time?`, `createdBy`, `createdAt`).
+  - `Album` header includes a `Photos | Ideas` segmented pill switcher (no new Dock icon). `Ideas` shows `All | To Shoot | Shot` filters, minimalist cards with `Watch ↗` + 1-tap `To Shoot` ↔ `Shot ✓` toggle, and `+ Idea` modal (`ContentIdeaSheet`) with auto platform detection, YouTube auto-thumbnails, optional screenshot upload via `uploadSharedImage(..., { kind: 'idea' })` (`[ASSET-idea]` prefix so gallery `Photos` stays clean), `Show in Plan Rundown` Day/Time picker, red `Delete` on left, and Matcha `Save Idea` on right.
+  - Ideas with `showInPlan: true` merge chronologically into `Plan → Trail` and `Plan → Table` (with a `Content` filter pill) styled in distinct **Warm Amber Glass** (`--accent-amber`) with Amber `TrailDot`, warm scrim if thumbnail exists, direct `Watch ↗`, and two-way synced `To Shoot` / `Shot ✓` toggle.
 - **Access Gate & Per-Member Passcode Guard (Batch 7 — `WhoAreYouScreen.tsx`, `TripMenuSheet.tsx`, `permissions.ts`):**
   - Optional 4-digit `passcode?: string` per `TripMember` in Layer 1 (`SharedTrip.members`).
   - Subtle `Lock` badge on protected crew cards; `Join as [Name]?` verifies 4-digit passcode (numeric keypad, masked with eye toggle, shake + error on mismatch) or offers optional first-time lock for unprotected profiles.

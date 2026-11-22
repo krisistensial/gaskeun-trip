@@ -523,6 +523,7 @@ export default function App() {
           {route === 'hub' && !activeRouteTarget && activeTab === 'plan' && (
             <PlanScreen
               trip={activeTrip}
+              activeMemberId={activeMemberId}
               activeMemberName={activeMemberName}
               canEdit={canEdit}
               onRequestUnlockPin={() => requestUnlockPin()}
@@ -548,8 +549,11 @@ export default function App() {
             <AlbumScreen
               trip={activeTrip}
               localPhotos={localData?.localAlbumPhotos ?? []}
+              activeMemberId={activeMemberId}
               activeMemberName={activeMemberName}
+              canEdit={canEdit}
               onSaveLocalPhotos={(photos, msg) => void handleSaveLocalAlbumPhotos(photos, msg)}
+              onUpdateTrip={handleUpdateTrip}
               onOpenSettings={openTripSettingsGated}
               onNotify={showToast}
             />

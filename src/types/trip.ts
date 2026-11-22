@@ -199,6 +199,24 @@ export interface AlbumPhoto {
   createdAt: string;
 }
 
+export type ContentPlatform = 'instagram' | 'tiktok' | 'youtube' | 'pinterest' | 'web';
+export type ContentIdeaStatus = 'to-shoot' | 'shot';
+
+export interface ContentIdea {
+  id: string;
+  title: string;
+  referenceUrl: string;
+  platform: ContentPlatform;
+  notes?: string;
+  thumbnailUrl?: string;
+  status: ContentIdeaStatus;
+  showInPlan: boolean;
+  dayId?: string;
+  time?: string; // "HH:mm"
+  createdBy: string; // memberId
+  createdAt: string;
+}
+
 export interface SharedTrip {
   schemaVersion: number;
   /** Internal seed revision for non-destructive pilot demo upgrades */
@@ -228,6 +246,8 @@ export interface SharedTrip {
   /** Only 'pool' and 'fundraise' transactions belong in Layer 1 */
   transactions: Transaction[];
   groupPrep: PrepTask[];
+  /** Shared trip content inspiration board (IG Reels, TikTok, Shorts, etc.) */
+  contentIdeas?: ContentIdea[];
   updatedAt: string;
 }
 

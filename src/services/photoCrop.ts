@@ -9,6 +9,7 @@ export type CropPresetId =
   | 'stay-cover'
   | 'train-photo'
   | 'avatar'
+  | 'idea'
   | 'album';
 
 export type AlbumAspectChoice = 'original' | '4:5' | '1:1' | '16:9';
@@ -74,6 +75,15 @@ export const CROP_PRESETS: Record<Exclude<CropPresetId, 'album'>, CropPresetSpec
     outputH: 256,
     quality: 0.86,
     circular: true,
+  },
+  idea: {
+    id: 'idea',
+    title: 'Crop Reference Cover',
+    ratioLabel: '4:5',
+    aspect: 4 / 5,
+    outputW: 960,
+    outputH: 1200,
+    quality: 0.86,
   },
 };
 

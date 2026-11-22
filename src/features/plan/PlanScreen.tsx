@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { AlertTriangle, ArrowUpRight, CalendarPlus, FileSpreadsheet } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  CalendarPlus,
+  Check,
+  Clapperboard,
+  FileSpreadsheet,
+} from 'lucide-react';
 import {
   Badge,
   Button,
@@ -9,11 +16,19 @@ import {
   GlassCard,
   TrailDot,
 } from '../../components/atoms';
+import { ContentIdeaSheet } from '../../components/organisms/ContentIdeaSheet';
+import {
+  formatPlatformLabel,
+  mergePlanEntries,
+  type PlanFilterOption,
+} from '../../services/contentIdeas';
 import { exportTripToExcel } from '../../services/excelExporter';
 import { formatCompactIDR } from '../../services/ledger';
 import { toggleStopDoneStatus } from '../../services/permissions';
 import { isClosedOnDate } from '../../services/planUtils';
 import type {
+  ContentIdea,
+  ContentIdeaStatus,
   PlanItem,
   PlanItemStatus,
   PlanItemType,
@@ -97,6 +112,7 @@ function resolveEffectiveStatuses(
 
 export interface PlanScreenProps {
   trip: SharedTrip;
+  activeMemberId: string | null;
   activeMemberName: string;
   canEdit: boolean;
   onRequestUnlockPin: () => void;
@@ -106,6 +122,7 @@ export interface PlanScreenProps {
 
 export function PlanScreen({
   trip,
+  activeMemberId,
   activeMemberName,
   canEdit,
   onRequestUnlockPin,
@@ -116,9 +133,10 @@ export function PlanScreen({
   const [selectedDayId, setSelectedDayId] = useState<string>(
     trip.days.find((d) => d.id === 'day-3')?.id ?? trip.days[0]?.id ?? 'day-1',
   );
-  const [typeFilter, setTypeFilter] = useState<'all' | PlanItemType>('all');
+  const [typeFilter, setTypeFilter] = useState<PlanFilterOption>('all');
   const [editingStopId, setEditingStopId] = useState<string | null>(null);
   const [draftNewStop, setDraftNewStop] = useState<PlanItem | null>(null);
+  const [activeIdeaModal, setActiveIdeaModal] = useState<ContentIdea | null>(null);
   const [stageHeight, setStageHeight] = useState<number>(ARC_HEIGHT);
   const [centeredStopId, setCenteredStopId] = useState<string | null>(null);
 
@@ -143,14 +161,14 @@ export function PlanScreen({
     [trip.itinerary, selectedDay?.id],
   );
 
-  const dayItems = useMemo(
-    () => allDayItems.filter((item) => typeFilter === 'all' || item.type === typeFilter),
-    [allDayItems, typeFilter],
+  const timelineEntries = useMemo(
+    () => mergePlanEntries(trip.itinerary, trip.contentIdeas, selectedDay?.id, typeFilter),
+    [trip.itinerary, trip.contentIdeas, selectedDay?.id, typeFilter],
   );
 
   const effectiveStatusMap = useMemo(
-    () => resolveEffectiveStatuses(dayItems, selectedDay?.date),
-    [dayItems, selectedDay?.date],
+    () => resolveEffectiveStatuses(allDayItems, selectedDay?.date),
+    [allDayItems, selectedDay?.date],
   );
 
   const dottedArcPath = useMemo(
@@ -184,10 +202,10 @@ export function PlanScreen({
     let closestId: string | null = null;
     let minDist = Number.POSITIVE_INFINITY;
 
-    for (const stop of dayItems) {
-      const rowEl = rowRefs.current.get(stop.id);
-      const dotEl = dotRefs.current.get(stop.id);
-      const cardEl = cardRefs.current.get(stop.id);
+    for (const entry of timelineEntries) {
+      const rowEl = rowRefs.current.get(entry.id);
+      const dotEl = dotRefs.current.get(entry.id);
+      const cardEl = cardRefs.current.get(entry.id);
       if (!rowEl || !dotEl || !cardEl) continue;
 
       const rowRect = rowEl.getBoundingClientRect();
@@ -197,7 +215,7 @@ export function PlanScreen({
 
       if (Math.abs(u) < minDist) {
         minDist = Math.abs(u);
-        closestId = stop.id;
+        closestId = entry.id;
       }
 
       const exactX = getArcX(u);
@@ -231,7 +249,7 @@ export function PlanScreen({
         }
       }
     }
-  }, [dayItems]);
+  }, [timelineEntries]);
 
   // Measure frozen trail stage height so dotted SVG path stays 100% circular (zero stretching)
   useEffect(() => {
@@ -256,7 +274,7 @@ export function PlanScreen({
 
   // Attach 60fps rAF scroll listener on the dedicated trail scroll viewport
   useEffect(() => {
-    if (viewMode !== 'trail' || activeEditingItem || dayItems.length === 0) return;
+    if (viewMode !== 'trail' || activeEditingItem || timelineEntries.length === 0) return;
     const scroller = scrollRef.current;
     if (!scroller) return;
 
@@ -291,22 +309,28 @@ export function PlanScreen({
       scroller.removeEventListener('pointerdown', markUserInteracted);
       window.removeEventListener('resize', scheduleSync);
     };
-  }, [viewMode, activeEditingItem, dayItems, stageHeight, syncArcPositions]);
+  }, [viewMode, activeEditingItem, timelineEntries, stageHeight, syncArcPositions]);
 
   // Auto-center the active ("Now") stop when switching day/filter so it opens right at arc apex
   useEffect(() => {
-    if (viewMode !== 'trail' || activeEditingItem || dayItems.length === 0) return;
+    if (viewMode !== 'trail' || activeEditingItem || timelineEntries.length === 0) return;
     userInteractedRef.current = false;
     centeredIdRef.current = null;
 
-    const targetStop =
-      dayItems.find((s) => effectiveStatusMap.get(s.id) === 'active') ??
-      dayItems.find((s) => effectiveStatusMap.get(s.id) !== 'done') ??
-      dayItems[0];
+    const targetEntry =
+      timelineEntries.find(
+        (e) => e.kind === 'stop' && effectiveStatusMap.get(e.id) === 'active',
+      ) ??
+      timelineEntries.find(
+        (e) =>
+          (e.kind === 'stop' && effectiveStatusMap.get(e.id) !== 'done') ||
+          (e.kind === 'idea' && e.idea.status !== 'shot'),
+      ) ??
+      timelineEntries[0];
 
     const raf = window.requestAnimationFrame(() => {
       const scroller = scrollRef.current;
-      const rowEl = targetStop ? rowRefs.current.get(targetStop.id) : undefined;
+      const rowEl = targetEntry ? rowRefs.current.get(targetEntry.id) : undefined;
       if (scroller && rowEl) {
         const targetTop =
           rowEl.offsetTop - scroller.clientHeight / 2 + rowEl.offsetHeight / 2;
@@ -316,7 +340,7 @@ export function PlanScreen({
     });
 
     return () => window.cancelAnimationFrame(raf);
-  }, [selectedDayId, typeFilter, viewMode, activeEditingItem, dayItems.length]);
+  }, [selectedDayId, typeFilter, viewMode, activeEditingItem, timelineEntries.length]);
 
   const handleAddDay = () => {
     if (!canEdit) {
@@ -412,6 +436,43 @@ export function PlanScreen({
     setEditingStopId(null);
   };
 
+  const handleToggleIdeaShot = (idea: ContentIdea) => {
+    const nextStatus: ContentIdeaStatus = idea.status === 'shot' ? 'to-shoot' : 'shot';
+    onUpdateTrip(
+      (prev) => ({
+        ...prev,
+        contentIdeas: (prev.contentIdeas ?? []).map((i) =>
+          i.id === idea.id ? { ...i, status: nextStatus } : i,
+        ),
+      }),
+      nextStatus === 'shot' ? `Marked "${idea.title}" shot` : `Marked "${idea.title}" to shoot`,
+    );
+  };
+
+  const handleSaveIdea = (saved: ContentIdea, isNew: boolean) => {
+    onUpdateTrip(
+      (prev) => {
+        const list = prev.contentIdeas ?? [];
+        const exists = list.some((i) => i.id === saved.id);
+        return {
+          ...prev,
+          contentIdeas: exists ? list.map((i) => (i.id === saved.id ? saved : i)) : [saved, ...list],
+        };
+      },
+      isNew ? 'Content idea added' : 'Content idea saved',
+    );
+  };
+
+  const handleDeleteIdea = (ideaId: string) => {
+    onUpdateTrip(
+      (prev) => ({
+        ...prev,
+        contentIdeas: (prev.contentIdeas ?? []).filter((i) => i.id !== ideaId),
+      }),
+      'Content idea deleted',
+    );
+  };
+
   const openStopRoute = (stop: PlanItem) => {
     onOpenRoute({
       title: stop.title,
@@ -492,34 +553,56 @@ export function PlanScreen({
           {canEdit && <DayPill variant="add" onClick={handleAddDay} />}
         </div>
 
-        {/* Category Filter Pills */}
+        {/* Category Filter Pills (including Amber Content filter) */}
         <div className="plan-filter-row" role="tablist" aria-label="Stop type filter">
-          {(['all', 'transit', 'place', 'activity'] as const).map((f) => (
+          {(['all', 'transit', 'place', 'activity', 'content'] as const).map((f) => (
             <button
               key={f}
               type="button"
-              className={`plan-chip tactile ${typeFilter === f ? 'plan-chip--active' : ''}`}
+              className={[
+                'plan-chip',
+                'tactile',
+                typeFilter === f
+                  ? f === 'content'
+                    ? 'plan-chip--content-active'
+                    : 'plan-chip--active'
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               onClick={() => setTypeFilter(f)}
             >
-              {f === 'all' ? 'All' : formatStopType(f)}
+              {f === 'all' ? 'All' : f === 'content' ? 'Content' : formatStopType(f)}
             </button>
           ))}
         </div>
       </div>
 
       {/* Content: Frozen Dotted Circular Arc Trail (03a) or Clean 3-Column Table (03b) */}
-      {dayItems.length === 0 ? (
+      {timelineEntries.length === 0 ? (
         <div className="plan-table-scroll">
           <EmptyState
-            icon={<CalendarPlus size={22} strokeWidth={1.8} />}
-            title={`No stops for ${dayLabelStr}`}
+            icon={
+              typeFilter === 'content' ? (
+                <Clapperboard size={22} strokeWidth={1.8} />
+              ) : (
+                <CalendarPlus size={22} strokeWidth={1.8} />
+              )
+            }
+            title={
+              typeFilter === 'content'
+                ? `No content shoots for ${dayLabelStr}`
+                : `No stops for ${dayLabelStr}`
+            }
             description={
-              canEdit
-                ? 'Tap the floating + button to add a place, transit leg, or group activity.'
-                : 'No stops planned for this day yet.'
+              typeFilter === 'content'
+                ? 'Enable "Show in Plan Rundown" on any idea in Album → Ideas to schedule it here.'
+                : canEdit
+                  ? 'Tap the floating + button to add a place, transit leg, or group activity.'
+                  : 'No stops planned for this day yet.'
             }
             action={
-              canEdit ? (
+              typeFilter !== 'content' && canEdit ? (
                 <Button variant="matcha" size="sm" onClick={handleAddNewStop}>
                   Add First Stop
                 </Button>
@@ -555,13 +638,128 @@ export function PlanScreen({
           {/* Dedicated Scroll Viewport with Mandatory Center Snap + Magnetic "Tugh" */}
           <div ref={scrollRef} className="trail-scroll-viewport">
             <div className="trail-list-inner">
-              {dayItems.map((stop) => {
+              {timelineEntries.map((entry) => {
+                const isCentered = centeredStopId === entry.id;
+
+                if (entry.kind === 'idea') {
+                  const idea = entry.idea;
+                  const isShot = idea.status === 'shot';
+                  const platLabel = formatPlatformLabel(idea.platform, idea.referenceUrl);
+
+                  return (
+                    <div
+                      key={idea.id}
+                      ref={(el) => {
+                        if (el) rowRefs.current.set(idea.id, el);
+                        else rowRefs.current.delete(idea.id);
+                      }}
+                      className={`trail-item ${isCentered ? 'trail-item--centered' : ''}`}
+                    >
+                      <button
+                        ref={(el) => {
+                          if (el) dotRefs.current.set(idea.id, el);
+                          else dotRefs.current.delete(idea.id);
+                        }}
+                        type="button"
+                        className="trail-item__dot trail-item__dot--btn"
+                        aria-label={isShot ? `Mark ${idea.title} to shoot` : `Mark ${idea.title} shot`}
+                        onClick={() => handleToggleIdeaShot(idea)}
+                      >
+                        <TrailDot status={isShot ? 'content-done' : 'content'} />
+                      </button>
+
+                      <div
+                        ref={(el) => {
+                          if (el) cardRefs.current.set(idea.id, el);
+                          else cardRefs.current.delete(idea.id);
+                        }}
+                        className="trail-item__card-wrap"
+                      >
+                        <GlassCard
+                          variant="clear"
+                          padding="md"
+                          interactive
+                          className={[
+                            'plan-content-card',
+                            isShot ? 'plan-content-card--shot' : '',
+                            idea.thumbnailUrl ? 'plan-content-card--photo' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                          onClick={() => setActiveIdeaModal(idea)}
+                        >
+                          {idea.thumbnailUrl && (
+                            <>
+                              <img
+                                src={idea.thumbnailUrl}
+                                alt=""
+                                aria-hidden="true"
+                                className="card-bg-photo"
+                                loading="lazy"
+                              />
+                              <div className="plan-content-card__scrim" aria-hidden="true" />
+                            </>
+                          )}
+
+                          <div className="plan-content-head">
+                            <span className="plan-content-meta">
+                              {idea.time || 'Anytime'} · {platLabel}
+                            </span>
+                            <span className="plan-content-badge">
+                              <Clapperboard size={11} strokeWidth={2.2} />
+                              <span>Content</span>
+                            </span>
+                          </div>
+
+                          <h3
+                            className={`plan-content-title ${
+                              isShot ? 'plan-content-title--shot' : ''
+                            }`}
+                          >
+                            {idea.title}
+                          </h3>
+
+                          {idea.notes && <p className="plan-content-notes">{idea.notes}</p>}
+
+                          <div className="plan-content-actions">
+                            {idea.referenceUrl && (
+                              <a
+                                href={idea.referenceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="plan-content-watch tactile"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span>Watch</span>
+                                <ArrowUpRight size={13} strokeWidth={2.2} />
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              className={`plan-content-toggle tactile ${
+                                isShot ? 'plan-content-toggle--shot' : ''
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleIdeaShot(idea);
+                              }}
+                            >
+                              {isShot && <Check size={12.5} strokeWidth={2.6} />}
+                              <span>{isShot ? 'Shot' : 'To Shoot'}</span>
+                            </button>
+                          </div>
+                        </GlassCard>
+                      </div>
+                    </div>
+                  );
+                }
+
+                const stop = entry.stop;
                 const closedCheck = isClosedOnDate(stop.closedDays, selectedDay?.date);
                 const effStatus = effectiveStatusMap.get(stop.id) ?? stop.status;
                 const dotStatus =
                   effStatus === 'done' ? 'done' : effStatus === 'active' ? 'active' : 'upcoming';
                 const typeLabel = formatStopType(stop.type);
-                const isCentered = centeredStopId === stop.id;
 
                 return (
                   <div
@@ -764,42 +962,81 @@ export function PlanScreen({
                   EST.
                 </span>
               </div>
-              {dayItems.map((stop) => (
-                <button
-                  key={stop.id}
-                  type="button"
-                  className="plan-table-row tactile"
-                  onClick={() => setEditingStopId(stop.id)}
-                >
-                  <span className="plan-table-time">{stop.startTime}</span>
-                  <span
-                    style={{
-                      fontSize: 13.5,
-                      fontWeight: 600,
-                      color: 'var(--text-primary)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      textDecoration: stop.status === 'done' ? 'line-through' : undefined,
-                      opacity: stop.status === 'done' ? 0.65 : 1,
-                    }}
+              {timelineEntries.map((entry) => {
+                if (entry.kind === 'idea') {
+                  const idea = entry.idea;
+                  const isShot = idea.status === 'shot';
+                  return (
+                    <button
+                      key={idea.id}
+                      type="button"
+                      className="plan-table-row plan-table-row--content tactile"
+                      onClick={() => setActiveIdeaModal(idea)}
+                    >
+                      <span className="plan-table-time plan-table-time--content">
+                        {idea.time || '—'}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 13.5,
+                          fontWeight: 600,
+                          color: '#7A4A0E',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          textDecoration: isShot ? 'line-through' : undefined,
+                          opacity: isShot ? 0.65 : 1,
+                        }}
+                      >
+                        {idea.title}
+                      </span>
+                      <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <Badge tone={isShot ? 'mint' : 'amber'}>
+                          {isShot ? 'Shot' : 'Content'}
+                        </Badge>
+                      </span>
+                    </button>
+                  );
+                }
+
+                const stop = entry.stop;
+                return (
+                  <button
+                    key={stop.id}
+                    type="button"
+                    className="plan-table-row tactile"
+                    onClick={() => setEditingStopId(stop.id)}
                   >
-                    {stop.title}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: 'var(--text-secondary)',
-                      textAlign: 'right',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {formatEstimate(stop.costEstimate)}
-                  </span>
-                </button>
-              ))}
+                    <span className="plan-table-time">{stop.startTime}</span>
+                    <span
+                      style={{
+                        fontSize: 13.5,
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        textDecoration: stop.status === 'done' ? 'line-through' : undefined,
+                        opacity: stop.status === 'done' ? 0.65 : 1,
+                      }}
+                    >
+                      {stop.title}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-display)',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: 'var(--text-secondary)',
+                        textAlign: 'right',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {formatEstimate(stop.costEstimate)}
+                    </span>
+                  </button>
+                );
+              })}
             </GlassCard>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -827,6 +1064,20 @@ export function PlanScreen({
           onClick={handleAddNewStop}
         />
       )}
+
+      {/* Two-way synced Content Idea Sheet opened directly from Plan rundown */}
+      <ContentIdeaSheet
+        open={Boolean(activeIdeaModal)}
+        trip={trip}
+        idea={activeIdeaModal}
+        activeMemberId={activeMemberId}
+        activeMemberName={activeMemberName}
+        canEditTrip={canEdit}
+        defaultDayId={selectedDay?.isIdeas ? undefined : selectedDay?.id}
+        onSave={handleSaveIdea}
+        onDelete={handleDeleteIdea}
+        onClose={() => setActiveIdeaModal(null)}
+      />
     </div>
   );
 }

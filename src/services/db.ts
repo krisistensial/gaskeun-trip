@@ -133,6 +133,8 @@ export async function ensureSeedTrip(seed: SharedTrip): Promise<SharedTrip> {
       gdriveFolderUrl: isGenericDrive ? seed.gdriveFolderUrl : existing.gdriveFolderUrl,
       gdriveScriptUrl: hasCustomScript ? existing.gdriveScriptUrl : seed.gdriveScriptUrl,
       itinerary: upgradedItinerary,
+      contentIdeas:
+        existing.contentIdeas !== undefined ? existing.contentIdeas : seed.contentIdeas,
     };
     await saveSharedTrip(upgraded);
     return upgraded;

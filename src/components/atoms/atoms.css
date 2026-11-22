@@ -508,6 +508,22 @@
   border: 2px solid var(--brand-matcha);
 }
 
+.gk-trail-dot--content {
+  width: 16px;
+  height: 16px;
+  background: rgba(255, 248, 236, 0.96);
+  border: 2.2px solid var(--accent-amber);
+  box-shadow: 0 0 0 3px rgba(217, 145, 54, 0.2);
+}
+
+.gk-trail-dot--content-done {
+  width: 22px;
+  height: 22px;
+  background: var(--accent-amber-soft);
+  color: #9A5F16;
+  border: 1.5px solid #FFFFFF;
+}
+
 /* --- Toast --- */
 .gk-toast-host {
   position: fixed;

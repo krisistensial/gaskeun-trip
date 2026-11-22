@@ -122,6 +122,12 @@
   color: var(--text-inverse);
 }
 
+.plan-chip--content-active {
+  background: var(--accent-amber);
+  border-color: var(--accent-amber);
+  color: #FFFFFF;
+}
+
 /* --- 03a Frozen Dotted Circular C-Arc Stage + Magnetic Snap "Tugh" Viewport --- */
 .trail-stage {
   position: relative;
@@ -401,6 +407,192 @@
   box-shadow:
     0 22px 46px -14px rgba(18, 32, 28, 0.34),
     inset 0 1.5px 1px rgba(255, 255, 255, 0.55);
+}
+
+/* --- Warm Amber Glass Content Idea Cards inside Plan Rundown --- */
+.plan-content-card {
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 248, 236, 0.86) 0%,
+    rgba(253, 239, 214, 0.72) 100%
+  ) !important;
+  border: 1.5px solid rgba(217, 145, 54, 0.34) !important;
+  box-shadow:
+    0 14px 32px -12px rgba(154, 95, 22, 0.16),
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.92);
+}
+
+.trail-item--centered .gk-glass.plan-content-card {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 248, 236, 0.94) 0%,
+    rgba(253, 239, 214, 0.82) 100%
+  ) !important;
+  border-color: rgba(217, 145, 54, 0.56) !important;
+  box-shadow:
+    0 20px 44px -14px rgba(154, 95, 22, 0.24),
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.96);
+}
+
+.plan-content-card--shot {
+  opacity: 0.78;
+}
+
+.plan-content-card > *:not(.card-bg-photo):not(.plan-content-card__scrim) {
+  position: relative;
+  z-index: 2;
+}
+
+.plan-content-card__scrim {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(64, 38, 12, 0.36) 0%,
+    rgba(46, 26, 8, 0.78) 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 224, 178, 0.38);
+}
+
+.plan-content-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.plan-content-meta {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #9A5F16;
+}
+
+.plan-content-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 9999px;
+  background: rgba(217, 145, 54, 0.18);
+  border: 1px solid rgba(217, 145, 54, 0.34);
+  color: #9A5F16;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.plan-content-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #3D270B;
+}
+
+.plan-content-title--shot {
+  text-decoration: line-through;
+  opacity: 0.72;
+}
+
+.plan-content-notes {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.38;
+  color: #6B4A1E;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.plan-content-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.plan-content-watch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 29px;
+  padding: 0 11px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(217, 145, 54, 0.32);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #7A4A0E;
+  text-decoration: none;
+}
+
+.plan-content-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 29px;
+  padding: 0 11px;
+  border-radius: 9999px;
+  background: rgba(217, 145, 54, 0.2);
+  border: 1px solid rgba(217, 145, 54, 0.38);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #9A5F16;
+}
+
+.plan-content-toggle--shot {
+  background: var(--accent-mint-soft);
+  border-color: rgba(43, 148, 107, 0.32);
+  color: var(--accent-mint);
+}
+
+/* Warm Photo Variant for Content Cards with Reference Cover */
+.plan-content-card--photo .plan-content-title {
+  color: #FFFFFF;
+  text-shadow: 0 1px 10px rgba(24, 14, 4, 0.55);
+}
+
+.plan-content-card--photo .plan-content-meta,
+.plan-content-card--photo .plan-content-notes {
+  color: rgba(255, 245, 230, 0.9);
+  text-shadow: 0 1px 6px rgba(24, 14, 4, 0.5);
+}
+
+.plan-content-card--photo .plan-content-badge {
+  background: rgba(217, 145, 54, 0.9);
+  border-color: rgba(255, 232, 198, 0.5);
+  color: #FFFFFF;
+}
+
+.plan-content-card--photo .plan-content-watch {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.44);
+  color: #FFFFFF;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.plan-content-card--photo .plan-content-toggle:not(.plan-content-toggle--shot) {
+  background: rgba(217, 145, 54, 0.88);
+  border-color: rgba(255, 232, 198, 0.45);
+  color: #FFFFFF;
+}
+
+.plan-table-row--content {
+  background: rgba(255, 248, 236, 0.72);
+}
+
+.plan-table-time--content {
+  color: #9A5F16;
 }
 
 /* --- 03b Plan Table View --- */

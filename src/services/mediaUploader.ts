@@ -1,7 +1,7 @@
 import type { SharedTrip } from '../types/trip';
 import { uploadPhotoToDrive } from './gdriveAlbum';
 
-export type SharedMediaKind = 'album' | 'hero' | 'plan' | 'stay' | 'train' | 'avatar';
+export type SharedMediaKind = 'album' | 'hero' | 'plan' | 'stay' | 'train' | 'avatar' | 'idea';
 
 export interface UploadSharedImageOptions {
   kind: SharedMediaKind;
