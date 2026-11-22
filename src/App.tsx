@@ -347,7 +347,7 @@ export default function App() {
         });
         handleUpdateTrip(
           (prev) => ({ ...prev, heroCoverUrl: uploaded.url }),
-          uploaded.source === 'drive'
+          uploaded.source === 'supabase'
             ? 'Shared cover updated for the crew'
             : 'Shared cover saved (syncs when online)',
         );

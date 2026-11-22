@@ -1,6 +1,6 @@
 -- ============================================================================
--- GASKEUN! — Supabase Free-Tier Cloud Sync Schema & Server-Side PIN RPC
--- Paste into Supabase SQL Editor and click "Run".
+-- GASKEUN! — Supabase Free-Tier Cloud Sync Schema, PIN RPC, & `trip-assets` Bucket
+-- Idempotent & safe to re-run: paste into Supabase SQL Editor and click "Run".
 -- ============================================================================
 
 create table if not exists public.shared_trips (
@@ -65,3 +65,36 @@ end;
 $$;
 
 grant execute on function public.create_or_mutate_trip(text, text, jsonb) to anon, authenticated;
+
+-- ============================================================================
+-- Public Storage Bucket: `trip-assets`
+-- Stores UI assets (hero cover, plan/stay/train photos, avatars, idea covers)
+-- so Google Drive remains 100% clean for `Album → Photos`.
+-- ============================================================================
+
+insert into storage.buckets (id, name, public)
+values ('trip-assets', 'trip-assets', true)
+on conflict (id) do update
+  set public = excluded.public;
+
+drop policy if exists "Allow public read trip-assets" on storage.objects;
+create policy "Allow public read trip-assets"
+  on storage.objects
+  for select
+  to anon, authenticated
+  using (bucket_id = 'trip-assets');
+
+drop policy if exists "Allow public upload trip-assets" on storage.objects;
+create policy "Allow public upload trip-assets"
+  on storage.objects
+  for insert
+  to anon, authenticated
+  with check (bucket_id = 'trip-assets');
+
+drop policy if exists "Allow public update trip-assets" on storage.objects;
+create policy "Allow public update trip-assets"
+  on storage.objects
+  for update
+  to anon, authenticated
+  using (bucket_id = 'trip-assets')
+  with check (bucket_id = 'trip-assets');

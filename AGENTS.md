@@ -2,7 +2,7 @@
 
 > **App:** GASKEUN! Group Travel PWA (`vite-plugin-pwa`, base path `/gaskeun-trip/`, deployed via GitHub Pages).
 > **Pilot Trip:** `SOLO-27` (Solo – Jogja, Feb 11–14, 2027 · Default Crew PIN: `1234`).
-> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–8.
+> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–8.5.
 
 ---
 
@@ -32,7 +32,7 @@
 
 - **Content Ideas & Amber Plan Rundown Cards (Batch 8 — `AlbumScreen.tsx`, `ContentIdeaSheet.tsx`, `PlanScreen.tsx`, `contentIdeas.ts`):**
   - Layer-1 `SharedTrip.contentIdeas?: ContentIdea[]` (minimalist schema: `title`, `referenceUrl`, `platform`, `notes?`, `thumbnailUrl?`, `status: 'to-shoot' | 'shot'`, `showInPlan`, `dayId?`, `time?`, `createdBy`, `createdAt`).
-  - `Album` header includes a `Photos | Ideas` segmented pill switcher (no new Dock icon). `Ideas` shows `All | To Shoot | Shot` filters, minimalist cards with `Watch ↗` + 1-tap `To Shoot` ↔ `Shot ✓` toggle, and `+ Idea` modal (`ContentIdeaSheet`) with auto platform detection, YouTube auto-thumbnails, optional screenshot upload via `uploadSharedImage(..., { kind: 'idea' })` (`[ASSET-idea]` prefix so gallery `Photos` stays clean), `Show in Plan Rundown` Day/Time picker, red `Delete` on left, and Matcha `Save Idea` on right.
+  - `Album` header includes a `Photos | Ideas` segmented pill switcher (no new Dock icon). `Ideas` shows `All | To Shoot | Shot` filters, minimalist cards with `Watch ↗` + 1-tap `To Shoot` ↔ `Shot ✓` toggle, and `+ Idea` modal (`ContentIdeaSheet`) with auto platform detection, YouTube auto-thumbnails, optional screenshot upload via `uploadSharedImage(..., { kind: 'idea' })` (stored in Supabase `trip-assets` bucket, never Google Drive), `Show in Plan Rundown` Day/Time picker, red `Delete` on left, and Matcha `Save Idea` on right.
   - Ideas with `showInPlan: true` merge chronologically into `Plan → Trail` and `Plan → Table` (with a `Content` filter pill) styled in distinct **Warm Amber Glass** (`--accent-amber`) with Amber `TrailDot`, warm scrim if thumbnail exists, direct `Watch ↗`, and two-way synced `To Shoot` / `Shot ✓` toggle.
 - **Access Gate & Per-Member Passcode Guard (Batch 7 — `WhoAreYouScreen.tsx`, `TripMenuSheet.tsx`, `permissions.ts`):**
   - Optional 4-digit `passcode?: string` per `TripMember` in Layer 1 (`SharedTrip.members`).
@@ -48,9 +48,10 @@
   - `src/services/photoCrop.ts` + `PhotoCropperSheet.tsx`:
     - **Original Passthrough (Zero Quality Loss):** In `album` preset + `Original` ratio with `zoom === 1`, `pan === 0`, `rotation === 0`, and file size `<= 12 MB`, skips Canvas re-encoding and uploads native full-res pixels directly via `uploadSharedImage`. Falls back to `maxDim: 4096, quality: 0.94` if `> 12 MB`.
     - **High-Res Canvas Crop:** Cropped/zoomed/rotated album photos preserve native source resolution up to `4096 px` longest side (never upscaling) with `imageSmoothingQuality = 'high'` and JPEG `0.94`.
-  - `src/services/gdriveAlbum.ts` + `src/services/mediaUploader.ts` + `scripts/gdrive-apps-script.gs`:
-    - Non-album shared assets use `[ASSET-<kind>]` prefix so they stay out of the Album gallery.
+  - `src/services/gdriveAlbum.ts` + `src/services/mediaUploader.ts` + `supabase/schema.sql` + `scripts/gdrive-apps-script.gs`:
+    - **Strict Channel Isolation (Batch 8.5):** Google Drive Apps Script is exclusively for `Album → Photos` (`kind: 'album'`). All UI assets (`hero`, `plan`, `stay`, `train`, `avatar`, `idea`) NEVER touch Google Drive — they upload to Supabase Storage public bucket `trip-assets` (`{tripCode}/{kind}-{timestamp}.jpg`, `upsert: true`), with quota-safe compressed `dataUrl` fallback (`<= 120 KB` cover / `<= 40 KB` avatar) when offline or unconfigured.
     - Frontend constructs sharp `w1200` grid URLs, `w4096` Lightbox URLs, and direct `uc?export=download` download URLs from Drive file IDs without requiring Apps Script re-deploy.
+- **Calm Static `Now` Indicator (Batch 8.5):** `TrailDot` active state and `Now` Spotlight badge use a calm static Matcha `#4A7468` dot with a soft halo ring (no infinite pulsing/blinking animations).
 - **Prep Safety Guard (Batch 6 — `src/features/prep/`):**
   - **Read-Only Default** on both `Personal` & `Group`: items display as non-editable text with only the checkbox active; no inline delete button or open quick-add box.
   - **`Edit` / `Done` Mode** (header toggle; always available on `Personal`, editor-only on `Group`) reveals `+ Add Item`, row Pencil (`Edit Prep Item` sheet), and row Trash icons.

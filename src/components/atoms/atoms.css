@@ -487,18 +487,17 @@
 .gk-trail-dot--active {
   width: 18px;
   height: 18px;
-  background: var(--accent-mint);
+  background: var(--brand-matcha);
   border: 3px solid #FFFFFF;
-  box-shadow: 0 0 0 4px rgba(43, 148, 107, 0.22);
+  box-shadow: 0 0 0 4px rgba(74, 116, 104, 0.2);
 }
 
 .gk-trail-dot--active::after {
   content: '';
   position: absolute;
-  inset: -4px;
+  inset: -5px;
   border-radius: 50%;
-  border: 2px solid var(--accent-mint);
-  animation: gaskeun-pulse 2.2s var(--ease-spring) infinite;
+  border: 1.5px solid rgba(74, 116, 104, 0.28);
 }
 
 .gk-trail-dot--upcoming {

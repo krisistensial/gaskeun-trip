@@ -254,16 +254,15 @@
   gap: 7px;
   font-size: 12px;
   font-weight: 700;
-  color: var(--accent-mint);
+  color: var(--brand-matcha);
 }
 
 .spotlight-live-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--accent-mint);
-  box-shadow: 0 0 0 4px rgba(43, 148, 107, 0.22);
-  animation: gaskeun-pulse 2.2s var(--ease-spring) infinite;
+  background: var(--brand-matcha);
+  box-shadow: 0 0 0 4px rgba(74, 116, 104, 0.2);
 }
 
 .spotlight-time {

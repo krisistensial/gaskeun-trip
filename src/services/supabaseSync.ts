@@ -15,7 +15,7 @@ export function isCloudSyncConfigured(): boolean {
   return Boolean(url && key && String(url).trim() && String(key).trim());
 }
 
-function getSupabaseClient(): SupabaseClient | null {
+export function getSupabaseClient(): SupabaseClient | null {
   if (cachedClient !== undefined) return cachedClient;
   if (!isCloudSyncConfigured()) {
     cachedClient = null;
