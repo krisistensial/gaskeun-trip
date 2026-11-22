@@ -97,6 +97,7 @@ function resolveEffectiveStatuses(
 
 export interface PlanScreenProps {
   trip: SharedTrip;
+  activeMemberName: string;
   canEdit: boolean;
   onRequestUnlockPin: () => void;
   onOpenRoute: (target: RouteTarget) => void;
@@ -105,6 +106,7 @@ export interface PlanScreenProps {
 
 export function PlanScreen({
   trip,
+  activeMemberName,
   canEdit,
   onRequestUnlockPin,
   onOpenRoute,
@@ -428,6 +430,8 @@ export function PlanScreen({
     return (
       <PlanDetailEditScreen
         key={activeEditingItem.id}
+        trip={trip}
+        uploaderName={activeMemberName}
         item={activeEditingItem}
         days={trip.days}
         dayItems={allDayItems}
@@ -625,6 +629,16 @@ export function PlanScreen({
                           className="spotlight-now"
                           onClick={() => setEditingStopId(stop.id)}
                         >
+                          {stop.coverUrl && (
+                            <div className="trail-card-cover-wrap">
+                              <img
+                                src={stop.coverUrl}
+                                alt={stop.title}
+                                className="trail-card-cover"
+                                loading="lazy"
+                              />
+                            </div>
+                          )}
                           <div className="spotlight-now__top">
                             <span className="spotlight-live-tag">
                               <span className="spotlight-live-dot" aria-hidden="true" />
@@ -669,6 +683,16 @@ export function PlanScreen({
                           interactive
                           onClick={() => setEditingStopId(stop.id)}
                         >
+                          {stop.coverUrl && (
+                            <div className="trail-card-cover-wrap">
+                              <img
+                                src={stop.coverUrl}
+                                alt={stop.title}
+                                className="trail-card-cover"
+                                loading="lazy"
+                              />
+                            </div>
+                          )}
                           <div className="trail-upcoming-head">
                             <span className="trail-upcoming-meta">
                               {stop.startTime}

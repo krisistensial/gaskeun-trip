@@ -18,10 +18,13 @@ import {
   Input,
   LiquidBottomSheet,
 } from '../../components/atoms';
-import { compressPhotoToDataUrl } from '../../services/tripFactory';
+import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
+import { uploadSharedImage } from '../../services/mediaUploader';
+import type { CroppedImageResult } from '../../services/photoCrop';
 import type {
   MemberRole,
   MemberStatus,
+  SharedTrip,
   StayLodging,
   StayRoom,
   TrainCarLayout,
@@ -51,6 +54,8 @@ const SWATCHES = [
 
 export interface TrainPassEditorSheetProps {
   open: boolean;
+  trip: SharedTrip;
+  uploaderName: string;
   initial?: TrainPassInfo;
   onSave: (info: TrainPassInfo) => void;
   onClose: () => void;
@@ -58,6 +63,8 @@ export interface TrainPassEditorSheetProps {
 
 export function TrainPassEditorSheet({
   open,
+  trip,
+  uploaderName,
   initial,
   onSave,
   onClose,
@@ -73,14 +80,24 @@ export function TrainPassEditorSheet({
   const [trainPhotoDataUrl, setTrainPhotoDataUrl] = useState<string | undefined>(
     initial?.trainPhotoDataUrl,
   );
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handlePhotoUpload = async (file: File) => {
+  const handleCroppedTrainPhoto = async (cropped: CroppedImageResult) => {
+    setCropFile(null);
+    setUploadingPhoto(true);
     try {
-      const dataUrl = await compressPhotoToDataUrl(file, 900);
-      setTrainPhotoDataUrl(dataUrl);
-    } catch {
-      // ignore unsupported file
+      const uploaded = await uploadSharedImage(cropped, {
+        kind: 'train',
+        trip,
+        caption: trainName.trim() || 'Train Pass',
+        uploaderName,
+        fileName: 'train-pass.jpg',
+      });
+      setTrainPhotoDataUrl(uploaded.url);
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -159,11 +176,16 @@ export function TrainPassEditorSheet({
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) {
-              void handlePhotoUpload(f);
+              setCropFile(f);
               e.target.value = '';
             }
           }}
         />
+        {uploadingPhoto && (
+          <div style={{ fontSize: 11.5, color: 'var(--brand-matcha)', fontWeight: 600 }}>
+            Uploading train photo...
+          </div>
+        )}
 
         <div className="create-two-col">
           <Input
@@ -229,10 +251,18 @@ export function TrainPassEditorSheet({
           onChange={(e) => setReturnDate(e.target.value)}
         />
 
-        <Button type="submit" variant="matcha" size="lg" fullWidth>
+        <Button type="submit" variant="matcha" size="lg" fullWidth disabled={uploadingPhoto}>
           Save Train Pass
         </Button>
       </form>
+
+      <PhotoCropperSheet
+        open={Boolean(cropFile)}
+        file={cropFile}
+        preset="train-photo"
+        onCancel={() => setCropFile(null)}
+        onConfirm={(res) => void handleCroppedTrainPhoto(res)}
+      />
     </LiquidBottomSheet>
   );
 }
@@ -817,6 +847,8 @@ export function PodEditorSheet({
 
 export interface StayEditorSheetProps {
   open: boolean;
+  trip: SharedTrip;
+  uploaderName: string;
   initial: StayLodging | null;
   members: TripMember[];
   onSave: (stay: StayLodging, isNew: boolean) => void;
@@ -826,6 +858,8 @@ export interface StayEditorSheetProps {
 
 export function StayEditorSheet({
   open,
+  trip,
+  uploaderName,
   initial,
   members,
   onSave,
@@ -839,6 +873,8 @@ export function StayEditorSheet({
   const [address, setAddress] = useState(initial?.address ?? '');
   const [mapsUrl, setMapsUrl] = useState(initial?.mapsUrl ?? '');
   const [photoDataUrl, setPhotoDataUrl] = useState<string | undefined>(initial?.photoDataUrl);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [rooms, setRooms] = useState<StayRoom[]>(
     initial?.rooms ?? [
       {
@@ -852,12 +888,20 @@ export function StayEditorSheet({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleStayPhotoPick = async (file: File) => {
+  const handleCroppedStayPhoto = async (cropped: CroppedImageResult) => {
+    setCropFile(null);
+    setUploadingPhoto(true);
     try {
-      const dataUrl = await compressPhotoToDataUrl(file, 960);
-      setPhotoDataUrl(dataUrl);
-    } catch {
-      // ignore invalid image
+      const uploaded = await uploadSharedImage(cropped, {
+        kind: 'stay',
+        trip,
+        caption: name.trim() || 'Stay',
+        uploaderName,
+        fileName: 'stay-cover.jpg',
+      });
+      setPhotoDataUrl(uploaded.url);
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -967,11 +1011,16 @@ export function StayEditorSheet({
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) {
-              void handleStayPhotoPick(f);
+              setCropFile(f);
               e.target.value = '';
             }
           }}
         />
+        {uploadingPhoto && (
+          <div style={{ fontSize: 11.5, color: 'var(--brand-matcha)', fontWeight: 600 }}>
+            Uploading stay photo...
+          </div>
+        )}
 
         <div className="create-two-col">
           <Input
@@ -1129,12 +1178,21 @@ export function StayEditorSheet({
             variant="matcha"
             size="lg"
             fullWidth
+            disabled={uploadingPhoto}
             leftIcon={<BedDouble size={16} strokeWidth={2} />}
           >
             Save Stay
           </Button>
         </div>
       </form>
+
+      <PhotoCropperSheet
+        open={Boolean(cropFile)}
+        file={cropFile}
+        preset="stay-cover"
+        onCancel={() => setCropFile(null)}
+        onConfirm={(res) => void handleCroppedStayPhoto(res)}
+      />
 
       <ConfirmDialog
         open={confirmDelete}

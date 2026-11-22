@@ -120,6 +120,8 @@ export async function ensureSeedTrip(seed: SharedTrip): Promise<SharedTrip> {
       existing.gdriveFolderUrl.trim() === 'https://drive.google.com/' ||
       existing.gdriveFolderUrl.trim() === 'https://drive.google.com';
 
+    const hasCustomScript = Boolean(existing.gdriveScriptUrl?.trim());
+
     const upgraded: SharedTrip = {
       ...existing,
       seedVersion: targetVersion,
@@ -129,6 +131,7 @@ export async function ensureSeedTrip(seed: SharedTrip): Promise<SharedTrip> {
           : seed.editorMemberIds,
       albumUrl: isGenericDrive ? seed.albumUrl : existing.albumUrl,
       gdriveFolderUrl: isGenericDrive ? seed.gdriveFolderUrl : existing.gdriveFolderUrl,
+      gdriveScriptUrl: hasCustomScript ? existing.gdriveScriptUrl : seed.gdriveScriptUrl,
       itinerary: upgradedItinerary,
     };
     await saveSharedTrip(upgraded);

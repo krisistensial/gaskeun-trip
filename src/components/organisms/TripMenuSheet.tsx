@@ -14,8 +14,10 @@ import {
   Users,
 } from 'lucide-react';
 import { Avatar, Badge, Button, LiquidBottomSheet } from '../atoms';
+import { PhotoCropperSheet } from './PhotoCropperSheet';
+import { uploadSharedImage } from '../../services/mediaUploader';
 import type { TripAccessRole } from '../../services/permissions';
-import { compressAvatarSquare } from '../../services/tripFactory';
+import type { CroppedImageResult } from '../../services/photoCrop';
 import type { SharedTrip, TripMember } from '../../types/trip';
 import './sheets.css';
 
@@ -73,14 +75,18 @@ export function TripMenuSheet({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [showEditorsList, setShowEditorsList] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
 
-  const handleAvatarPick = async (file: File) => {
-    try {
-      const dataUrl = await compressAvatarSquare(file, 256);
-      onUpdateActiveAvatar(dataUrl);
-    } catch {
-      // ignore invalid image
-    }
+  const handleCroppedAvatar = async (cropped: CroppedImageResult) => {
+    setCropFile(null);
+    const uploaded = await uploadSharedImage(cropped, {
+      kind: 'avatar',
+      trip,
+      caption: activeMemberName,
+      uploaderName: activeMemberName,
+      fileName: `avatar-${activeMemberName.toLowerCase()}.jpg`,
+    });
+    onUpdateActiveAvatar(uploaded.url);
   };
 
   const editorIds = new Set(trip.editorMemberIds ?? []);
@@ -175,7 +181,7 @@ export function TripMenuSheet({
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) {
-              void handleAvatarPick(f);
+              setCropFile(f);
               e.target.value = '';
             }
           }}
@@ -486,6 +492,13 @@ export function TripMenuSheet({
           </span>
         </button>
       </div>
+      <PhotoCropperSheet
+        open={Boolean(cropFile)}
+        file={cropFile}
+        preset="avatar"
+        onCancel={() => setCropFile(null)}
+        onConfirm={(res) => void handleCroppedAvatar(res)}
+      />
     </LiquidBottomSheet>
   );
 }

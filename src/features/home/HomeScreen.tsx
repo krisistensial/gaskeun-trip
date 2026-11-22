@@ -26,7 +26,9 @@ import {
   LiquidBottomSheet,
 } from '../../components/atoms';
 import type { HomePhase } from '../../components/organisms/TripMenuSheet';
+import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import { calculateLedger, formatCompactIDR } from '../../services/ledger';
+import type { CroppedImageResult } from '../../services/photoCrop';
 import type {
   DockTabId,
   RouteTarget,
@@ -71,12 +73,13 @@ export interface HomeScreenProps {
   trip: SharedTrip;
   phase: HomePhase;
   coverUrl: string;
+  activeMemberName: string;
   canEdit: boolean;
   onOpenMenu: () => void;
   onOpenTripSettings: () => void;
   onSwitchTrip: () => void;
   onNavigateTab: (tab: DockTabId) => void;
-  onUploadCover: (file: File) => void;
+  onUploadCover: (cropped: CroppedImageResult) => void;
   onRequestUnlockPin: () => void;
   onOpenRoute: (target: RouteTarget) => void;
   onUpdateTrip: (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => void;
@@ -86,6 +89,7 @@ export function HomeScreen({
   trip,
   phase,
   coverUrl,
+  activeMemberName,
   canEdit,
   onOpenMenu,
   onOpenTripSettings,
@@ -120,6 +124,7 @@ export function HomeScreen({
     label: string;
   } | null>(null);
   const [showCrewJump, setShowCrewJump] = useState(true);
+  const [heroCropFile, setHeroCropFile] = useState<File | null>(null);
 
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const crewSectionRef = useRef<HTMLElement | null>(null);
@@ -354,7 +359,7 @@ export function HomeScreen({
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (file) {
-              onUploadCover(file);
+              setHeroCropFile(file);
               e.target.value = '';
             }
           }}
@@ -405,6 +410,13 @@ export function HomeScreen({
       {phase === 'on-trip' && activeStop && (
         <section aria-label="Current stop spotlight">
           <GlassCard variant="spotlight" padding="lg" className="spotlight-now">
+            {activeStop.coverUrl && (
+              <img
+                src={activeStop.coverUrl}
+                alt={activeStop.title}
+                className="spotlight-now__cover"
+              />
+            )}
             <div className="spotlight-now__top">
               <span className="spotlight-live-tag">
                 <span className="spotlight-live-dot" aria-hidden="true" />
@@ -1261,6 +1273,8 @@ export function HomeScreen({
       <TrainPassEditorSheet
         key={`tp-${trainEditorOpen ? 'open' : 'closed'}`}
         open={trainEditorOpen}
+        trip={trip}
+        uploaderName={activeMemberName}
         initial={trip.trainPass}
         onSave={handleSaveTrainPass}
         onClose={() => setTrainEditorOpen(false)}
@@ -1289,11 +1303,24 @@ export function HomeScreen({
       <StayEditorSheet
         key={`stay-${stayEditor.open ? stayEditor.stay?.id ?? 'new' : 'closed'}`}
         open={stayEditor.open}
+        trip={trip}
+        uploaderName={activeMemberName}
         initial={stayEditor.stay}
         members={trip.members}
         onSave={handleSaveStay}
         onDelete={handleDeleteStay}
         onClose={() => setStayEditor({ open: false, stay: null })}
+      />
+
+      <PhotoCropperSheet
+        open={Boolean(heroCropFile)}
+        file={heroCropFile}
+        preset="home-hero"
+        onCancel={() => setHeroCropFile(null)}
+        onConfirm={(cropped) => {
+          setHeroCropFile(null);
+          onUploadCover(cropped);
+        }}
       />
     </div>
   );

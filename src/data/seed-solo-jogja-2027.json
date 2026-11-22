@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "seedVersion": 4,
+  "seedVersion": 5,
   "id": "trip-solo-jogja-2027",
   "code": "SOLO-27",
   "title": "Solo – Jogja",
@@ -12,7 +12,7 @@
   "editorMemberIds": ["m-kris"],
   "albumUrl": "https://drive.google.com/drive/folders/19pwUotU9NdKh06HWaKkCvCUQS3WkSlVt?usp=drive_link",
   "gdriveFolderUrl": "https://drive.google.com/drive/folders/19pwUotU9NdKh06HWaKkCvCUQS3WkSlVt?usp=drive_link",
-  "gdriveScriptUrl": "",
+  "gdriveScriptUrl": "https://script.google.com/macros/s/AKfycbyKkeyGqbNobFNA4Hta2pXKoe7Vy4MWnUyyGgejLaS6iel-h8Y1qb-eIs5h3u8lisiQ/exec",
   "trainPass": {
     "trainName": "KA Bengawan (Economy)",
     "outboundCode": "KA 246",

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  AlertCircle,
   ArrowUpRight,
+  CloudUpload,
   Download,
   ImagePlus,
   Images,
@@ -20,13 +22,14 @@ import {
   Input,
   LiquidBottomSheet,
 } from '../../components/atoms';
+import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import {
-  compressAlbumPhoto,
   extractDriveFolderId,
-  fetchDriveAlbum,
+  fetchDriveAlbumWithStatus,
   uploadPhotoToDrive,
 } from '../../services/gdriveAlbum';
+import type { CroppedImageResult } from '../../services/photoCrop';
 import type { AlbumPhoto, SharedTrip } from '../../types/trip';
 import './album.css';
 
@@ -39,6 +42,12 @@ export interface AlbumScreenProps {
   onNotify: (msg: string, tone?: 'success' | 'info' | 'error') => void;
 }
 
+type SyncHealth =
+  | { status: 'idle' }
+  | { status: 'syncing' }
+  | { status: 'ok' }
+  | { status: 'error'; error: string };
+
 export function AlbumScreen({
   trip,
   localPhotos,
@@ -50,19 +59,20 @@ export function AlbumScreen({
   const tripDays = useMemo(() => trip.days.filter((d) => !d.isIdeas), [trip.days]);
   const [dayFilter, setDayFilter] = useState<string>('all');
   const [drivePhotos, setDrivePhotos] = useState<AlbumPhoto[]>([]);
-  const [syncingDrive, setSyncingDrive] = useState(false);
+  const [syncHealth, setSyncHealth] = useState<SyncHealth>({ status: 'idle' });
+  const [pushingLocal, setPushingLocal] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<AlbumPhoto | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useRegisterOverlay(Boolean(lightboxPhoto));
 
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [compressedBase64, setCompressedBase64] = useState('');
   const [fileName, setFileName] = useState('photo.jpg');
   const [caption, setCaption] = useState('');
   const [uploadDayId, setUploadDayId] = useState<string>(tripDays[0]?.id ?? 'day-1');
-  const [crewPinInput, setCrewPinInput] = useState('');
   const [uploading, setUploading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -75,19 +85,27 @@ export function AlbumScreen({
       const scriptUrl = trip.gdriveScriptUrl?.trim();
       if (!scriptUrl) {
         setDrivePhotos([]);
+        setSyncHealth({ status: 'idle' });
         return;
       }
-      setSyncingDrive(true);
-      const remote = await fetchDriveAlbum(scriptUrl, trip.id, driveFolderUrl);
-      setDrivePhotos(remote);
-      setSyncingDrive(false);
-      if (notifyResult) {
-        onNotify(
-          remote.length > 0
-            ? `Synced ${remote.length} ${remote.length === 1 ? 'photo' : 'photos'} from Drive`
-            : 'Drive album is up to date',
-          'success',
-        );
+      setSyncHealth({ status: 'syncing' });
+      const res = await fetchDriveAlbumWithStatus(scriptUrl, trip.id, driveFolderUrl);
+      if (res.ok) {
+        setDrivePhotos(res.photos);
+        setSyncHealth({ status: 'ok' });
+        if (notifyResult) {
+          onNotify(
+            res.photos.length > 0
+              ? `Synced ${res.photos.length} ${res.photos.length === 1 ? 'photo' : 'photos'} from Drive`
+              : 'Google Drive album is up to date',
+            'success',
+          );
+        }
+      } else {
+        setSyncHealth({ status: 'error', error: res.error || 'Connection failed' });
+        if (notifyResult) {
+          onNotify(`Drive sync failed: ${res.error || 'Connection failed'}`, 'error');
+        }
       }
     },
     [trip.gdriveScriptUrl, trip.id, driveFolderUrl, onNotify],
@@ -98,13 +116,17 @@ export function AlbumScreen({
     const scriptUrl = trip.gdriveScriptUrl?.trim();
     if (!scriptUrl) {
       setDrivePhotos([]);
+      setSyncHealth({ status: 'idle' });
       return;
     }
-    setSyncingDrive(true);
-    void fetchDriveAlbum(scriptUrl, trip.id, driveFolderUrl).then((remote) => {
-      if (alive) {
-        setDrivePhotos(remote);
-        setSyncingDrive(false);
+    setSyncHealth({ status: 'syncing' });
+    void fetchDriveAlbumWithStatus(scriptUrl, trip.id, driveFolderUrl).then((res) => {
+      if (!alive) return;
+      if (res.ok) {
+        setDrivePhotos(res.photos);
+        setSyncHealth({ status: 'ok' });
+      } else {
+        setSyncHealth({ status: 'error', error: res.error || 'Connection failed' });
       }
     });
     return () => {
@@ -120,16 +142,13 @@ export function AlbumScreen({
     return merged.filter((p) => p.dayId === dayFilter);
   }, [drivePhotos, localPhotos, dayFilter]);
 
-  const handlePickFile = async (file: File) => {
-    try {
-      const compressed = await compressAlbumPhoto(file);
-      setPreviewUrl(compressed.dataUrl);
-      setCompressedBase64(compressed.base64);
-      setFileName(file.name.replace(/\.[^.]+$/, '') + '.jpg');
-      setUploadOpen(true);
-    } catch {
-      onNotify('Could not read that photo', 'error');
-    }
+  const handleCropConfirmed = (cropped: CroppedImageResult) => {
+    const pickedName = cropFile?.name.replace(/\.[^.]+$/, '') || 'photo';
+    setCropFile(null);
+    setPreviewUrl(cropped.dataUrl);
+    setCompressedBase64(cropped.base64);
+    setFileName(`${pickedName}.jpg`);
+    setUploadOpen(true);
   };
 
   const resetUpload = () => {
@@ -137,7 +156,6 @@ export function AlbumScreen({
     setPreviewUrl('');
     setCompressedBase64('');
     setCaption('');
-    setCrewPinInput('');
     setUploading(false);
   };
 
@@ -152,10 +170,9 @@ export function AlbumScreen({
     const cleanCaption = caption.trim() || dayObj?.city || 'Highlight';
 
     if (trip.gdriveScriptUrl?.trim() && navigator.onLine) {
-      const remote = await uploadPhotoToDrive({
+      const uploadRes = await uploadPhotoToDrive({
         scriptUrl: trip.gdriveScriptUrl.trim(),
         folderUrl: driveFolderUrl,
-        crewPin: crewPinInput.trim(),
         tripId: trip.id,
         dayId: uploadDayId,
         dayLabel,
@@ -164,11 +181,15 @@ export function AlbumScreen({
         base64: compressedBase64,
         fileName,
       });
-      if (remote) {
-        setDrivePhotos((prev) => [remote, ...prev]);
+      if (uploadRes.ok && uploadRes.photo) {
+        setDrivePhotos((prev) => [uploadRes.photo!, ...prev]);
+        setSyncHealth({ status: 'ok' });
         onNotify('Uploaded to Google Drive', 'success');
         resetUpload();
         return;
+      }
+      if (uploadRes.error) {
+        setSyncHealth({ status: 'error', error: uploadRes.error });
       }
     }
 
@@ -186,10 +207,78 @@ export function AlbumScreen({
     onSaveLocalPhotos(
       [localPhoto, ...localPhotos],
       trip.gdriveScriptUrl
-        ? 'Saved locally (offline fallback)'
+        ? 'Saved locally — tap Push to Drive once connected'
         : 'Photo saved locally to Album',
     );
     resetUpload();
+  };
+
+  const pushSingleLocalPhoto = async (photo: AlbumPhoto): Promise<boolean> => {
+    const scriptUrl = trip.gdriveScriptUrl?.trim();
+    if (!scriptUrl || !navigator.onLine) return false;
+    const base64 = photo.url.includes(',') ? photo.url.split(',')[1] : '';
+    if (!base64) return false;
+
+    const res = await uploadPhotoToDrive({
+      scriptUrl,
+      folderUrl: driveFolderUrl,
+      tripId: trip.id,
+      dayId: photo.dayId,
+      dayLabel: photo.dayLabel,
+      caption: photo.caption || 'Highlight',
+      uploaderName: photo.uploaderName || activeMemberName,
+      base64,
+      fileName: `${photo.id}.jpg`,
+    });
+
+    if (res.ok && res.photo) {
+      setDrivePhotos((prev) => [res.photo!, ...prev]);
+      setSyncHealth({ status: 'ok' });
+      return true;
+    }
+    if (res.error) {
+      setSyncHealth({ status: 'error', error: res.error });
+    }
+    return false;
+  };
+
+  const handlePushAllLocalToDrive = async () => {
+    if (pushingLocal || localPhotos.length === 0) return;
+    setPushingLocal(true);
+    const remaining: AlbumPhoto[] = [];
+    let pushedCount = 0;
+
+    for (const photo of localPhotos) {
+      const ok = await pushSingleLocalPhoto(photo);
+      if (ok) pushedCount += 1;
+      else remaining.push(photo);
+    }
+
+    setPushingLocal(false);
+    if (pushedCount > 0) {
+      onSaveLocalPhotos(
+        remaining,
+        `Pushed ${pushedCount} ${pushedCount === 1 ? 'photo' : 'photos'} to Google Drive`,
+      );
+    } else {
+      onNotify('Could not upload to Drive — check Sync URL access', 'error');
+    }
+  };
+
+  const handlePushLightboxPhoto = async () => {
+    if (!lightboxPhoto || lightboxPhoto.source !== 'local' || pushingLocal) return;
+    setPushingLocal(true);
+    const ok = await pushSingleLocalPhoto(lightboxPhoto);
+    setPushingLocal(false);
+    if (ok) {
+      onSaveLocalPhotos(
+        localPhotos.filter((p) => p.id !== lightboxPhoto.id),
+        'Uploaded to Google Drive',
+      );
+      setLightboxPhoto(null);
+    } else {
+      onNotify('Drive upload failed — check Sync URL access', 'error');
+    }
   };
 
   const handleDownload = (photo: AlbumPhoto) => {
@@ -215,6 +304,8 @@ export function AlbumScreen({
     setConfirmDelete(false);
     setLightboxPhoto(null);
   };
+
+  const isSyncing = syncHealth.status === 'syncing';
 
   return (
     <div className="album-root">
@@ -250,7 +341,7 @@ export function AlbumScreen({
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) {
-            void handlePickFile(f);
+            setCropFile(f);
             e.target.value = '';
           }
         }}
@@ -277,59 +368,113 @@ export function AlbumScreen({
         ))}
       </div>
 
-      {/* Subtle Google Drive Connection & Sync Status Bar */}
+      {/* Real Google Drive Health Check Status Bar */}
       {hasSyncScript ? (
-        <GlassCard
-          variant="clear"
-          padding="sm"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10,
-          }}
-        >
-          <span
+        syncHealth.status === 'error' ? (
+          <GlassCard
+            variant="clear"
+            padding="sm"
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
+              borderColor: 'rgba(207, 77, 94, 0.4)',
+              background: 'rgba(255, 245, 246, 0.78)',
+              display: 'flex',
+              flexDirection: 'column',
               gap: 8,
-              fontSize: 12,
-              fontWeight: 600,
-              color: 'var(--text-secondary)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AlertCircle size={15} strokeWidth={2} color="var(--accent-coral)" style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-coral)' }}>
+                Drive sync failed — {syncHealth.error}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button
+                variant="glass"
+                size="sm"
+                leftIcon={<RefreshCw size={13} strokeWidth={2} />}
+                onClick={() => void syncFromDrive(true)}
+              >
+                Retry
+              </Button>
+              <Button
+                variant="glass"
+                size="sm"
+                leftIcon={<Settings2 size={13} strokeWidth={2} />}
+                onClick={onOpenSettings}
+              >
+                Settings
+              </Button>
+            </div>
+          </GlassCard>
+        ) : (
+          <GlassCard
+            variant="clear"
+            padding="sm"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              flexWrap: 'wrap',
             }}
           >
             <span
               style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: 'var(--accent-mint)',
-                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--text-secondary)',
               }}
-            />
-            <span>
-              {syncingDrive
-                ? 'Syncing Google Drive...'
-                : `Google Drive connected · ${drivePhotos.length} shared`}
-            </span>
-          </span>
-          <Button
-            variant="glass"
-            size="sm"
-            disabled={syncingDrive}
-            leftIcon={
-              <RefreshCw
-                size={13}
-                strokeWidth={2}
-                style={syncingDrive ? { animation: 'gaskeun-spin 0.9s linear infinite' } : undefined}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background:
+                    syncHealth.status === 'ok' ? 'var(--accent-mint)' : 'var(--accent-amber)',
+                  flexShrink: 0,
+                }}
               />
-            }
-            onClick={() => void syncFromDrive(true)}
-          >
-            Sync
-          </Button>
-        </GlassCard>
+              <span>
+                {isSyncing
+                  ? 'Checking Google Drive...'
+                  : `Google Drive synced · ${drivePhotos.length} ${drivePhotos.length === 1 ? 'photo' : 'photos'}`}
+              </span>
+            </span>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {localPhotos.length > 0 && syncHealth.status === 'ok' && (
+                <Button
+                  variant="matcha"
+                  size="sm"
+                  disabled={pushingLocal}
+                  leftIcon={<CloudUpload size={13} strokeWidth={2} />}
+                  onClick={() => void handlePushAllLocalToDrive()}
+                >
+                  {pushingLocal ? 'Pushing...' : `Push to Drive (${localPhotos.length})`}
+                </Button>
+              )}
+              <Button
+                variant="glass"
+                size="sm"
+                disabled={isSyncing}
+                leftIcon={
+                  <RefreshCw
+                    size={13}
+                    strokeWidth={2}
+                    style={isSyncing ? { animation: 'gaskeun-spin 0.9s linear infinite' } : undefined}
+                  />
+                }
+                onClick={() => void syncFromDrive(true)}
+              >
+                Sync
+              </Button>
+            </div>
+          </GlassCard>
+        )
       ) : (
         <GlassCard
           variant="clear"
@@ -362,7 +507,7 @@ export function AlbumScreen({
         <EmptyState
           icon={<Images size={22} strokeWidth={1.8} />}
           title="No trip photos yet"
-          description="Upload highlights from your gallery — compressed automatically for fast sharing."
+          description="Upload highlights from your gallery — crop and compress automatically for fast sharing."
           action={
             <Button
               variant="matcha"
@@ -396,6 +541,15 @@ export function AlbumScreen({
           ))}
         </div>
       )}
+
+      {/* Interactive Photo Cropper Sheet (Original | 4:5 | 1:1 | 16:9) */}
+      <PhotoCropperSheet
+        open={Boolean(cropFile)}
+        file={cropFile}
+        preset="album"
+        onCancel={() => setCropFile(null)}
+        onConfirm={handleCropConfirmed}
+      />
 
       {/* Upload Sheet (+ Upload) */}
       <LiquidBottomSheet
@@ -438,22 +592,9 @@ export function AlbumScreen({
             </div>
           </div>
 
-          {hasSyncScript && navigator.onLine && (
-            <Input
-              id="album-drive-pin"
-              label="4-Digit Crew PIN (for Drive Upload)"
-              type="password"
-              inputMode="numeric"
-              maxLength={4}
-              placeholder="1234"
-              value={crewPinInput}
-              onChange={(e) => setCrewPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-            />
-          )}
-
           <Button type="submit" variant="matcha" size="lg" fullWidth disabled={uploading}>
             {uploading
-              ? 'Saving Photo...'
+              ? 'Uploading Photo...'
               : hasSyncScript && navigator.onLine
                 ? 'Upload to Drive'
                 : 'Save to Local Album'}
@@ -509,10 +650,22 @@ export function AlbumScreen({
               >
                 Delete
               </Button>
+              {lightboxPhoto.source === 'local' && hasSyncScript && (
+                <Button
+                  variant="matcha"
+                  size="md"
+                  fullWidth
+                  disabled={pushingLocal}
+                  leftIcon={<CloudUpload size={16} strokeWidth={2} />}
+                  onClick={() => void handlePushLightboxPhoto()}
+                >
+                  {pushingLocal ? 'Pushing...' : 'Push to Drive'}
+                </Button>
+              )}
               <Button
                 variant="glass"
                 size="md"
-                fullWidth
+                fullWidth={lightboxPhoto.source !== 'local' || !hasSyncScript}
                 leftIcon={<Download size={16} strokeWidth={2} />}
                 onClick={() => handleDownload(lightboxPhoto)}
               >

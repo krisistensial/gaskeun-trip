@@ -189,6 +189,15 @@
   gap: 12px;
 }
 
+.spotlight-now__cover {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 20px;
+  object-fit: cover;
+  display: block;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+}
+
 .spotlight-now__top {
   display: flex;
   align-items: center;

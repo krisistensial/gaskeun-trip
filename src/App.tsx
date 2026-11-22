@@ -29,14 +29,16 @@ import {
   upsertPersonalTransaction,
 } from './services/db';
 import { exportTripToExcel } from './services/excelExporter';
+import { uploadSharedImage } from './services/mediaUploader';
 import { canEditTrip, getMemberRoleLabel, isHostMember } from './services/permissions';
+import type { CroppedImageResult } from './services/photoCrop';
 import { clearActiveSession, loadSavedSession, saveActiveSession } from './services/session';
 import {
   fetchRemoteTripByCode,
   flushOfflineMutationQueue,
   pushOrQueueSharedTrip,
 } from './services/supabaseSync';
-import { buildInviteUrl, compressCoverImage } from './services/tripFactory';
+import { buildInviteUrl } from './services/tripFactory';
 import type {
   AlbumPhoto,
   DockTabId,
@@ -58,7 +60,6 @@ export default function App() {
   const [savedTrips, setSavedTrips] = useState<SharedTrip[]>([pilotSeed]);
   const [activeTrip, setActiveTrip] = useState<SharedTrip>(pilotSeed);
   const [localData, setLocalData] = useState<LocalPersonalData | null>(null);
-  const [coverUrl, setCoverUrl] = useState<string>(defaultCoverPath);
 
   const [activeTab, setActiveTab] = useState<DockTabId>('home');
   const [phase, setPhase] = useState<HomePhase>('pre-trip');
@@ -159,16 +160,20 @@ export default function App() {
     return () => window.removeEventListener('online', handleOnline);
   }, []);
 
-  // Maintain object URL for Layer 2 local cover blob
+  // Maintain object URL for Layer 2 local cover blob fallback
+  const [localCoverUrl, setLocalCoverUrl] = useState<string>('');
   useEffect(() => {
     if (!localData?.coverBlob) {
-      setCoverUrl(defaultCoverPath);
+      setLocalCoverUrl('');
       return;
     }
     const url = URL.createObjectURL(localData.coverBlob);
-    setCoverUrl(url);
+    setLocalCoverUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [localData?.coverBlob]);
+
+  // Prefer Layer-1 shared heroCoverUrl so the whole crew sees the same cover, with offline blob cache fallback
+  const effectiveCoverUrl = activeTrip.heroCoverUrl || localCoverUrl || defaultCoverPath;
 
   const activeMemberId = localData?.activeMemberId ?? null;
   const activeMember = useMemo(
@@ -309,13 +314,29 @@ export default function App() {
     handleCopyText(target, `Invite link for ${activeTrip.code}`);
   };
 
-  const handleUploadCover = async (file: File) => {
+  const handleUploadCover = async (cropped: CroppedImageResult) => {
     try {
-      const compressed = await compressCoverImage(file);
-      await saveLocalCoverBlob(activeTrip.id, compressed);
+      await saveLocalCoverBlob(activeTrip.id, cropped.blob);
       const refreshed = await getLocalPersonal(activeTrip.id);
       setLocalData(refreshed);
-      showToast('Cover photo saved locally on this device', 'success');
+
+      if (canEdit) {
+        const uploaded = await uploadSharedImage(cropped, {
+          kind: 'hero',
+          trip: activeTrip,
+          caption: activeTrip.title,
+          uploaderName: activeMemberName,
+          fileName: 'hero-cover.jpg',
+        });
+        handleUpdateTrip(
+          (prev) => ({ ...prev, heroCoverUrl: uploaded.url }),
+          uploaded.source === 'drive'
+            ? 'Shared cover updated for the crew'
+            : 'Shared cover saved (syncs when online)',
+        );
+      } else {
+        showToast('Cover photo saved locally on this device', 'success');
+      }
     } catch {
       showToast('Could not process that photo', 'error');
     }
@@ -466,13 +487,14 @@ export default function App() {
             <HomeScreen
               trip={activeTrip}
               phase={phase}
-              coverUrl={coverUrl}
+              coverUrl={effectiveCoverUrl}
+              activeMemberName={activeMemberName}
               canEdit={canEdit}
               onOpenMenu={() => setMenuOpen(true)}
               onOpenTripSettings={openTripSettingsGated}
               onSwitchTrip={handleLeaveTrip}
               onNavigateTab={setActiveTab}
-              onUploadCover={handleUploadCover}
+              onUploadCover={(cropped) => void handleUploadCover(cropped)}
               onRequestUnlockPin={() => requestUnlockPin()}
               onOpenRoute={(target) => setActiveRouteTarget(target)}
               onUpdateTrip={handleUpdateTrip}
@@ -482,6 +504,7 @@ export default function App() {
           {route === 'hub' && !activeRouteTarget && activeTab === 'plan' && (
             <PlanScreen
               trip={activeTrip}
+              activeMemberName={activeMemberName}
               canEdit={canEdit}
               onRequestUnlockPin={() => requestUnlockPin()}
               onOpenRoute={(target) => setActiveRouteTarget(target)}

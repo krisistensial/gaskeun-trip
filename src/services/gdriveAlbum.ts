@@ -6,6 +6,27 @@ export interface CompressedPhotoResult {
   base64: string;
 }
 
+export interface DriveFetchResult {
+  ok: boolean;
+  photos: AlbumPhoto[];
+  error?: string;
+}
+
+export interface DriveUploadResult {
+  ok: boolean;
+  photo?: AlbumPhoto;
+  error?: string;
+}
+
+/**
+ * Returns true if a Drive filename represents a shared UI asset (hero, plan, stay,
+ * train, avatar) that should be excluded from the Album gallery.
+ */
+export function isAssetFileName(name?: string): boolean {
+  if (!name) return false;
+  return name.trim().toUpperCase().startsWith('[ASSET-');
+}
+
 /**
  * Extracts a Google Drive folder ID from standard share links:
  * - `https://drive.google.com/drive/folders/19pwUotU9NdKh06HWaKkCvCUQS3WkSlVt?usp=drive_link`
@@ -37,6 +58,31 @@ export function normalizeDriveImageUrl(url: string, width = 1200): string {
     return `https://drive.google.com/thumbnail?id=${fileMatch[1]}&sz=w${width}`;
   }
   return url;
+}
+
+/**
+ * Parses a raw Apps Script HTTP response body into a structured diagnostic result.
+ * Detects Google HTML login redirects (un-authorized Web App) vs valid JSON.
+ */
+export function parseDriveScriptJson<T extends { ok?: boolean; error?: string }>(
+  rawText: string,
+): { ok: true; data: T } | { ok: false; error: string } {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    return { ok: false, error: 'Empty response from Apps Script' };
+  }
+  if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html') || trimmed.startsWith('<HTML')) {
+    return { ok: false, error: 'Script needs public access ("Anyone")' };
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as T;
+    if (parsed.ok === false) {
+      return { ok: false, error: parsed.error || 'Apps Script returned error' };
+    }
+    return { ok: true, data: parsed };
+  } catch {
+    return { ok: false, error: 'Invalid response from Drive script' };
+  }
 }
 
 /**
@@ -74,13 +120,19 @@ export async function compressAlbumPhoto(file: File): Promise<CompressedPhotoRes
   return { blob, dataUrl, base64 };
 }
 
-export async function fetchDriveAlbum(
+/**
+ * Fetches Drive Album photos with real connection diagnostics (never fakes "connected").
+ */
+export async function fetchDriveAlbumWithStatus(
   scriptUrl: string,
   tripId: string,
   folderUrl?: string,
-): Promise<AlbumPhoto[]> {
-  if (!scriptUrl.trim() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
-    return [];
+): Promise<DriveFetchResult> {
+  if (!scriptUrl.trim()) {
+    return { ok: false, photos: [], error: 'Sync URL not set' };
+  }
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return { ok: false, photos: [], error: 'Device is offline' };
   }
   try {
     const folderId = extractDriveFolderId(folderUrl);
@@ -90,10 +142,17 @@ export async function fetchDriveAlbum(
       : base;
 
     const res = await fetch(requestUrl, { method: 'GET' });
-    if (!res.ok) return [];
-    const data = (await res.json()) as {
+    const text = await res.text();
+    if (!res.ok) {
+      return { ok: false, photos: [], error: `HTTP ${res.status}` };
+    }
+
+    const parsed = parseDriveScriptJson<{
+      ok?: boolean;
+      error?: string;
       photos?: Array<{
         id: string;
+        name?: string;
         dayId?: string;
         dayLabel?: string;
         caption?: string;
@@ -102,35 +161,57 @@ export async function fetchDriveAlbum(
         fullUrl?: string;
         createdAt?: string;
       }>;
-    };
-    if (!Array.isArray(data.photos)) return [];
-    return data.photos.map((p) => {
-      const gridUrl = normalizeDriveImageUrl(p.url, 1200);
-      const hiResUrl = p.fullUrl
-        ? normalizeDriveImageUrl(p.fullUrl, 2000)
-        : normalizeDriveImageUrl(p.url, 2000);
-      return {
-        id: p.id,
-        tripId,
-        dayId: p.dayId || 'day-1',
-        dayLabel: p.dayLabel || 'Trip',
-        caption: p.caption || '',
-        uploaderName: p.uploaderName || 'Crew',
-        url: gridUrl,
-        fullUrl: hiResUrl,
-        source: 'drive',
-        createdAt: p.createdAt || new Date().toISOString(),
-      };
-    });
+    }>(text);
+
+    if (!parsed.ok) {
+      return { ok: false, photos: [], error: parsed.error };
+    }
+
+    if (!Array.isArray(parsed.data.photos)) {
+      return { ok: false, photos: [], error: 'Unexpected Drive payload' };
+    }
+
+    const photos: AlbumPhoto[] = parsed.data.photos
+      .filter((p) => !isAssetFileName(p.name) && !isAssetFileName(p.caption))
+      .map((p) => {
+        const gridUrl = normalizeDriveImageUrl(p.url, 1200);
+        const hiResUrl = p.fullUrl
+          ? normalizeDriveImageUrl(p.fullUrl, 2000)
+          : normalizeDriveImageUrl(p.url, 2000);
+        return {
+          id: p.id,
+          tripId,
+          dayId: p.dayId || 'day-1',
+          dayLabel: p.dayLabel || 'Trip',
+          caption: p.caption || '',
+          uploaderName: p.uploaderName || 'Crew',
+          url: gridUrl,
+          fullUrl: hiResUrl,
+          source: 'drive',
+          createdAt: p.createdAt || new Date().toISOString(),
+        };
+      });
+
+    return { ok: true, photos };
   } catch {
-    return [];
+    return { ok: false, photos: [], error: 'Network or CORS blocked' };
   }
+}
+
+export async function fetchDriveAlbum(
+  scriptUrl: string,
+  tripId: string,
+  folderUrl?: string,
+): Promise<AlbumPhoto[]> {
+  const result = await fetchDriveAlbumWithStatus(scriptUrl, tripId, folderUrl);
+  return result.photos;
 }
 
 export async function uploadPhotoToDrive(params: {
   scriptUrl: string;
   folderUrl?: string;
-  crewPin: string;
+  assetPrefix?: string;
+  crewPin?: string;
   tripId: string;
   dayId: string;
   dayLabel: string;
@@ -138,9 +219,12 @@ export async function uploadPhotoToDrive(params: {
   uploaderName: string;
   base64: string;
   fileName: string;
-}): Promise<AlbumPhoto | null> {
-  if (!params.scriptUrl.trim() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
-    return null;
+}): Promise<DriveUploadResult> {
+  if (!params.scriptUrl.trim()) {
+    return { ok: false, error: 'Sync URL not configured' };
+  }
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return { ok: false, error: 'Device is offline' };
   }
   try {
     const folderId = extractDriveFolderId(params.folderUrl);
@@ -149,7 +233,8 @@ export async function uploadPhotoToDrive(params: {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
         folderId: folderId || undefined,
-        crewPin: params.crewPin,
+        assetPrefix: params.assetPrefix || undefined,
+        crewPin: params.crewPin || '',
         dayId: params.dayId,
         dayLabel: params.dayLabel,
         caption: params.caption,
@@ -159,29 +244,41 @@ export async function uploadPhotoToDrive(params: {
         base64: params.base64,
       }),
     });
-    if (!res.ok) return null;
-    const json = (await res.json()) as {
+    const text = await res.text();
+    if (!res.ok) {
+      return { ok: false, error: `HTTP ${res.status}` };
+    }
+
+    const parsed = parseDriveScriptJson<{
       ok?: boolean;
+      error?: string;
       id?: string;
       url?: string;
       fullUrl?: string;
-    };
-    if (!json.ok || !json.url) return null;
+    }>(text);
+
+    if (!parsed.ok || !parsed.data.url) {
+      return { ok: false, error: parsed.ok ? 'Missing Drive URL' : parsed.error };
+    }
+
     return {
-      id: json.id || `drv-${Date.now().toString(36)}`,
-      tripId: params.tripId,
-      dayId: params.dayId,
-      dayLabel: params.dayLabel,
-      caption: params.caption,
-      uploaderName: params.uploaderName,
-      url: normalizeDriveImageUrl(json.url, 1200),
-      fullUrl: json.fullUrl
-        ? normalizeDriveImageUrl(json.fullUrl, 2000)
-        : normalizeDriveImageUrl(json.url, 2000),
-      source: 'drive',
-      createdAt: new Date().toISOString(),
+      ok: true,
+      photo: {
+        id: parsed.data.id || `drv-${Date.now().toString(36)}`,
+        tripId: params.tripId,
+        dayId: params.dayId,
+        dayLabel: params.dayLabel,
+        caption: params.caption,
+        uploaderName: params.uploaderName,
+        url: normalizeDriveImageUrl(parsed.data.url, 1200),
+        fullUrl: parsed.data.fullUrl
+          ? normalizeDriveImageUrl(parsed.data.fullUrl, 2000)
+          : normalizeDriveImageUrl(parsed.data.url, 2000),
+        source: 'drive',
+        createdAt: new Date().toISOString(),
+      },
     };
   } catch {
-    return null;
+    return { ok: false, error: 'Network or CORS error' };
   }
 }

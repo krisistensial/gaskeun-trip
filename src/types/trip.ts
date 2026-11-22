@@ -209,6 +209,8 @@ export interface SharedTrip {
   crewPinHash: string;
   /** Host-designated editors allowed to edit shared trip data without PIN */
   editorMemberIds?: string[];
+  /** Shared Home Hero cover photo URL (Drive thumbnail URL or compressed dataUrl) */
+  heroCoverUrl?: string;
   albumUrl: string;
   gdriveFolderUrl?: string;
   gdriveScriptUrl?: string;

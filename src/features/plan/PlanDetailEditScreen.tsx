@@ -17,7 +17,10 @@ import {
   GlassCard,
   Input,
 } from '../../components/atoms';
+import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import { useRegisterOverlay } from '../../context/OverlayContext';
+import { uploadSharedImage } from '../../services/mediaUploader';
+import type { CroppedImageResult } from '../../services/photoCrop';
 import { isClosedOnDate, isValidMapsUrl } from '../../services/planUtils';
 import type {
   PlanItem,
@@ -25,6 +28,7 @@ import type {
   PlanItemType,
   RichNoteBlock,
   RouteTarget,
+  SharedTrip,
   TripDay,
 } from '../../types/trip';
 import './plan.css';
@@ -107,6 +111,8 @@ function placeCaretAtEnd(el: HTMLElement): void {
 }
 
 export interface PlanDetailEditScreenProps {
+  trip: SharedTrip;
+  uploaderName: string;
   item: PlanItem;
   days: TripDay[];
   dayItems: PlanItem[];
@@ -120,6 +126,8 @@ export interface PlanDetailEditScreenProps {
 }
 
 export function PlanDetailEditScreen({
+  trip,
+  uploaderName,
   item,
   days,
   dayItems,
@@ -136,6 +144,8 @@ export function PlanDetailEditScreen({
   const [showColorRow, setShowColorRow] = useState<boolean>(false);
   const [activeInk, setActiveInk] = useState<string>('#182420');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [coverCropFile, setCoverCropFile] = useState<File | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
 
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -320,14 +330,23 @@ export function PlanDetailEditScreen({
     });
   };
 
-  const handleCoverPick = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setDraft((prev) => ({ ...prev, coverUrl: reader.result as string }));
-      }
-    };
-    reader.readAsDataURL(file);
+  const handleCroppedCover = async (cropped: CroppedImageResult) => {
+    setCoverCropFile(null);
+    setUploadingCover(true);
+    try {
+      const uploaded = await uploadSharedImage(cropped, {
+        kind: 'plan',
+        trip,
+        dayId: draft.dayId,
+        dayLabel: selectedDay?.dayLabel || 'Trip',
+        caption: draft.title.trim() || 'Stop Cover',
+        uploaderName,
+        fileName: 'plan-cover.jpg',
+      });
+      setDraft((prev) => ({ ...prev, coverUrl: uploaded.url }));
+    } finally {
+      setUploadingCover(false);
+    }
   };
 
   const hasReadOnlyNotes = Boolean(notesHtmlRef.current.replace(/<[^>]+>/g, '').trim());
@@ -401,9 +420,17 @@ export function PlanDetailEditScreen({
             style={{ display: 'none' }}
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) handleCoverPick(f);
+              if (f) {
+                setCoverCropFile(f);
+                e.target.value = '';
+              }
             }}
           />
+          {uploadingCover && (
+            <div style={{ fontSize: 11.5, color: 'var(--brand-matcha)', fontWeight: 600 }}>
+              Uploading stop photo...
+            </div>
+          )}
         </>
       )}
 
@@ -780,11 +807,19 @@ export function PlanDetailEditScreen({
               Delete
             </Button>
           )}
-          <Button variant="matcha" size="lg" fullWidth onClick={handleSave}>
+          <Button variant="matcha" size="lg" fullWidth onClick={handleSave} disabled={uploadingCover}>
             Save Stop
           </Button>
         </div>
       )}
+
+      <PhotoCropperSheet
+        open={Boolean(coverCropFile)}
+        file={coverCropFile}
+        preset="plan-cover"
+        onCancel={() => setCoverCropFile(null)}
+        onConfirm={(res) => void handleCroppedCover(res)}
+      />
 
       <ConfirmDialog
         open={confirmDelete}

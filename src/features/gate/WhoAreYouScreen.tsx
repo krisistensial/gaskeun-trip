@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
 import { Camera, Lock, UserRound } from 'lucide-react';
 import { Avatar, Button, CornerOrb, LiquidBottomSheet } from '../../components/atoms';
-import { compressAvatarSquare } from '../../services/tripFactory';
+import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
+import { uploadSharedImage } from '../../services/mediaUploader';
+import type { CroppedImageResult } from '../../services/photoCrop';
 import type { SharedTrip, TripMember } from '../../types/trip';
 import './gate.css';
 
@@ -25,6 +27,7 @@ export function WhoAreYouScreen({
   onBack,
 }: WhoAreYouScreenProps) {
   const [pendingPickId, setPendingPickId] = useState<string | null>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const pendingMember: TripMember | undefined =
@@ -33,14 +36,17 @@ export function WhoAreYouScreen({
       : undefined;
   const pendingName = pendingPickId === 'guest' ? 'Guest' : pendingMember?.name ?? '';
 
-  const handleAvatarFile = async (file: File) => {
+  const handleCroppedAvatar = async (cropped: CroppedImageResult) => {
+    setCropFile(null);
     if (!pendingMember) return;
-    try {
-      const dataUrl = await compressAvatarSquare(file, 256);
-      onUpdateMemberAvatar(pendingMember.id, dataUrl);
-    } catch {
-      // ignore invalid image
-    }
+    const uploaded = await uploadSharedImage(cropped, {
+      kind: 'avatar',
+      trip,
+      caption: pendingMember.name,
+      uploaderName: pendingMember.name,
+      fileName: `avatar-${pendingMember.name.toLowerCase()}.jpg`,
+    });
+    onUpdateMemberAvatar(pendingMember.id, uploaded.url);
   };
 
   return (
@@ -195,7 +201,7 @@ export function WhoAreYouScreen({
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) {
-                    void handleAvatarFile(f);
+                    setCropFile(f);
                     e.target.value = '';
                   }
                 }}
@@ -230,6 +236,14 @@ export function WhoAreYouScreen({
           </Button>
         </div>
       </LiquidBottomSheet>
+
+      <PhotoCropperSheet
+        open={Boolean(cropFile)}
+        file={cropFile}
+        preset="avatar"
+        onCancel={() => setCropFile(null)}
+        onConfirm={(res) => void handleCroppedAvatar(res)}
+      />
     </section>
   );
 }
