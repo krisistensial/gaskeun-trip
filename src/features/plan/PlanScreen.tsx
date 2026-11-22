@@ -119,6 +119,7 @@ export interface PlanScreenProps {
   onRequestUnlockPin: () => void;
   onOpenRoute: (target: RouteTarget) => void;
   onUpdateTrip: (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => void;
+  onNotify?: (msg: string, tone?: 'success' | 'info' | 'error') => void;
 }
 
 export function PlanScreen({
@@ -129,6 +130,7 @@ export function PlanScreen({
   onRequestUnlockPin,
   onOpenRoute,
   onUpdateTrip,
+  onNotify,
 }: PlanScreenProps) {
   const [viewMode, setViewMode] = useState<'trail' | 'table'>('trail');
   const [selectedDayId, setSelectedDayId] = useState<string>(
@@ -138,6 +140,7 @@ export function PlanScreen({
   const [editingStopId, setEditingStopId] = useState<string | null>(null);
   const [draftNewStop, setDraftNewStop] = useState<PlanItem | null>(null);
   const [activeIdeaModal, setActiveIdeaModal] = useState<ContentIdea | null>(null);
+  const [failedPhotoIds, setFailedPhotoIds] = useState<Record<string, boolean>>({});
   const [stageHeight, setStageHeight] = useState<number>(ARC_HEIGHT);
   const [centeredStopId, setCenteredStopId] = useState<string | null>(null);
 
@@ -418,7 +421,26 @@ export function PlanScreen({
     }));
   };
 
+  const handleQuickPersistCover = (itemId: string, coverUrl: string | undefined) => {
+    setFailedPhotoIds((prev) => {
+      if (!prev[itemId]) return prev;
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+    onUpdateTrip((prev) => ({
+      ...prev,
+      itinerary: prev.itinerary.map((i) => (i.id === itemId ? { ...i, coverUrl } : i)),
+    }));
+  };
+
   const handleSaveStop = (updated: PlanItem) => {
+    setFailedPhotoIds((prev) => {
+      if (!prev[updated.id]) return prev;
+      const next = { ...prev };
+      delete next[updated.id];
+      return next;
+    });
     onUpdateTrip((prev) => {
       const exists = prev.itinerary.some((i) => i.id === updated.id);
       return {
@@ -506,6 +528,8 @@ export function PlanScreen({
         canEdit={canEdit}
         onOpenRoute={onOpenRoute}
         onQuickPersistNotesHtml={handleQuickPersistNotesHtml}
+        onQuickPersistCover={handleQuickPersistCover}
+        onNotify={onNotify}
         onSave={handleSaveStop}
         onDelete={handleDeleteStop}
         onBack={() => {
@@ -778,6 +802,7 @@ export function PlanScreen({
                 const dotStatus =
                   effStatus === 'done' ? 'done' : effStatus === 'active' ? 'active' : 'upcoming';
                 const typeLabel = formatStopType(stop.type);
+                const showPhoto = Boolean(stop.coverUrl && !failedPhotoIds[stop.id]);
 
                 return (
                   <div
@@ -829,9 +854,24 @@ export function PlanScreen({
                           variant="clear"
                           padding="sm"
                           interactive
-                          className="trail-past-card"
+                          className={`trail-past-card ${showPhoto ? 'card-has-photo' : ''}`}
                           onClick={() => setEditingStopId(stop.id)}
                         >
+                          {showPhoto && (
+                            <>
+                              <img
+                                src={stop.coverUrl}
+                                alt=""
+                                aria-hidden="true"
+                                className="card-bg-photo"
+                                loading="lazy"
+                                onError={() =>
+                                  setFailedPhotoIds((prev) => ({ ...prev, [stop.id]: true }))
+                                }
+                              />
+                              <div className="card-bg-scrim" aria-hidden="true" />
+                            </>
+                          )}
                           <span className="trail-past-title">
                             {stop.startTime} · {stop.title}
                           </span>
@@ -842,10 +882,10 @@ export function PlanScreen({
                           variant="spotlight"
                           padding="lg"
                           interactive
-                          className={`spotlight-now ${stop.coverUrl ? 'card-has-photo' : ''}`}
+                          className={`spotlight-now ${showPhoto ? 'card-has-photo' : ''}`}
                           onClick={() => setEditingStopId(stop.id)}
                         >
-                          {stop.coverUrl && (
+                          {showPhoto && (
                             <>
                               <img
                                 src={stop.coverUrl}
@@ -853,6 +893,9 @@ export function PlanScreen({
                                 aria-hidden="true"
                                 className="card-bg-photo"
                                 loading="lazy"
+                                onError={() =>
+                                  setFailedPhotoIds((prev) => ({ ...prev, [stop.id]: true }))
+                                }
                               />
                               <div className="card-bg-scrim" aria-hidden="true" />
                             </>
@@ -881,9 +924,9 @@ export function PlanScreen({
                             )}
                             {(stop.type === 'place' || stop.type === 'transit') && (
                               <Button
-                                variant={stop.coverUrl ? 'glass' : 'matcha'}
+                                variant={showPhoto ? 'glass' : 'matcha'}
                                 size="sm"
-                                className={stop.coverUrl ? 'card-photo-route-btn' : undefined}
+                                className={showPhoto ? 'card-photo-route-btn' : undefined}
                                 rightIcon={<ArrowUpRight size={14} strokeWidth={2} />}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -900,10 +943,10 @@ export function PlanScreen({
                           variant="clear"
                           padding="md"
                           interactive
-                          className={stop.coverUrl ? 'card-has-photo' : undefined}
+                          className={showPhoto ? 'card-has-photo' : undefined}
                           onClick={() => setEditingStopId(stop.id)}
                         >
-                          {stop.coverUrl && (
+                          {showPhoto && (
                             <>
                               <img
                                 src={stop.coverUrl}
@@ -911,6 +954,9 @@ export function PlanScreen({
                                 aria-hidden="true"
                                 className="card-bg-photo"
                                 loading="lazy"
+                                onError={() =>
+                                  setFailedPhotoIds((prev) => ({ ...prev, [stop.id]: true }))
+                                }
                               />
                               <div className="card-bg-scrim" aria-hidden="true" />
                             </>
@@ -929,9 +975,9 @@ export function PlanScreen({
                               </Badge>
                             ) : stop.type === 'place' || stop.type === 'transit' ? (
                               <Button
-                                variant={stop.coverUrl ? 'glass' : 'ghost'}
+                                variant={showPhoto ? 'glass' : 'ghost'}
                                 size="sm"
-                                className={stop.coverUrl ? 'card-photo-route-btn' : undefined}
+                                className={showPhoto ? 'card-photo-route-btn' : undefined}
                                 rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
                                 onClick={(e) => {
                                   e.stopPropagation();

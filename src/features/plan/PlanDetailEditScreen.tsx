@@ -21,7 +21,7 @@ import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet'
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import type { CroppedImageResult } from '../../services/photoCrop';
-import { isClosedOnDate, isValidMapsUrl } from '../../services/planUtils';
+import { buildSavedPlanItem, isClosedOnDate, isValidMapsUrl } from '../../services/planUtils';
 import type {
   PlanItem,
   PlanItemStatus,
@@ -120,6 +120,8 @@ export interface PlanDetailEditScreenProps {
   canEdit: boolean;
   onOpenRoute: (target: RouteTarget) => void;
   onQuickPersistNotesHtml?: (itemId: string, notesHtml: string) => void;
+  onQuickPersistCover?: (itemId: string, coverUrl: string | undefined) => void;
+  onNotify?: (msg: string, tone?: 'success' | 'info' | 'error') => void;
   onSave: (updated: PlanItem) => void;
   onDelete: (itemId: string) => void;
   onBack: () => void;
@@ -135,6 +137,8 @@ export function PlanDetailEditScreen({
   canEdit,
   onOpenRoute,
   onQuickPersistNotesHtml,
+  onQuickPersistCover,
+  onNotify,
   onSave,
   onDelete,
   onBack,
@@ -315,23 +319,21 @@ export function PlanDetailEditScreen({
     const currentHtml = editorRef.current ? editorRef.current.innerHTML : notesHtmlRef.current;
     const trimmedText = editorRef.current?.textContent?.trim() ?? '';
 
-    onSave({
-      ...draft,
-      title: draft.title.trim() || 'Untitled Stop',
-      endTime: showEndTime ? draft.endTime : undefined,
-      mapsVerified: mapsValid,
-      status: selectedDay?.isIdeas
-        ? 'idea'
-        : draft.status === 'idea'
-          ? 'upcoming'
-          : draft.status,
-      notesHtml: trimmedText ? currentHtml : '',
-      notes: trimmedText ? draft.notes : [],
-    });
+    onSave(
+      buildSavedPlanItem({
+        draft,
+        selectedDay,
+        showEndTime,
+        notesHtml: currentHtml,
+        hasNoteText: Boolean(trimmedText),
+      }),
+    );
   };
 
   const handleCroppedCover = async (cropped: CroppedImageResult) => {
     setCoverCropFile(null);
+    // Show immediate crisp preview in the editor right after cropping
+    setDraft((prev) => ({ ...prev, coverUrl: cropped.dataUrl }));
     setUploadingCover(true);
     try {
       const uploaded = await uploadSharedImage(cropped, {
@@ -343,10 +345,36 @@ export function PlanDetailEditScreen({
         uploaderName,
         fileName: 'plan-cover.jpg',
       });
-      setDraft((prev) => ({ ...prev, coverUrl: uploaded.url }));
+      const finalUrl = uploaded.url || cropped.dataUrl;
+      setDraft((prev) => ({ ...prev, coverUrl: finalUrl }));
+      if (!isNew && onQuickPersistCover) {
+        onQuickPersistCover(draft.id, finalUrl);
+      }
+      onNotify?.(
+        uploaded.source === 'supabase'
+          ? 'Stop cover photo saved'
+          : uploaded.error
+            ? 'Cover photo saved locally (cloud bucket unavailable)'
+            : 'Stop cover photo saved',
+        'success',
+      );
+    } catch {
+      setDraft((prev) => ({ ...prev, coverUrl: cropped.dataUrl }));
+      if (!isNew && onQuickPersistCover) {
+        onQuickPersistCover(draft.id, cropped.dataUrl);
+      }
+      onNotify?.('Saved cover photo locally', 'info');
     } finally {
       setUploadingCover(false);
     }
+  };
+
+  const handleRemoveCover = () => {
+    setDraft((prev) => ({ ...prev, coverUrl: undefined }));
+    if (!isNew && onQuickPersistCover) {
+      onQuickPersistCover(draft.id, undefined);
+    }
+    onNotify?.('Stop cover photo removed', 'info');
   };
 
   const hasReadOnlyNotes = Boolean(notesHtmlRef.current.replace(/<[^>]+>/g, '').trim());
@@ -386,24 +414,48 @@ export function PlanDetailEditScreen({
       {(canEdit || draft.coverUrl) && (
         <>
           {canEdit ? (
-            <button
-              type="button"
-              className="cover-drop-strip tactile"
-              onClick={() => coverInputRef.current?.click()}
-            >
-              {draft.coverUrl ? (
-                <img
-                  src={draft.coverUrl}
-                  alt={draft.title}
-                  style={{ width: '100%', height: 132, objectFit: 'cover', display: 'block' }}
-                />
-              ) : (
-                <>
-                  <ImagePlus size={16} strokeWidth={1.8} />
-                  <span>+ Cover Photo</span>
-                </>
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                className="cover-drop-strip tactile"
+                onClick={() => coverInputRef.current?.click()}
+              >
+                {draft.coverUrl ? (
+                  <img
+                    src={draft.coverUrl}
+                    alt={draft.title}
+                    style={{ width: '100%', height: 132, objectFit: 'cover', display: 'block' }}
+                  />
+                ) : (
+                  <>
+                    <ImagePlus size={16} strokeWidth={1.8} />
+                    <span>+ Cover Photo</span>
+                  </>
+                )}
+              </button>
+              {draft.coverUrl && (
+                <button
+                  type="button"
+                  aria-label="Remove cover photo"
+                  onClick={handleRemoveCover}
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    background: 'rgba(24, 36, 32, 0.72)',
+                    color: '#FFFFFF',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <X size={14} strokeWidth={2.2} />
+                </button>
               )}
-            </button>
+            </div>
           ) : (
             <div className="cover-drop-strip" style={{ border: 'none' }}>
               <img

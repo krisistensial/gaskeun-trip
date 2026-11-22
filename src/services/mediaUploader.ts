@@ -21,6 +21,8 @@ export interface UploadSharedImageOptions {
   fileName?: string;
   /** Optional dependency injection for tests */
   supabaseClient?: SupabaseClient | null;
+  /** Optional public URL accessibility check hook */
+  verifyPublicUrl?: (url: string) => Promise<boolean>;
 }
 
 export interface UploadSharedImageResult {
@@ -63,17 +65,61 @@ export function estimateDataUrlBytes(dataUrl: string): number {
   return Math.floor((base64.length * 3) / 4);
 }
 
-function base64ToBlob(base64: string, mimeType: string): Blob {
-  const clean = base64.includes(',') ? base64.split(',')[1] ?? '' : base64;
+/**
+ * Safely decodes a `data:image/...;base64,...` URL or raw base64 string into a
+ * binary `Uint8Array` + `Blob` suitable for Supabase Storage upload on mobile PWAs.
+ */
+export function dataUrlToBytes(input: string): Uint8Array {
+  const commaIdx = input.indexOf(',');
+  const rawBase64 = (commaIdx >= 0 ? input.slice(commaIdx + 1) : input).replace(/\s+/g, '');
+  if (!rawBase64) return new Uint8Array(0);
+
   if (typeof atob === 'function') {
-    const binary = atob(clean);
+    const binary = atob(rawBase64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) {
       bytes[i] = binary.charCodeAt(i);
     }
-    return new Blob([bytes], { type: mimeType });
+    return bytes;
   }
-  return new Blob([clean], { type: mimeType });
+
+  // Node fallback if atob were unavailable
+  const bytes = new Uint8Array(rawBase64.length);
+  for (let i = 0; i < rawBase64.length; i += 1) {
+    bytes[i] = rawBase64.charCodeAt(i) & 0xff;
+  }
+  return bytes;
+}
+
+export function base64ToBlob(base64OrDataUrl: string, mimeType: string): Blob {
+  const bytes = dataUrlToBytes(base64OrDataUrl);
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return new Blob([copy.buffer], { type: mimeType });
+}
+
+function isValidHttpUrl(url?: string | null): boolean {
+  if (!url) return false;
+  return /^https?:\/\/.+/i.test(url.trim());
+}
+
+/**
+ * Verifies that a newly uploaded Supabase Storage public URL is actually readable
+ * (catches private buckets or missing SELECT policies that return HTTP 400/403/404).
+ */
+async function defaultVerifyPublicUrl(url: string): Promise<boolean> {
+  if (!isValidHttpUrl(url)) return false;
+  if (typeof fetch !== 'function') return true;
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    if (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 404) {
+      return false;
+    }
+    return true;
+  } catch {
+    // Opaque CORS/network edge case on HEAD: allow <img> to attempt load directly
+    return true;
+  }
 }
 
 /**
@@ -149,8 +195,8 @@ export async function compactAssetDataUrl(
  * - UI assets (`'hero' | 'plan' | 'stay' | 'train' | 'avatar' | 'idea'`) NEVER touch
  *   Google Drive -> uploaded directly to Supabase Storage public bucket `trip-assets`
  *   (`{tripCode}/{kind}-{timestamp}.jpg`, `upsert: true`), falling back cleanly to a
- *   quota-safe compressed `dataUrl` (<= 120 KB cover / <= 40 KB avatar) when offline
- *   or when Supabase is not configured.
+ *   quota-safe compressed `dataUrl` (<= 120 KB cover / <= 40 KB avatar) whenever
+ *   Supabase is unconfigured, offline, returns an error, or produces an unreadable URL.
  */
 export async function uploadSharedImage(
   cropped: { dataUrl: string; base64: string; blob?: Blob; mimeType?: string },
@@ -166,6 +212,7 @@ export async function uploadSharedImage(
     crewPin = '',
     fileName = `${kind}.jpg`,
     supabaseClient,
+    verifyPublicUrl,
   } = options;
 
   const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
@@ -224,7 +271,11 @@ export async function uploadSharedImage(
 
   if (client && isOnline) {
     const objectPath = buildTripAssetPath(trip.code, kind, Date.now(), mimeType);
-    const uploadBlob = cropped.blob ?? base64ToBlob(cropped.base64 || cropped.dataUrl, mimeType);
+    const uploadBlob =
+      cropped.blob && cropped.blob.size > 0
+        ? cropped.blob
+        : base64ToBlob(cropped.base64 || cropped.dataUrl, mimeType);
+
     try {
       const { error: uploadError } = await client.storage
         .from(TRIP_ASSETS_BUCKET)
@@ -238,14 +289,27 @@ export async function uploadSharedImage(
           .from(TRIP_ASSETS_BUCKET)
           .getPublicUrl(objectPath);
 
-        if (publicData?.publicUrl) {
+        const publicUrl = publicData?.publicUrl?.trim() ?? '';
+        const checker =
+          verifyPublicUrl ??
+          (supabaseClient !== undefined ? async (u: string) => isValidHttpUrl(u) : defaultVerifyPublicUrl);
+
+        if (isValidHttpUrl(publicUrl) && (await checker(publicUrl))) {
           return {
-            url: publicData.publicUrl,
-            fullUrl: publicData.publicUrl,
+            url: publicUrl,
+            fullUrl: publicUrl,
             source: 'supabase',
             storagePath: objectPath,
           };
         }
+
+        const compactUrl = await compactAssetDataUrl(cropped.dataUrl, getFallbackMaxBytes(kind));
+        return {
+          url: compactUrl,
+          fullUrl: compactUrl,
+          source: 'local',
+          error: 'Public asset URL unavailable — using compressed local copy',
+        };
       }
 
       const compactUrl = await compactAssetDataUrl(cropped.dataUrl, getFallbackMaxBytes(kind));
@@ -253,7 +317,7 @@ export async function uploadSharedImage(
         url: compactUrl,
         fullUrl: compactUrl,
         source: 'local',
-        error: uploadError?.message || 'Could not resolve Supabase public URL',
+        error: uploadError.message || 'Supabase Storage upload failed',
       };
     } catch (err) {
       const compactUrl = await compactAssetDataUrl(cropped.dataUrl, getFallbackMaxBytes(kind));

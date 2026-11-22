@@ -1,7 +1,10 @@
+import type { PlanItem, TripDay } from '../types/trip';
+
 /**
- * Pure itinerary validation utilities:
+ * Pure itinerary validation & persistence utilities:
  * - Google Maps URL validator
  * - Closed-day schedule conflict detector
+ * - PlanItem save payload builder (guarantees `coverUrl` preservation)
  */
 
 const WEEKDAY_NAMES = [
@@ -66,5 +69,34 @@ export function isClosedOnDate(
   return {
     closed,
     weekdayName: closed ? WEEKDAY_NAMES[dow] : null,
+  };
+}
+
+/**
+ * Builds the final persisted `PlanItem` payload on save, guaranteeing that
+ * uploaded cover photo URLs / dataUrls (`coverUrl`) are always preserved.
+ */
+export function buildSavedPlanItem(params: {
+  draft: PlanItem;
+  selectedDay?: TripDay;
+  showEndTime: boolean;
+  notesHtml: string;
+  hasNoteText: boolean;
+}): PlanItem {
+  const { draft, selectedDay, showEndTime, notesHtml, hasNoteText } = params;
+  const cleanCoverUrl = draft.coverUrl?.trim() || undefined;
+  return {
+    ...draft,
+    title: draft.title.trim() || 'Untitled Stop',
+    endTime: showEndTime ? draft.endTime : undefined,
+    coverUrl: cleanCoverUrl,
+    mapsVerified: isValidMapsUrl(draft.mapsUrl),
+    status: selectedDay?.isIdeas
+      ? 'idea'
+      : draft.status === 'idea'
+        ? 'upcoming'
+        : draft.status,
+    notesHtml: hasNoteText ? notesHtml : '',
+    notes: hasNoteText ? draft.notes : [],
   };
 }

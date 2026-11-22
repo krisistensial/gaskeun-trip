@@ -2,7 +2,7 @@
 
 > **App:** GASKEUN! Group Travel PWA (`vite-plugin-pwa`, base path `/gaskeun-trip/`, deployed via GitHub Pages).
 > **Pilot Trip:** `SOLO-27` (Solo – Jogja, Feb 11–14, 2027 · Default Crew PIN: `1234`).
-> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–8.6.
+> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–8.7.
 
 ---
 
@@ -41,7 +41,7 @@
 - **Home (`src/features/home/`):**
   - **Large Editorial Hero Countdown (Batch 7):** Boxless magazine-scale Playfair serif countdown elevated & centered over hero photo (`DAYS` `clamp(112px, 34vw, 156px)`, `HOURS/MINS/SECS` `clamp(34px, 10vw, 46px)`), crisp white text + soft dark scrim over custom cover photos (`home-hero--photo`) and deep Matcha `#1E3A32` without a cover photo.
   - KAI 3–2 / 2–2 Train Seat Map with one-tap seat swap (`TrainSeatMap.tsx`), editable Crew/Pods/Stays/Train Pass.
-  - **Full-Bleed Photo Cards (Batch 6):** `Now` Spotlight card renders stop photos as `position: absolute; inset: 0; object-fit: cover` with dark gradient scrim (`z-index: 1`) and high-contrast white typography + frosted glass `Route` pill (`z-index: 2`) — never increases card height/width.
+  - **Full-Bleed Photo Cards (Batches 6 & 8.7):** `Now` Spotlight card & all `Plan` stop states (`done`, `active`, `upcoming`) render stop photos with `isolation: isolate; overflow: hidden; backdrop-filter: none` on `.gk-glass.card-has-photo`, `position: absolute; inset: 0; object-fit: cover; z-index: 0` image, dark gradient scrim (`z-index: 1`), and transparent foreground (`z-index: 2`) with `onError` graceful fallback — never increases card height/width. Cover uploads in `PlanDetailEditScreen` show instant preview and auto-persist on existing stops (`onQuickPersistCover`) as well as on `Save Stop`.
 - **Plan (`src/features/plan/`):**
   - Frozen header + 60fps rAF **Dotted Circular C-Arc Trail** (`arcMath.ts`) with magnetic center snap & depth scale/dimming, 3-column Table + 3-sheet `.xlsx` export (`excelExporter.ts`), unified `RouteMapView` (Leaflet + offline SVG trail), seamless `contentEditable` notes, and **Full-Bleed Photo Cards** matching non-photo card dimensions.
 - **Universal Photo Cropper & Google Drive Shared Media (Batches 5–6):**

@@ -127,6 +127,7 @@ export function HomeScreen({
   } | null>(null);
   const [showCrewJump, setShowCrewJump] = useState(true);
   const [heroCropFile, setHeroCropFile] = useState<File | null>(null);
+  const [spotlightPhotoErrorUrl, setSpotlightPhotoErrorUrl] = useState<string>('');
 
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const crewSectionRef = useRef<HTMLElement | null>(null);
@@ -419,104 +420,110 @@ export function HomeScreen({
       </section>
 
       {/* On-Trip Spotlight Now & Up Next */}
-      {phase === 'on-trip' && activeStop && (
-        <section aria-label="Current stop spotlight">
-          <GlassCard
-            variant="spotlight"
-            padding="lg"
-            className={`spotlight-now ${activeStop.coverUrl ? 'card-has-photo' : ''}`}
-          >
-            {activeStop.coverUrl && (
+      {phase === 'on-trip' && activeStop && (() => {
+        const showSpotlightPhoto = Boolean(
+          activeStop.coverUrl && spotlightPhotoErrorUrl !== activeStop.coverUrl,
+        );
+        return (
+          <section aria-label="Current stop spotlight">
+            <GlassCard
+              variant="spotlight"
+              padding="lg"
+              className={`spotlight-now ${showSpotlightPhoto ? 'card-has-photo' : ''}`}
+            >
+              {showSpotlightPhoto && (
+                <>
+                  <img
+                    src={activeStop.coverUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="card-bg-photo"
+                    loading="lazy"
+                    onError={() => setSpotlightPhotoErrorUrl(activeStop.coverUrl ?? '')}
+                  />
+                  <div className="card-bg-scrim" aria-hidden="true" />
+                </>
+              )}
+              <div className="spotlight-now__top">
+                <span className="spotlight-live-tag">
+                  <span className="spotlight-live-dot" aria-hidden="true" />
+                  <span>Now</span>
+                </span>
+                <span className="spotlight-time">{activeStop.startTime}</span>
+              </div>
+
+              <div>
+                <h2 className="spotlight-place">{activeStop.title}</h2>
+                <p className="spotlight-hint">{activeStop.locationHint}</p>
+                {activeStop.parkingNote && (
+                  <p className="spotlight-parking">{activeStop.parkingNote}</p>
+                )}
+              </div>
+
+              <div className="spotlight-footer">
+                <Badge tone="matcha">
+                  {activeStop.type.charAt(0).toUpperCase() + activeStop.type.slice(1)}
+                </Badge>
+                <Button
+                  variant={showSpotlightPhoto ? 'glass' : 'matcha'}
+                  size="sm"
+                  className={showSpotlightPhoto ? 'card-photo-route-btn' : undefined}
+                  rightIcon={<ArrowUpRight size={15} strokeWidth={2} />}
+                  onClick={() => openStopInRoute(activeStop)}
+                >
+                  Route
+                </Button>
+              </div>
+            </GlassCard>
+
+            {nextStop && (
               <>
-                <img
-                  src={activeStop.coverUrl}
-                  alt=""
-                  aria-hidden="true"
-                  className="card-bg-photo"
-                  loading="lazy"
-                />
-                <div className="card-bg-scrim" aria-hidden="true" />
+                <div className="upnext-connector" aria-hidden="true" />
+                <GlassCard
+                  variant="clear"
+                  padding="md"
+                  interactive
+                  className="upnext-card"
+                  onClick={() => onNavigateTab('plan')}
+                >
+                  <div>
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      Up Next · {nextStop.startTime}
+                    </span>
+                    <div
+                      style={{
+                        fontFamily: 'var(--font-display)',
+                        fontSize: 17,
+                        fontWeight: 600,
+                        marginTop: 2,
+                      }}
+                    >
+                      {nextStop.title}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                      {nextStop.locationHint}
+                    </div>
+                  </div>
+                  <CornerOrb
+                    kind="custom"
+                    ariaLabel="Open route for next stop"
+                    icon={<ArrowUpRight size={18} strokeWidth={1.8} />}
+                    onClick={() => openStopInRoute(nextStop)}
+                  />
+                </GlassCard>
               </>
             )}
-            <div className="spotlight-now__top">
-              <span className="spotlight-live-tag">
-                <span className="spotlight-live-dot" aria-hidden="true" />
-                <span>Now</span>
-              </span>
-              <span className="spotlight-time">{activeStop.startTime}</span>
-            </div>
-
-            <div>
-              <h2 className="spotlight-place">{activeStop.title}</h2>
-              <p className="spotlight-hint">{activeStop.locationHint}</p>
-              {activeStop.parkingNote && (
-                <p className="spotlight-parking">{activeStop.parkingNote}</p>
-              )}
-            </div>
-
-            <div className="spotlight-footer">
-              <Badge tone="matcha">
-                {activeStop.type.charAt(0).toUpperCase() + activeStop.type.slice(1)}
-              </Badge>
-              <Button
-                variant={activeStop.coverUrl ? 'glass' : 'matcha'}
-                size="sm"
-                className={activeStop.coverUrl ? 'card-photo-route-btn' : undefined}
-                rightIcon={<ArrowUpRight size={15} strokeWidth={2} />}
-                onClick={() => openStopInRoute(activeStop)}
-              >
-                Route
-              </Button>
-            </div>
-          </GlassCard>
-
-          {nextStop && (
-            <>
-              <div className="upnext-connector" aria-hidden="true" />
-              <GlassCard
-                variant="clear"
-                padding="md"
-                interactive
-                className="upnext-card"
-                onClick={() => onNavigateTab('plan')}
-              >
-                <div>
-                  <span
-                    style={{
-                      fontSize: 10.5,
-                      fontWeight: 700,
-                      letterSpacing: '0.06em',
-                      textTransform: 'uppercase',
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    Up Next · {nextStop.startTime}
-                  </span>
-                  <div
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontSize: 17,
-                      fontWeight: 600,
-                      marginTop: 2,
-                    }}
-                  >
-                    {nextStop.title}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                    {nextStop.locationHint}
-                  </div>
-                </div>
-                <CornerOrb
-                  kind="custom"
-                  ariaLabel="Open route for next stop"
-                  icon={<ArrowUpRight size={18} strokeWidth={1.8} />}
-                  onClick={() => openStopInRoute(nextStop)}
-                />
-              </GlassCard>
-            </>
-          )}
-        </section>
-      )}
+          </section>
+        );
+      })()}
 
       {/* Bento Quick-Access Duo (Train Pass with optional photo + Album) */}
       <section className="bento-duo" aria-label="Quick access">

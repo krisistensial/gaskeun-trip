@@ -86,6 +86,7 @@ export function TrainPassEditorSheet({
 
   const handleCroppedTrainPhoto = async (cropped: CroppedImageResult) => {
     setCropFile(null);
+    setTrainPhotoDataUrl(cropped.dataUrl);
     setUploadingPhoto(true);
     try {
       const uploaded = await uploadSharedImage(cropped, {
@@ -95,7 +96,9 @@ export function TrainPassEditorSheet({
         uploaderName,
         fileName: 'train-pass.jpg',
       });
-      setTrainPhotoDataUrl(uploaded.url);
+      setTrainPhotoDataUrl(uploaded.url || cropped.dataUrl);
+    } catch {
+      setTrainPhotoDataUrl(cropped.dataUrl);
     } finally {
       setUploadingPhoto(false);
     }
@@ -890,6 +893,7 @@ export function StayEditorSheet({
 
   const handleCroppedStayPhoto = async (cropped: CroppedImageResult) => {
     setCropFile(null);
+    setPhotoDataUrl(cropped.dataUrl);
     setUploadingPhoto(true);
     try {
       const uploaded = await uploadSharedImage(cropped, {
@@ -899,7 +903,9 @@ export function StayEditorSheet({
         uploaderName,
         fileName: 'stay-cover.jpg',
       });
-      setPhotoDataUrl(uploaded.url);
+      setPhotoDataUrl(uploaded.url || cropped.dataUrl);
+    } catch {
+      setPhotoDataUrl(cropped.dataUrl);
     } finally {
       setUploadingPhoto(false);
     }

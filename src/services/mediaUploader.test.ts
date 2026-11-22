@@ -7,7 +7,9 @@ import {
   FALLBACK_AVATAR_MAX_BYTES,
   FALLBACK_COVER_MAX_BYTES,
   TRIP_ASSETS_BUCKET,
+  base64ToBlob,
   buildTripAssetPath,
+  dataUrlToBytes,
   getFallbackMaxBytes,
   uploadSharedImage,
 } from './mediaUploader';
@@ -95,7 +97,40 @@ describe('Media Uploader strict routing (Google Drive Album-only vs Supabase tri
     expect(resError.error).toBe('Bucket missing');
     expect(driveSpy).not.toHaveBeenCalled();
 
+    // Private / unreadable public URL check also falls back safely to local dataUrl
+    const privateBucketSupabase = {
+      storage: {
+        from: () => ({
+          upload: vi.fn().mockResolvedValue({ data: { path: 'SOLO-27/plan-1.jpg' }, error: null }),
+          getPublicUrl: () => ({
+            data: { publicUrl: 'https://example.supabase.co/storage/v1/object/public/trip-assets/SOLO-27/plan-1.jpg' },
+          }),
+        }),
+      },
+    } as unknown as SupabaseClient;
+
+    const resPrivate = await uploadSharedImage(sampleCropped, {
+      kind: 'plan',
+      trip: pilotTrip,
+      supabaseClient: privateBucketSupabase,
+      verifyPublicUrl: async () => false,
+    });
+    expect(resPrivate.source).toBe('local');
+    expect(resPrivate.url).toBe(sampleCropped.dataUrl);
+    expect(resPrivate.error).toContain('Public asset URL unavailable');
+
     driveSpy.mockRestore();
+  });
+
+  it('safely converts dataUrl / base64 to binary Uint8Array and Blob', () => {
+    const bytes = dataUrlToBytes('data:image/jpeg;base64,SGVsbG8=');
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(Array.from(bytes)).toEqual([72, 101, 108, 108, 111]);
+
+    const blob = base64ToBlob('data:image/jpeg;base64,SGVsbG8=', 'image/jpeg');
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.size).toBe(5);
+    expect(blob.type).toBe('image/jpeg');
   });
 
   it('routes kind="album" exclusively to Google Drive Bridge', async () => {

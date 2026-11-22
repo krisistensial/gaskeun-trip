@@ -313,8 +313,13 @@
 }
 
 /* Full-Bleed Background Photo Cards (Identical Dimensions to Non-Photo Cards) */
-.card-has-photo {
+.gk-glass.card-has-photo {
+  position: relative;
   overflow: hidden;
+  isolation: isolate;
+  background: #1B2B25;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border-color: rgba(255, 255, 255, 0.62);
 }
 
@@ -327,6 +332,7 @@
   border-radius: inherit;
   z-index: 0;
   pointer-events: none;
+  display: block;
 }
 
 .card-bg-scrim {
@@ -338,28 +344,19 @@
   background: linear-gradient(
     180deg,
     rgba(18, 32, 28, 0.34) 0%,
-    rgba(18, 32, 28, 0.76) 100%
+    rgba(18, 32, 28, 0.78) 100%
   );
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
-.card-bg-scrim::after {
-  content: '';
-  position: absolute;
-  inset: 42% 0 0 0;
-  border-radius: inherit;
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-  mask-image: linear-gradient(180deg, transparent 0%, #000000 100%);
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000000 100%);
 }
 
 .card-has-photo > *:not(.card-bg-photo):not(.card-bg-scrim) {
   position: relative;
   z-index: 2;
+  background: transparent;
 }
 
 .card-has-photo .trail-upcoming-title,
+.card-has-photo .trail-past-title,
 .card-has-photo .spotlight-place,
 .card-has-photo .spotlight-time {
   color: #FFFFFF;
@@ -393,7 +390,8 @@
   box-shadow: 0 6px 18px -6px rgba(10, 20, 16, 0.36) !important;
 }
 
-.card-has-photo .gk-badge--matcha {
+.card-has-photo .gk-badge--matcha,
+.card-has-photo .gk-badge--mint {
   background: rgba(255, 255, 255, 0.22);
   color: #FFFFFF;
   border: 1px solid rgba(255, 255, 255, 0.36);
@@ -412,6 +410,7 @@
 }
 
 .trail-item--centered .gk-glass.card-has-photo {
+  background: #1B2B25;
   border-color: rgba(255, 255, 255, 0.86);
   box-shadow:
     0 22px 46px -14px rgba(18, 32, 28, 0.34),
@@ -565,6 +564,15 @@
 }
 
 /* Warm Photo Variant for Content Cards with Reference Cover */
+.gk-glass.plan-content-card--photo {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: #2C1B0A !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 .plan-content-card--photo .plan-content-title {
   color: #FFFFFF;
   text-shadow: 0 1px 10px rgba(24, 14, 4, 0.55);

@@ -529,6 +529,7 @@ export default function App() {
               onRequestUnlockPin={() => requestUnlockPin()}
               onOpenRoute={(target) => setActiveRouteTarget(target)}
               onUpdateTrip={handleUpdateTrip}
+              onNotify={showToast}
             />
           )}
 

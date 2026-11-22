@@ -107,6 +107,8 @@ export function ContentIdeaSheet({
 
   const handleCoverCropped = async (cropped: CroppedImageResult) => {
     setCropFile(null);
+    setThumbnailUrl(cropped.dataUrl);
+    setCustomThumb(true);
     setUploadingCover(true);
     try {
       const uploaded = await uploadSharedImage(cropped, {
@@ -116,7 +118,10 @@ export function ContentIdeaSheet({
         uploaderName: activeMemberName,
         fileName: `idea-${Date.now().toString(36)}.jpg`,
       });
-      setThumbnailUrl(uploaded.url);
+      setThumbnailUrl(uploaded.url || cropped.dataUrl);
+      setCustomThumb(true);
+    } catch {
+      setThumbnailUrl(cropped.dataUrl);
       setCustomThumb(true);
     } finally {
       setUploadingCover(false);

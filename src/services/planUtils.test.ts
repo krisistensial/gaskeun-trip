@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { isClosedOnDate, isValidMapsUrl, normalizeExternalUrl } from './planUtils';
+import type { PlanItem, TripDay } from '../types/trip';
+import {
+  buildSavedPlanItem,
+  isClosedOnDate,
+  isValidMapsUrl,
+  normalizeExternalUrl,
+} from './planUtils';
 
 describe('Plan Utilities — mapsValidator & closedDays Detection', () => {
   describe('isValidMapsUrl', () => {
@@ -58,6 +64,62 @@ describe('Plan Utilities — mapsValidator & closedDays Detection', () => {
     it('returns false safely for Ideas bucket (empty date) or open-daily stops', () => {
       expect(isClosedOnDate([0, 6], '').closed).toBe(false);
       expect(isClosedOnDate(undefined, '2027-02-13').closed).toBe(false);
+    });
+  });
+
+  describe('buildSavedPlanItem', () => {
+    const day3: TripDay = {
+      id: 'day-3',
+      date: '2027-02-13',
+      dayLabel: 'Sat',
+      dateNum: '13',
+      city: 'Jogja',
+    };
+
+    const baseDraft: PlanItem = {
+      id: 'it-7',
+      dayId: 'day-3',
+      type: 'place',
+      title: 'Goa Maria Ganjuran',
+      startTime: '08:30',
+      locationHint: 'Bambanglipuro, Bantul',
+      address: 'Jl. Ganjuran',
+      mapsUrl: 'https://maps.app.goo.gl/goa-maria-ganjuran',
+      status: 'active',
+      notes: [],
+    };
+
+    it('preserves uploaded Supabase coverUrl and local dataUrl cleanly on save', () => {
+      const supabaseUrl =
+        'https://example.supabase.co/storage/v1/object/public/trip-assets/SOLO-27/plan-123.jpg';
+      const savedRemote = buildSavedPlanItem({
+        draft: { ...baseDraft, coverUrl: supabaseUrl },
+        selectedDay: day3,
+        showEndTime: false,
+        notesHtml: '<div>Bring umbrella</div>',
+        hasNoteText: true,
+      });
+      expect(savedRemote.coverUrl).toBe(supabaseUrl);
+      expect(savedRemote.mapsVerified).toBe(true);
+
+      const localDataUrl = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+      const savedLocal = buildSavedPlanItem({
+        draft: { ...baseDraft, coverUrl: localDataUrl },
+        selectedDay: day3,
+        showEndTime: false,
+        notesHtml: '',
+        hasNoteText: false,
+      });
+      expect(savedLocal.coverUrl).toBe(localDataUrl);
+
+      const savedRemoved = buildSavedPlanItem({
+        draft: { ...baseDraft, coverUrl: '   ' },
+        selectedDay: day3,
+        showEndTime: false,
+        notesHtml: '',
+        hasNoteText: false,
+      });
+      expect(savedRemoved.coverUrl).toBeUndefined();
     });
   });
 });
