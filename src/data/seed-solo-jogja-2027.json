@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "seedVersion": 3,
   "id": "trip-solo-jogja-2027",
   "code": "SOLO-27",
   "title": "Solo – Jogja",
@@ -244,12 +245,32 @@
       "notes": []
     },
     {
+      "id": "it-6b",
+      "dayId": "day-3",
+      "type": "activity",
+      "title": "Fuel Up 5 Bikes & Convoy Briefing",
+      "startTime": "07:30",
+      "endTime": "08:00",
+      "locationHint": "SPBU Prawirotaman · Full tank + tire check",
+      "address": "SPBU Parangtritis, Prawirotaman, Yogyakarta",
+      "parkingNote": "Regroup at exit lane before heading south",
+      "mapsUrl": "https://maps.app.goo.gl/spbu-parangtritis",
+      "mapsVerified": true,
+      "coords": [-7.8254, 110.3672],
+      "costEstimate": 20000,
+      "status": "done",
+      "notes": [
+        { "id": "n-brief-1", "kind": "checklist", "text": "Confirm Kris leads & Chika sweeps", "checked": true },
+        { "id": "n-brief-2", "kind": "checklist", "text": "All 5 bikes full tank Pertalite/Pertamax", "checked": true }
+      ]
+    },
+    {
       "id": "it-7",
       "dayId": "day-3",
       "type": "place",
       "title": "Goa Maria Ganjuran",
       "startTime": "08:30",
-      "endTime": "10:30",
+      "endTime": "10:00",
       "locationHint": "Bambanglipuro, Bantul · Free entry",
       "address": "Jl. Ganjuran, Sumbermulyo, Bambanglipuro, Bantul, DIY",
       "parkingNote": "Wide shady motorbike lot · Rp 2k–5k",
@@ -263,12 +284,31 @@
       ]
     },
     {
+      "id": "it-7b",
+      "dayId": "day-3",
+      "type": "place",
+      "title": "Pantai Parangkusumo Quick Stop",
+      "startTime": "10:15",
+      "endTime": "11:00",
+      "locationHint": "Kretek, Bantul · Coastal breeze & group photo",
+      "address": "Pantai Parangkusumo, Parangtritis, Kretek, Bantul, DIY",
+      "parkingNote": "Main coastal parking · Rp 3k/bike",
+      "mapsUrl": "https://maps.app.goo.gl/pantai-parangkusumo",
+      "mapsVerified": true,
+      "coords": [-8.0195, 110.3208],
+      "costEstimate": 15000,
+      "status": "upcoming",
+      "notes": [
+        { "id": "n-pantai-1", "kind": "paragraph", "text": "Quick coconut drink & convoy photo by the dunes." }
+      ]
+    },
+    {
       "id": "it-8",
       "dayId": "day-3",
       "type": "place",
       "title": "Gua Maria Jurang Metes",
       "startTime": "11:30",
-      "endTime": "13:30",
+      "endTime": "13:00",
       "locationHint": "Argorejo, Sedayu · Valley trail",
       "address": "Dusun Metes RT 41, Argorejo, Sedayu, Bantul, DIY",
       "parkingNote": "Park at upper trailhead · 5-min shaded valley walk",
@@ -282,12 +322,48 @@
       ]
     },
     {
+      "id": "it-8b",
+      "dayId": "day-3",
+      "type": "place",
+      "title": "Waroeng Jeep Corner Lunch",
+      "startTime": "13:30",
+      "endTime": "14:30",
+      "locationHint": "Kasihan, Bantul · Rest & group lunch",
+      "address": "Jl. Wates KM 8, Kasihan, Bantul, DIY",
+      "parkingNote": "Dedicated motorbike row inside compound",
+      "mapsUrl": "https://maps.app.goo.gl/waroeng-jeep-corner",
+      "mapsVerified": true,
+      "coords": [-7.8048, 110.3052],
+      "costEstimate": 35000,
+      "status": "upcoming",
+      "notes": []
+    },
+    {
+      "id": "it-8c",
+      "dayId": "day-3",
+      "type": "place",
+      "title": "Gua Maria Sendangsono / Tritis Stop",
+      "startTime": "15:00",
+      "endTime": "16:15",
+      "locationHint": "Kulon Progo · Quiet afternoon prayer stop",
+      "address": "Sendangsono, Banjaroyo, Kalibawang, Kulon Progo, DIY",
+      "parkingNote": "Lower motorbike lot Rp 3k · 3-min walk up",
+      "mapsUrl": "https://maps.app.goo.gl/gua-maria-sendangsono",
+      "mapsVerified": true,
+      "coords": [-7.6654, 110.2286],
+      "costEstimate": 0,
+      "status": "upcoming",
+      "notes": [
+        { "id": "n-sendang-1", "kind": "paragraph", "text": "Cool highland breeze; refill drinking bottles before heading back to city." }
+      ]
+    },
+    {
       "id": "it-9",
       "dayId": "day-3",
       "type": "activity",
       "title": "Natan Art Space & Coffee",
       "startTime": "16:30",
-      "endTime": "18:30",
+      "endTime": "18:00",
       "locationHint": "Kotagede · Heritage joglo cafe",
       "address": "Jl. Mondorakan No. 5, Prenggan, Kotagede, Yogyakarta",
       "mapsUrl": "https://maps.app.goo.gl/natan-art-space",
@@ -296,6 +372,44 @@
       "costEstimate": 45000,
       "status": "upcoming",
       "notes": []
+    },
+    {
+      "id": "it-9b",
+      "dayId": "day-3",
+      "type": "place",
+      "title": "Bakpia Pathok & Oleh-Oleh Run",
+      "startTime": "18:30",
+      "endTime": "19:30",
+      "locationHint": "Pathok · Fresh warm bakpia boxes",
+      "address": "Jl. AIP KS Tubun No. 75, Ngampilan, Yogyakarta",
+      "parkingNote": "Park along storefront side bay",
+      "mapsUrl": "https://maps.app.goo.gl/bakpia-pathok-25",
+      "mapsVerified": true,
+      "coords": [-7.7985, 110.3578],
+      "costEstimate": 50000,
+      "status": "upcoming",
+      "notes": [
+        { "id": "n-bakpia-1", "kind": "bullet", "text": "Grab warm kumbu hitam & keju boxes before 19:30." }
+      ]
+    },
+    {
+      "id": "it-9c",
+      "dayId": "day-3",
+      "type": "activity",
+      "title": "Pack, Return 5 Bikes & Head to Tugu Station",
+      "startTime": "20:00",
+      "endTime": "22:30",
+      "locationHint": "Bedja Homestay → Rental drop-off → Station",
+      "address": "Stasiun Yogyakarta (Tugu), Sosromenduran, Yogyakarta",
+      "parkingNote": "Handover keys & 10 helmets together at 21:00",
+      "mapsUrl": "https://maps.app.goo.gl/stasiun-tugu-jogja",
+      "mapsVerified": true,
+      "coords": [-7.7892, 110.3635],
+      "costEstimate": 0,
+      "status": "upcoming",
+      "notes": [
+        { "id": "n-pack-1", "kind": "checklist", "text": "Check chargers, ID cards & train tickets", "checked": false }
+      ]
     },
     {
       "id": "it-10",

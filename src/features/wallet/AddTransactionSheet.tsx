@@ -162,30 +162,37 @@ export function AddTransactionSheet({
         )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* Large Amount Input */}
-          <div className="tx-amount-box">
-            <span className="gk-field__label">AMOUNT</span>
-            <div className="tx-amount-row">
-              <span
-                style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: 22,
-                  fontWeight: 600,
-                  color: 'var(--text-muted)',
-                }}
-              >
-                Rp
-              </span>
-              <input
-                aria-label="Amount in IDR"
-                inputMode="numeric"
-                className="tx-amount-input"
-                placeholder="100,000"
-                value={formattedAmount}
-                onChange={(e) => setAmountRaw(e.target.value.replace(/\D/g, ''))}
-              />
-            </div>
-          </div>
+          {/* Large Amount Input (Green +Rp for Income, Red -Rp for Expenses) */}
+          {(() => {
+            const isIncome = mode === 'pool' || mode === 'fundraise';
+            return (
+              <div className="tx-amount-box">
+                <span className="gk-field__label">
+                  {isIncome ? 'AMOUNT IN (+)' : 'AMOUNT OUT (−)'}
+                </span>
+                <div className="tx-amount-row">
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 22,
+                      fontWeight: 700,
+                      color: isIncome ? 'var(--accent-mint)' : 'var(--accent-coral)',
+                    }}
+                  >
+                    {isIncome ? '+Rp' : '-Rp'}
+                  </span>
+                  <input
+                    aria-label="Amount in IDR"
+                    inputMode="numeric"
+                    className={`tx-amount-input ${isIncome ? 'tx-amount-input--in' : 'tx-amount-input--out'}`}
+                    placeholder="100,000"
+                    value={formattedAmount}
+                    onChange={(e) => setAmountRaw(e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Contextual Fields */}
           {mode === 'pool' && (

@@ -97,9 +97,30 @@ export async function saveSharedTrip(trip: SharedTrip): Promise<void> {
 
 export async function ensureSeedTrip(seed: SharedTrip): Promise<SharedTrip> {
   const existing = await getSharedTripByCode(seed.code);
-  if (existing) return existing;
-  await saveSharedTrip(seed);
-  return seed;
+  if (!existing) {
+    await saveSharedTrip(seed);
+    return seed;
+  }
+
+  // Non-destructive seed version bump: upgrades pilot demo itinerary (e.g. 10 stops on Sat 13)
+  // while preserving user-uploaded profile avatars, editor roles, ledger, and Layer-2 local data.
+  if ((existing.seedVersion ?? 1) < (seed.seedVersion ?? 1)) {
+    const seedDay3 = seed.itinerary.filter((i) => i.dayId === 'day-3');
+    const otherDays = existing.itinerary.filter((i) => i.dayId !== 'day-3');
+    const upgraded: SharedTrip = {
+      ...existing,
+      seedVersion: seed.seedVersion,
+      editorMemberIds:
+        existing.editorMemberIds && existing.editorMemberIds.length > 0
+          ? existing.editorMemberIds
+          : seed.editorMemberIds,
+      itinerary: [...otherDays, ...seedDay3],
+    };
+    await saveSharedTrip(upgraded);
+    return upgraded;
+  }
+
+  return existing;
 }
 
 /* ===========================

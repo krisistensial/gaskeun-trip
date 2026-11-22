@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowUpRight, CalendarPlus, FileSpreadsheet } from 'lucide-react';
 import {
   Badge,
@@ -21,15 +21,33 @@ import type {
   SharedTrip,
   TripDay,
 } from '../../types/trip';
+import {
+  ARC_BASE_X,
+  ARC_BULGE,
+  ARC_HEIGHT,
+  ARC_MAX_X,
+  ARC_WIDTH,
+  buildDottedArcPath,
+  getArcX,
+} from './arcMath';
 import { PlanDetailEditScreen } from './PlanDetailEditScreen';
 import './plan.css';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DOTTED_ARC_PATH = buildDottedArcPath(10, 56);
+const DOT_HALF_SIZE = 14; // .trail-item__dot is 28x28 -> center offset = 14px
+const DOT_TOP_OFFSET = 18; // .trail-item__dot top: 18px -> center Y = rowTop + 32px
 
 function formatEstimate(cost?: number): string {
   if (cost === undefined) return '—';
   if (cost === 0) return 'Free';
   return formatCompactIDR(cost);
+}
+
+function formatStopType(type: PlanItemType): string {
+  if (type === 'transit') return 'Transit';
+  if (type === 'activity') return 'Activity';
+  return 'Place';
 }
 
 function getLocalTodayIso(): string {
@@ -48,7 +66,7 @@ function parseMinutes(hhmm?: string): number {
  * Resolves the effective display status of each stop on the selected day:
  * - Explicit manual `done` or `active` always wins.
  * - On the actual trip date (`day.date === today`), highlights the stop matching
- *   the device's local clock as `active` and earlier elapsed stops softly.
+ *   the device's local clock as `active`.
  */
 function resolveEffectiveStatuses(
   items: PlanItem[],
@@ -110,6 +128,11 @@ export function PlanScreen({
   const [editingStopId, setEditingStopId] = useState<string | null>(null);
   const [draftNewStop, setDraftNewStop] = useState<PlanItem | null>(null);
 
+  const arcStickyRef = useRef<HTMLDivElement | null>(null);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const dotRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
   const selectedDay = trip.days.find((d) => d.id === selectedDayId) ?? trip.days[0];
   const dayLabelStr = selectedDay?.isIdeas
     ? 'Ideas'
@@ -133,19 +156,71 @@ export function PlanScreen({
     [dayItems, selectedDay?.date],
   );
 
-  const focusedIdx = useMemo(() => {
-    const activeIdx = dayItems.findIndex((i) => effectiveStatusMap.get(i.id) === 'active');
-    if (activeIdx >= 0) return activeIdx;
-    const firstUpcoming = dayItems.findIndex((i) => effectiveStatusMap.get(i.id) !== 'done');
-    if (firstUpcoming >= 0) return firstUpcoming;
-    return Math.floor(dayItems.length / 2);
-  }, [dayItems, effectiveStatusMap]);
-
   const activeEditingItem = draftNewStop
     ? draftNewStop
     : editingStopId
       ? trip.itinerary.find((i) => i.id === editingStopId) ?? null
       : null;
+
+  /**
+   * 60fps rAF Arc Geometry Sync:
+   * Reads the fixed sticky 520px dotted rail's live viewport position and places
+   * every TrailDot center at exact `(getArcX(u), y)` directly ON the dotted path,
+   * while sliding each card horizontally with an exact fixed gap from its dot.
+   */
+  const syncArcPositions = useCallback(() => {
+    const stickyEl = arcStickyRef.current;
+    if (!stickyEl) return;
+    const stickyRect = stickyEl.getBoundingClientRect();
+    const halfH = ARC_HEIGHT / 2;
+    const railCenterY = stickyRect.top + halfH;
+
+    for (const stop of dayItems) {
+      const rowEl = rowRefs.current.get(stop.id);
+      const dotEl = dotRefs.current.get(stop.id);
+      const cardEl = cardRefs.current.get(stop.id);
+      if (!rowEl || !dotEl || !cardEl) continue;
+
+      const rowRect = rowEl.getBoundingClientRect();
+      const dotCenterY = rowRect.top + DOT_TOP_OFFSET + DOT_HALF_SIZE;
+      const u = (dotCenterY - railCenterY) / halfH;
+      const exactX = getArcX(u);
+      const curveNorm = (exactX - ARC_BASE_X) / ARC_BULGE; // 0 at edges -> 1 at arc apex
+
+      dotEl.style.transform = `translate3d(${(exactX - DOT_HALF_SIZE).toFixed(2)}px, 0, 0)`;
+
+      const cardShiftX = exactX - ARC_MAX_X; // 0 at apex -> -28px at top/bottom edges
+      const cardScale = 0.965 + curveNorm * 0.035;
+      cardEl.style.transform = `translate3d(${cardShiftX.toFixed(2)}px, 0, 0) scale(${cardScale.toFixed(4)})`;
+    }
+  }, [dayItems]);
+
+  useEffect(() => {
+    if (viewMode !== 'trail' || activeEditingItem || dayItems.length === 0) return;
+
+    let rafId = 0;
+    const scheduleSync = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        syncArcPositions();
+      });
+    };
+
+    // Initial alignment right after DOM paint
+    syncArcPositions();
+    const initRaf = window.requestAnimationFrame(syncArcPositions);
+
+    window.addEventListener('scroll', scheduleSync, { passive: true });
+    window.addEventListener('resize', scheduleSync, { passive: true });
+
+    return () => {
+      window.cancelAnimationFrame(initRaf);
+      if (rafId) window.cancelAnimationFrame(rafId);
+      window.removeEventListener('scroll', scheduleSync);
+      window.removeEventListener('resize', scheduleSync);
+    };
+  }, [viewMode, activeEditingItem, dayItems, syncArcPositions]);
 
   const handleAddDay = () => {
     if (!canEdit) {
@@ -276,10 +351,6 @@ export function PlanScreen({
     );
   }
 
-  // Arc apex Y in SVG percentage space (0..100)
-  const apexPct =
-    dayItems.length > 1 ? Math.round((focusedIdx / (dayItems.length - 1)) * 78 + 11) : 50;
-
   return (
     <div className="plan-root">
       {/* Header: Plan + 2-Option V4 Switcher (Trail | Table) */}
@@ -331,12 +402,12 @@ export function PlanScreen({
             className={`plan-chip tactile ${typeFilter === f ? 'plan-chip--active' : ''}`}
             onClick={() => setTypeFilter(f)}
           >
-            {f === 'all' ? 'All' : f === 'transit' ? 'Transit' : f === 'place' ? 'Place' : 'Activity'}
+            {f === 'all' ? 'All' : formatStopType(f)}
           </button>
         ))}
       </div>
 
-      {/* Content: True Circular C-Arc Trail (03a) or Clean 3-Column Table (03b) */}
+      {/* Content: Fixed Dotted Circular Arc Trail (03a) or Clean 3-Column Table (03b) */}
       {dayItems.length === 0 ? (
         <EmptyState
           icon={<CalendarPlus size={22} strokeWidth={1.8} />}
@@ -356,51 +427,51 @@ export function PlanScreen({
         />
       ) : viewMode === 'trail' ? (
         <div className="trail-list">
-          {/* True Circular C-Arc SVG Spine */}
-          <svg
-            className="trail-arc-svg"
-            viewBox="0 0 44 100"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <defs>
-              <linearGradient id="gaskeunArcGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgba(74, 116, 104, 0.24)" />
-                <stop offset={`${apexPct}%`} stopColor="rgba(43, 148, 107, 0.85)" />
-                <stop offset="100%" stopColor="rgba(74, 116, 104, 0.22)" />
-              </linearGradient>
-            </defs>
-            <path
-              d={`M 10 2 Q 36 ${apexPct}, 10 98`}
-              fill="none"
-              stroke="url(#gaskeunArcGrad)"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
+          {/* Fixed 520px Sticky Dotted Circular Arc Rail (Identical for 1, 4, or 10 stops) */}
+          <div className="trail-arc-layer" aria-hidden="true">
+            <div ref={arcStickyRef} className="trail-arc-sticky">
+              <svg
+                className="trail-arc-svg"
+                width={ARC_WIDTH}
+                height={ARC_HEIGHT}
+                viewBox={`0 0 ${ARC_WIDTH} ${ARC_HEIGHT}`}
+              >
+                <path
+                  d={DOTTED_ARC_PATH}
+                  fill="none"
+                  stroke="rgba(74, 116, 104, 0.42)"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeDasharray="1 10"
+                />
+              </svg>
+            </div>
+          </div>
 
-          {dayItems.map((stop, idx) => {
+          {dayItems.map((stop) => {
             const closedCheck = isClosedOnDate(stop.closedDays, selectedDay?.date);
             const effStatus = effectiveStatusMap.get(stop.id) ?? stop.status;
             const dotStatus =
               effStatus === 'done' ? 'done' : effStatus === 'active' ? 'active' : 'upcoming';
-
-            // True Circular Arc math: apex at focusedIdx curves gently rightward & scales largest
-            const maxSpan = Math.max(2, dayItems.length - 1);
-            const distNorm = Math.min(1, Math.abs(idx - focusedIdx) / maxSpan);
-            const curveFactor = Math.cos(distNorm * (Math.PI / 2));
-            const dotOffsetX = Math.round(curveFactor * 12);
-            const cardOffsetX = Math.round(curveFactor * 10);
-            const cardScale = Number((0.955 + curveFactor * 0.045).toFixed(3));
+            const typeLabel = formatStopType(stop.type);
 
             return (
-              <div key={stop.id} className="trail-item">
+              <div
+                key={stop.id}
+                ref={(el) => {
+                  if (el) rowRefs.current.set(stop.id, el);
+                  else rowRefs.current.delete(stop.id);
+                }}
+                className="trail-item"
+              >
                 {canEdit ? (
                   <button
+                    ref={(el) => {
+                      if (el) dotRefs.current.set(stop.id, el);
+                      else dotRefs.current.delete(stop.id);
+                    }}
                     type="button"
                     className="trail-item__dot trail-item__dot--btn"
-                    style={{ transform: `translateX(${dotOffsetX}px)` }}
                     aria-label={
                       effStatus === 'done'
                         ? `Mark ${stop.title} upcoming`
@@ -412,18 +483,22 @@ export function PlanScreen({
                   </button>
                 ) : (
                   <div
+                    ref={(el) => {
+                      if (el) dotRefs.current.set(stop.id, el);
+                      else dotRefs.current.delete(stop.id);
+                    }}
                     className="trail-item__dot"
-                    style={{ transform: `translateX(${dotOffsetX}px)` }}
                   >
                     <TrailDot status={dotStatus} />
                   </div>
                 )}
 
                 <div
-                  className="trail-item__card-wrap"
-                  style={{
-                    transform: `translateX(${cardOffsetX}px) scale(${cardScale})`,
+                  ref={(el) => {
+                    if (el) cardRefs.current.set(stop.id, el);
+                    else cardRefs.current.delete(stop.id);
                   }}
+                  className="trail-item__card-wrap"
                 >
                   {effStatus === 'done' ? (
                     <GlassCard
@@ -449,7 +524,7 @@ export function PlanScreen({
                       <div className="spotlight-now__top">
                         <span className="spotlight-live-tag">
                           <span className="spotlight-live-dot" aria-hidden="true" />
-                          <span>Now · {stop.type}</span>
+                          <span>Now · {typeLabel}</span>
                         </span>
                         <span className="spotlight-time">{stop.startTime}</span>
                       </div>
@@ -463,7 +538,7 @@ export function PlanScreen({
                             Closed {closedCheck.weekdayName?.slice(0, 3)}
                           </Badge>
                         ) : (
-                          <Badge tone="matcha">{stop.type}</Badge>
+                          <span />
                         )}
                         {(stop.type === 'place' || stop.type === 'transit') && (
                           <Button
@@ -490,7 +565,7 @@ export function PlanScreen({
                       <div className="trail-upcoming-head">
                         <span className="trail-upcoming-meta">
                           {stop.startTime}
-                          {stop.endTime ? `–${stop.endTime}` : ''} · {stop.type}
+                          {stop.endTime ? `–${stop.endTime}` : ''} · {typeLabel}
                         </span>
                         {closedCheck.closed ? (
                           <Badge tone="coral" icon={<AlertTriangle size={11} strokeWidth={2} />}>

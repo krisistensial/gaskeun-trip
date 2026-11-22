@@ -92,35 +92,48 @@
   color: var(--text-inverse);
 }
 
-/* --- 03a True Circular C-Arc Trail Timeline --- */
+/* --- 03a True Fixed Dotted Circular C-Arc Trail Timeline --- */
 .trail-list {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding-left: 36px;
-  padding-right: 4px;
+  min-height: 520px;
+  padding: 6px 2px 24px 0;
+}
+
+/* Sticky fixed-height dotted circular rail (100% identical curve for 1, 4, or 10 stops) */
+.trail-arc-layer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 64px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.trail-arc-sticky {
+  position: sticky;
+  top: 108px;
+  width: 64px;
+  height: 520px;
 }
 
 .trail-arc-svg {
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 0;
-  width: 44px;
-  height: calc(100% - 24px);
-  pointer-events: none;
+  display: block;
+  width: 64px;
+  height: 520px;
   overflow: visible;
 }
 
 .trail-item {
   position: relative;
-  transition: transform var(--dur-normal) var(--ease-spring);
+  z-index: 1;
 }
 
+/* Dot center is 14px from its left edge, positioned at exact x = getArcX(u) via JS rAF */
 .trail-item__dot {
   position: absolute;
-  left: -36px;
+  left: 0;
   top: 18px;
   width: 28px;
   height: 28px;
@@ -128,20 +141,23 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: transform var(--dur-fast) var(--ease-spring);
+  will-change: transform;
+  z-index: 2;
 }
 
 .trail-item__dot--btn {
   cursor: pointer;
 }
 
-.trail-item__dot--btn:active {
-  transform: scale(0.88);
+.trail-item__dot--btn:active .gk-trail-dot {
+  transform: scale(0.86);
 }
 
+/* Card keeps exact constant gap from its TrailDot center (ARC_MAX_X 40 + ARC_DOT_GAP 22 = 62px) */
 .trail-item__card-wrap {
+  margin-left: 62px;
   transform-origin: left center;
-  transition: transform var(--dur-normal) var(--ease-spring);
+  will-change: transform;
 }
 
 .trail-past-card {

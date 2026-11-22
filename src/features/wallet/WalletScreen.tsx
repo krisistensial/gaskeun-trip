@@ -278,14 +278,13 @@ export function WalletScreen({
 
                 <span className="pool-member-row__right">
                   <span
+                    className={entry.paidPool > 0 ? 'tx-amt tx-amt--in' : 'tx-amt'}
                     style={{
-                      fontFamily: 'var(--font-display)',
                       fontSize: 15,
-                      fontWeight: 600,
-                      color: entry.paidPool > 0 ? 'var(--brand-forest)' : 'var(--accent-amber)',
+                      color: entry.paidPool > 0 ? 'var(--accent-mint)' : 'var(--accent-amber)',
                     }}
                   >
-                    {formatCompactIDR(entry.paidPool)}
+                    {entry.paidPool > 0 ? `+${formatCompactIDR(entry.paidPool)}` : 'Rp 0'}
                   </span>
                   <ChevronRight size={15} strokeWidth={2} color="var(--text-muted)" />
                 </span>
@@ -511,7 +510,7 @@ export function WalletScreen({
                       {tx.note ? ` · ${tx.note}` : ''}
                     </div>
                   </div>
-                  <span className="tx-amt tx-amt--out">{formatCompactIDR(tx.amount)}</span>
+                  <span className="tx-amt tx-amt--out">-{formatCompactIDR(tx.amount)}</span>
                 </GlassCard>
               ))
             )}

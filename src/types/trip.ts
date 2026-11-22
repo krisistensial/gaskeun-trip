@@ -195,6 +195,8 @@ export interface AlbumPhoto {
 
 export interface SharedTrip {
   schemaVersion: number;
+  /** Internal seed revision for non-destructive pilot demo upgrades */
+  seedVersion?: number;
   id: string;
   code: string;
   title: string;

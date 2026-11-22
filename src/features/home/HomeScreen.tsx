@@ -360,20 +360,10 @@ export function HomeScreen({
           }}
         />
 
-        <div className="home-hero__bottom">
-          <div>
-            <button
-              type="button"
-              className="home-title-trigger tactile"
-              onClick={() => setTitleSheetOpen(true)}
-            >
-              <h1 className="home-title">{trip.title}</h1>
-              <ChevronDown size={22} strokeWidth={2} color="var(--text-secondary)" />
-            </button>
-            <p className="home-subtitle">{trip.subtitle}</p>
-          </div>
+        <div className="home-hero__spacer" aria-hidden="true" />
 
-          {/* Redesigned Wide Hierarchical Countdown Card */}
+        <div className="home-hero__bottom">
+          {/* Boxless Editorial Floating Serif Countdown (Directly ABOVE Trip Title) */}
           {phase === 'pre-trip' && (
             <div className="countdown-hero-card" aria-label="Departure countdown">
               <div className="countdown-days-block">
@@ -396,6 +386,18 @@ export function HomeScreen({
               </div>
             </div>
           )}
+
+          <div>
+            <button
+              type="button"
+              className="home-title-trigger tactile"
+              onClick={() => setTitleSheetOpen(true)}
+            >
+              <h1 className="home-title">{trip.title}</h1>
+              <ChevronDown size={22} strokeWidth={2} color="var(--text-secondary)" />
+            </button>
+            <p className="home-subtitle">{trip.subtitle}</p>
+          </div>
         </div>
       </section>
 
@@ -422,7 +424,9 @@ export function HomeScreen({
             </div>
 
             <div className="spotlight-footer">
-              <Badge tone="matcha">{activeStop.type}</Badge>
+              <Badge tone="matcha">
+                {activeStop.type.charAt(0).toUpperCase() + activeStop.type.slice(1)}
+              </Badge>
               <Button
                 variant="matcha"
                 size="sm"
