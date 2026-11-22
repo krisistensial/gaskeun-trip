@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Lock, Trash2 } from 'lucide-react';
-import { Avatar, Button, ConfirmDialog, CornerOrb, Input } from '../../components/atoms';
+import { Avatar, Button, ConfirmDialog, Input, LiquidBottomSheet } from '../../components/atoms';
 import type { Transaction, TransactionPocket, TripMember } from '../../types/trip';
 import './wallet.css';
 
@@ -128,22 +128,15 @@ export function AddTransactionSheet({
   };
 
   return (
-    <div className="gk-sheet-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="gk-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="gk-sheet__handle" />
-        <div className="gk-sheet__head">
-          <div>
-            <h3 className="gk-sheet__title">
-              {editingTx ? 'Edit Transaction' : 'Add Transaction'}
-            </h3>
-            <p className="gk-sheet__sub">
-              {mode === 'personal' ? 'Saved locally on this device only' : 'Synced to shared trip ledger'}
-            </p>
-          </div>
-          <CornerOrb kind="close" ariaLabel="Close transaction sheet" onClick={onClose} />
-        </div>
-
-        {/* 4-Way Segmented Type Pill */}
+    <LiquidBottomSheet
+      open={open}
+      title={editingTx ? 'Edit Transaction' : 'Add Transaction'}
+      subtitle={
+        mode === 'personal' ? 'Saved locally on this device only' : 'Synced to shared trip ledger'
+      }
+      onClose={onClose}
+    >
+      {/* 4-Way Segmented Type Pill */}
         {!editingTx && (
           <div className="tx-seg-4" role="tablist" aria-label="Transaction type">
             {(
@@ -367,7 +360,6 @@ export function AddTransactionSheet({
             onClose();
           }}
         />
-      </div>
-    </div>
+    </LiquidBottomSheet>
   );
 }

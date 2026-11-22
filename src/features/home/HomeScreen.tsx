@@ -9,13 +9,21 @@ import {
   ChevronDown,
   Crown,
   Images,
+  LogOut,
   Pencil,
   Plus,
+  Settings2,
   TrainFront,
-  Trash2,
   Users,
 } from 'lucide-react';
-import { Avatar, Badge, Button, CornerOrb, GlassCard } from '../../components/atoms';
+import {
+  Avatar,
+  Badge,
+  Button,
+  CornerOrb,
+  GlassCard,
+  LiquidBottomSheet,
+} from '../../components/atoms';
 import type { HomePhase } from '../../components/organisms/TripMenuSheet';
 import { calculateLedger, formatCompactIDR } from '../../services/ledger';
 import type {
@@ -28,11 +36,12 @@ import type {
   TripMember,
 } from '../../types/trip';
 import {
-  AddPodSheet,
   CrewMembersSheet,
+  PodEditorSheet,
   StayEditorSheet,
   TrainPassEditorSheet,
 } from './CrewEditors';
+import { TrainSeatMap } from './TrainSeatMap';
 import './home.css';
 
 interface CountdownParts {
@@ -50,7 +59,7 @@ function getCountdownParts(targetIso: string): CountdownParts {
   const minutes = Math.floor((totalSec % 3600) / 60);
   const seconds = totalSec % 60;
   return {
-    days: String(days).padStart(2, '0'),
+    days: String(days),
     hours: String(hours).padStart(2, '0'),
     minutes: String(minutes).padStart(2, '0'),
     seconds: String(seconds).padStart(2, '0'),
@@ -63,6 +72,7 @@ export interface HomeScreenProps {
   coverUrl: string;
   canEdit: boolean;
   onOpenMenu: () => void;
+  onOpenTripSettings: () => void;
   onSwitchTrip: () => void;
   onNavigateTab: (tab: DockTabId) => void;
   onUploadCover: (file: File) => void;
@@ -77,6 +87,7 @@ export function HomeScreen({
   coverUrl,
   canEdit,
   onOpenMenu,
+  onOpenTripSettings,
   onSwitchTrip,
   onNavigateTab,
   onUploadCover,
@@ -90,10 +101,14 @@ export function HomeScreen({
   const [transportFilter, setTransportFilter] = useState<'bike' | 'train' | 'car'>('bike');
   const [editingCrew, setEditingCrew] = useState(false);
 
+  const [titleSheetOpen, setTitleSheetOpen] = useState(false);
   const [trainSheetOpen, setTrainSheetOpen] = useState(false);
   const [trainEditorOpen, setTrainEditorOpen] = useState(false);
   const [crewManagerOpen, setCrewManagerOpen] = useState(false);
-  const [addPodOpen, setAddPodOpen] = useState(false);
+  const [podEditor, setPodEditor] = useState<{ open: boolean; pod: TransportPod | null }>({
+    open: false,
+    pod: null,
+  });
   const [stayEditor, setStayEditor] = useState<{ open: boolean; stay: StayLodging | null }>({
     open: false,
     stay: null,
@@ -248,11 +263,16 @@ export function HomeScreen({
     );
   };
 
-  const handleAddPod = (pod: TransportPod) => {
+  const handleSavePod = (pod: TransportPod, isNew: boolean) => {
     setTransportFilter(pod.mode);
     onUpdateTrip(
-      (prev) => ({ ...prev, transportPods: [...prev.transportPods, pod] }),
-      `${pod.label} added`,
+      (prev) => ({
+        ...prev,
+        transportPods: isNew
+          ? [...prev.transportPods, pod]
+          : prev.transportPods.map((p) => (p.id === pod.id ? pod : p)),
+      }),
+      isNew ? `${pod.label} added` : `${pod.label} updated`,
     );
   };
 
@@ -318,30 +338,37 @@ export function HomeScreen({
 
         <div className="home-hero__bottom">
           <div>
-            <button type="button" className="home-title-trigger tactile" onClick={onSwitchTrip}>
+            <button
+              type="button"
+              className="home-title-trigger tactile"
+              onClick={() => setTitleSheetOpen(true)}
+            >
               <h1 className="home-title">{trip.title}</h1>
               <ChevronDown size={22} strokeWidth={2} color="var(--text-secondary)" />
             </button>
             <p className="home-subtitle">{trip.subtitle}</p>
           </div>
 
+          {/* Redesigned Wide Hierarchical Countdown Card */}
           {phase === 'pre-trip' && (
-            <div className="countdown-grid" aria-label="Departure countdown">
-              <div className="countdown-cell">
-                <span className="countdown-val">{countdown.days}</span>
-                <span className="countdown-lbl">Days</span>
+            <div className="countdown-hero-card" aria-label="Departure countdown">
+              <div className="countdown-days-block">
+                <span className="countdown-days-val">{countdown.days}</span>
+                <span className="countdown-days-lbl">Days</span>
               </div>
-              <div className="countdown-cell">
-                <span className="countdown-val">{countdown.hours}</span>
-                <span className="countdown-lbl">Hours</span>
-              </div>
-              <div className="countdown-cell">
-                <span className="countdown-val">{countdown.minutes}</span>
-                <span className="countdown-lbl">Mins</span>
-              </div>
-              <div className="countdown-cell">
-                <span className="countdown-val">{countdown.seconds}</span>
-                <span className="countdown-lbl">Secs</span>
+              <div className="countdown-sub-grid">
+                <div className="countdown-sub-cell">
+                  <span className="countdown-val">{countdown.hours}</span>
+                  <span className="countdown-lbl">Hours</span>
+                </div>
+                <div className="countdown-sub-cell">
+                  <span className="countdown-val">{countdown.minutes}</span>
+                  <span className="countdown-lbl">Mins</span>
+                </div>
+                <div className="countdown-sub-cell">
+                  <span className="countdown-val">{countdown.seconds}</span>
+                  <span className="countdown-lbl">Secs</span>
+                </div>
               </div>
             </div>
           )}
@@ -431,7 +458,7 @@ export function HomeScreen({
         </section>
       )}
 
-      {/* Bento Quick-Access Duo (Train Pass + Album ONLY) */}
+      {/* Bento Quick-Access Duo (Train Pass with optional photo + Album) */}
       <section className="bento-duo" aria-label="Quick access">
         <GlassCard
           variant="clear"
@@ -455,9 +482,16 @@ export function HomeScreen({
               </span>
               <TrainFront size={16} strokeWidth={1.8} color="var(--brand-matcha)" />
             </div>
-            <div className="train-route-code" style={{ marginTop: 6 }}>
+            <div className="train-route-code" style={{ marginTop: 4 }}>
               {trip.trainPass?.outboundRoute ?? 'Add Ticket'}
             </div>
+            {trip.trainPass?.trainPhotoDataUrl && (
+              <img
+                src={trip.trainPass.trainPhotoDataUrl}
+                alt={trip.trainPass.trainName}
+                className="train-pass-photo-strip"
+              />
+            )}
           </div>
           <div className="train-pass-notch">
             <span>{trip.trainPass?.outboundTime ?? 'Tap to set up'}</span>
@@ -592,7 +626,6 @@ export function HomeScreen({
           </Button>
         </div>
 
-        {/* Crew Management Action Bar when Editing */}
         {editingCrew && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <Button
@@ -607,7 +640,7 @@ export function HomeScreen({
               variant="glass"
               size="sm"
               leftIcon={<Plus size={14} strokeWidth={2} />}
-              onClick={() => setAddPodOpen(true)}
+              onClick={() => setPodEditor({ open: true, pod: null })}
             >
               Add Pod
             </Button>
@@ -658,87 +691,128 @@ export function HomeScreen({
           )}
         </div>
 
-        {transportFilter === 'bike' ? (
+        {/* Bikes List (with Pod Detail Pencil Edit in Edit Mode) */}
+        {transportFilter === 'bike' && (
           <div className="bike-pod-list">
             {bikePods.length === 0 && (
               <GlassCard variant="clear" padding="md">
                 <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                  No bikes configured yet. Tap <strong>Edit</strong> to add a transport pod.
+                  No bikes configured yet. Tap <strong>Edit</strong> to add a motorbike pod.
                 </div>
               </GlassCard>
             )}
-            {bikePods.map((pod) => (
-              <GlassCard key={pod.id} variant="clear" padding="sm" className="bike-pod">
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {pod.label}
-                  </div>
-                  {pod.meta && (
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{pod.meta}</div>
-                  )}
-                </div>
-
-                <div className="bike-pod__pair">
-                  {pod.slots.map((slot, slotIdx) => {
-                    const m = slot.memberId ? memberById.get(slot.memberId) : undefined;
-                    const isTentative = m?.status === 'tentative';
-                    const avatarVariant = isTentative
-                      ? 'tentative'
-                      : slot.lockedPassenger
-                        ? 'passenger'
-                        : 'solid';
-
-                    return (
-                      <button
-                        key={`${pod.id}-${slotIdx}`}
-                        type="button"
-                        className={`bike-slot-btn ${editingCrew ? 'bike-slot-btn--editable tactile' : ''}`}
-                        onClick={() => {
-                          if (!editingCrew) return;
-                          setSlotPicker({
-                            podId: pod.id,
-                            slotIndex: slotIdx,
-                            label: `${pod.label} · ${slot.role}`,
-                          });
+            {bikePods.map((pod) => {
+              const subtitle =
+                [pod.roleNote, pod.vehicleModel].filter(Boolean).join(' · ') || pod.meta;
+              return (
+                <GlassCard key={pod.id} variant="clear" padding="sm" className="bike-pod">
+                  <button
+                    type="button"
+                    className={`bike-pod__info-btn ${editingCrew ? 'tactile' : ''}`}
+                    onClick={() => {
+                      if (!editingCrew) return;
+                      setPodEditor({ open: true, pod });
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: 'var(--text-primary)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
                         }}
                       >
-                        <Avatar
-                          initials={m?.initials ?? '?'}
-                          size="sm"
-                          bg={m?.avatarBg ?? '#EAEFED'}
-                          color={m?.avatarColor ?? '#546860'}
-                          variant={avatarVariant}
-                        />
-                        <span>{m ? (isTentative ? `${m.name}?` : m.name) : 'Open'}</span>
-                      </button>
-                    );
-                  })}
-                  {editingCrew && (
-                    <button
-                      type="button"
-                      aria-label={`Remove ${pod.label}`}
-                      onClick={() => handleDeletePod(pod.id)}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 14,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--accent-coral)',
-                        background: 'var(--accent-coral-soft)',
-                      }}
-                    >
-                      <Trash2 size={13} strokeWidth={2} />
-                    </button>
-                  )}
+                        <span>{pod.label}</span>
+                        {editingCrew && (
+                          <Pencil size={12} strokeWidth={2} color="var(--brand-matcha)" />
+                        )}
+                      </div>
+                      {subtitle && (
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{subtitle}</div>
+                      )}
+                    </div>
+                  </button>
+
+                  <div className="bike-pod__pair">
+                    {pod.slots.map((slot, slotIdx) => {
+                      const m = slot.memberId ? memberById.get(slot.memberId) : undefined;
+                      const isTentative = m?.status === 'tentative';
+                      const avatarVariant = isTentative
+                        ? 'tentative'
+                        : slot.lockedPassenger
+                          ? 'passenger'
+                          : 'solid';
+
+                      return (
+                        <button
+                          key={`${pod.id}-${slotIdx}`}
+                          type="button"
+                          className={`bike-slot-btn ${editingCrew ? 'bike-slot-btn--editable tactile' : ''}`}
+                          onClick={() => {
+                            if (!editingCrew) return;
+                            setSlotPicker({
+                              podId: pod.id,
+                              slotIndex: slotIdx,
+                              label: `${pod.label} · ${slot.role}`,
+                            });
+                          }}
+                        >
+                          <Avatar
+                            initials={m?.initials ?? '?'}
+                            size="sm"
+                            bg={m?.avatarBg ?? '#EAEFED'}
+                            color={m?.avatarColor ?? '#546860'}
+                            variant={avatarVariant}
+                          />
+                          <span>{m ? (isTentative ? `${m.name}?` : m.name) : 'Open'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </GlassCard>
+              );
+            })}
+          </div>
+        )}
+
+        {/* KAI-Style Train Seat Map (3–2 & 2–2 with Window/Aisle & Facing Rows) */}
+        {transportFilter === 'train' && (
+          <div className="bike-pod-list">
+            {trainPods.length === 0 && (
+              <GlassCard variant="clear" padding="md">
+                <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  No train car configured yet. Tap <strong>Edit → Add Pod</strong> to set up a 3–2
+                  or 2–2 KAI seat map.
                 </div>
               </GlassCard>
+            )}
+            {trainPods.map((pod) => (
+              <TrainSeatMap
+                key={pod.id}
+                pod={pod}
+                memberById={memberById}
+                editingCrew={editingCrew}
+                onTapSeat={(slotIdx, seatCode) =>
+                  setSlotPicker({
+                    podId: pod.id,
+                    slotIndex: slotIdx,
+                    label: `${pod.label} · Seat ${seatCode}`,
+                  })
+                }
+                onEditLayout={() => setPodEditor({ open: true, pod })}
+                onDeletePod={() => handleDeletePod(pod.id)}
+              />
             ))}
           </div>
-        ) : (
+        )}
+
+        {/* Car Pods */}
+        {transportFilter === 'car' && (
           <div className="bike-pod-list">
-            {(transportFilter === 'train' ? trainPods : carPods).map((pod) => (
+            {carPods.map((pod) => (
               <GlassCard key={pod.id} variant="clear" padding="md">
                 <div
                   style={{
@@ -763,8 +837,13 @@ export function HomeScreen({
                     )}
                   </div>
                   {editingCrew && (
-                    <Button variant="danger" size="sm" onClick={() => handleDeletePod(pod.id)}>
-                      <Trash2 size={13} strokeWidth={2} />
+                    <Button
+                      variant="glass"
+                      size="sm"
+                      leftIcon={<Pencil size={12} strokeWidth={2} />}
+                      onClick={() => setPodEditor({ open: true, pod })}
+                    >
+                      Edit
                     </Button>
                   )}
                 </div>
@@ -807,9 +886,13 @@ export function HomeScreen({
           </div>
         )}
 
-        {/* Homestay Cards with Room 1 & Room 2 Slots */}
+        {/* Homestay Cards with Optional Rounded Stay Banner Photo */}
         {trip.stays.map((stay) => (
           <GlassCard key={stay.id} variant="clear" padding="md">
+            {stay.photoDataUrl && (
+              <img src={stay.photoDataUrl} alt={stay.name} className="stay-photo-banner" />
+            )}
+
             <div
               style={{
                 display: 'flex',
@@ -912,140 +995,165 @@ export function HomeScreen({
         </button>
       )}
 
-      {/* Train Pass Detail Sheet (with Edit Button!) */}
-      {trainSheetOpen && (
-        <div
-          className="gk-sheet-backdrop"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setTrainSheetOpen(false)}
-        >
-          <div className="gk-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="gk-sheet__handle" />
-            <div className="gk-sheet__head">
-              <div>
-                <h3 className="gk-sheet__title">
-                  {trip.trainPass?.trainName ?? 'Train Pass'}
-                </h3>
-                <p className="gk-sheet__sub">
-                  {trip.trainPass?.outboundCode
-                    ? `${trip.trainPass.outboundCode} · Round Trip`
-                    : 'Add your boarding schedule'}
-                </p>
-              </div>
-              <CornerOrb
-                kind="close"
-                ariaLabel="Close train pass"
-                onClick={() => setTrainSheetOpen(false)}
-              />
-            </div>
+      {/* Trip Title Quick Switcher / Edit Details Sheet */}
+      <LiquidBottomSheet
+        open={titleSheetOpen}
+        title={trip.title}
+        subtitle={trip.subtitle}
+        onClose={() => setTitleSheetOpen(false)}
+      >
+        <div className="gk-menu-list">
+          <button
+            type="button"
+            className="gk-menu-item"
+            onClick={() => {
+              setTitleSheetOpen(false);
+              onOpenTripSettings();
+            }}
+          >
+            <span className="gk-menu-item__left">
+              <span className="gk-menu-item__icon">
+                <Settings2 size={18} strokeWidth={1.8} />
+              </span>
+              <span>
+                <div className="gk-menu-item__title">Edit Trip Details</div>
+                <div className="gk-menu-item__sub">
+                  Update title, subtitle, countdown &amp; targets
+                </div>
+              </span>
+            </span>
+          </button>
 
-            {trip.trainPass ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <GlassCard variant="tinted" padding="md">
-                  <Badge tone="matcha">Outbound</Badge>
-                  <div className="train-route-code" style={{ marginTop: 8 }}>
-                    {trip.trainPass.outboundRoute}
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
-                    {trip.trainPass.outboundDate} · {trip.trainPass.outboundTime}
-                  </div>
-                </GlassCard>
-
-                {trip.trainPass.returnRoute && (
-                  <GlassCard variant="clear" padding="md">
-                    <Badge tone="neutral">Return</Badge>
-                    <div className="train-route-code" style={{ marginTop: 8 }}>
-                      {trip.trainPass.returnRoute}
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
-                      {trip.trainPass.returnDate} · {trip.trainPass.returnTime}
-                    </div>
-                  </GlassCard>
-                )}
-              </div>
-            ) : (
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
-                No train or transit boarding pass added yet.
-              </p>
-            )}
-
-            <div style={{ marginTop: 14 }}>
-              <Button
-                variant="glass"
-                size="md"
-                fullWidth
-                leftIcon={<Pencil size={15} strokeWidth={1.8} />}
-                onClick={() => {
-                  setTrainSheetOpen(false);
-                  requireEdit(() => setTrainEditorOpen(true));
-                }}
-              >
-                {trip.trainPass ? 'Edit Train Pass' : 'Add Train Pass'}
-              </Button>
-            </div>
-          </div>
+          <button
+            type="button"
+            className="gk-menu-item"
+            onClick={() => {
+              setTitleSheetOpen(false);
+              onSwitchTrip();
+            }}
+          >
+            <span className="gk-menu-item__left">
+              <span className="gk-menu-item__icon">
+                <LogOut size={18} strokeWidth={1.8} />
+              </span>
+              <span>
+                <div className="gk-menu-item__title">Switch or Create Trip</div>
+                <div className="gk-menu-item__sub">Return to Trip Code gate</div>
+              </span>
+            </span>
+          </button>
         </div>
-      )}
+      </LiquidBottomSheet>
 
-      {/* Inline Transport Slot Avatar Picker Sheet */}
-      {slotPicker && (
-        <div
-          className="gk-sheet-backdrop"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setSlotPicker(null)}
-        >
-          <div className="gk-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="gk-sheet__handle" />
-            <div className="gk-sheet__head">
-              <div>
-                <h3 className="gk-sheet__title">Assign Rider</h3>
-                <p className="gk-sheet__sub">{slotPicker.label}</p>
+      {/* Train Pass Detail Sheet (Portal + Train Photo Banner) */}
+      <LiquidBottomSheet
+        open={trainSheetOpen}
+        title={trip.trainPass?.trainName ?? 'Train Pass'}
+        subtitle={
+          trip.trainPass?.outboundCode
+            ? `${trip.trainPass.outboundCode} · Round Trip`
+            : 'Add your boarding schedule'
+        }
+        onClose={() => setTrainSheetOpen(false)}
+      >
+        {trip.trainPass?.trainPhotoDataUrl && (
+          <img
+            src={trip.trainPass.trainPhotoDataUrl}
+            alt={trip.trainPass.trainName}
+            className="stay-photo-banner"
+          />
+        )}
+
+        {trip.trainPass ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <GlassCard variant="tinted" padding="md">
+              <Badge tone="matcha">Outbound</Badge>
+              <div className="train-route-code" style={{ marginTop: 8 }}>
+                {trip.trainPass.outboundRoute}
               </div>
-              <CornerOrb
-                kind="close"
-                ariaLabel="Close picker"
-                onClick={() => setSlotPicker(null)}
-              />
-            </div>
-            <div className="slot-picker-grid">
-              {trip.members.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className="slot-picker-option tactile"
-                  onClick={() => {
-                    handleUpdateTransportSlot(slotPicker.podId, slotPicker.slotIndex, m.id);
-                    setSlotPicker(null);
-                  }}
-                >
-                  <Avatar
-                    initials={m.initials}
-                    size="sm"
-                    bg={m.avatarBg}
-                    color={m.avatarColor}
-                    variant={m.status === 'tentative' ? 'tentative' : 'solid'}
-                  />
-                  <span>{m.status === 'tentative' ? `${m.name}?` : m.name}</span>
-                </button>
-              ))}
+              <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
+                {trip.trainPass.outboundDate} · {trip.trainPass.outboundTime}
+              </div>
+            </GlassCard>
+
+            {trip.trainPass.returnRoute && (
+              <GlassCard variant="clear" padding="md">
+                <Badge tone="neutral">Return</Badge>
+                <div className="train-route-code" style={{ marginTop: 8 }}>
+                  {trip.trainPass.returnRoute}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
+                  {trip.trainPass.returnDate} · {trip.trainPass.returnTime}
+                </div>
+              </GlassCard>
+            )}
+          </div>
+        ) : (
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
+            No train or transit boarding pass added yet.
+          </p>
+        )}
+
+        <div style={{ marginTop: 14 }}>
+          <Button
+            variant="glass"
+            size="md"
+            fullWidth
+            leftIcon={<Pencil size={15} strokeWidth={1.8} />}
+            onClick={() => {
+              setTrainSheetOpen(false);
+              requireEdit(() => setTrainEditorOpen(true));
+            }}
+          >
+            {trip.trainPass ? 'Edit Train Pass' : 'Add Train Pass'}
+          </Button>
+        </div>
+      </LiquidBottomSheet>
+
+      {/* Inline Transport Slot Avatar Picker Sheet (Portal) */}
+      <LiquidBottomSheet
+        open={Boolean(slotPicker)}
+        title="Assign Rider"
+        subtitle={slotPicker?.label}
+        onClose={() => setSlotPicker(null)}
+      >
+        {slotPicker && (
+          <div className="slot-picker-grid">
+            {trip.members.map((m) => (
               <button
+                key={m.id}
                 type="button"
                 className="slot-picker-option tactile"
                 onClick={() => {
-                  handleUpdateTransportSlot(slotPicker.podId, slotPicker.slotIndex, null);
+                  handleUpdateTransportSlot(slotPicker.podId, slotPicker.slotIndex, m.id);
                   setSlotPicker(null);
                 }}
               >
-                <span style={{ color: 'var(--text-muted)' }}>Clear slot</span>
+                <Avatar
+                  initials={m.initials}
+                  size="sm"
+                  bg={m.avatarBg}
+                  color={m.avatarColor}
+                  variant={m.status === 'tentative' ? 'tentative' : 'solid'}
+                />
+                <span>{m.status === 'tentative' ? `${m.name}?` : m.name}</span>
               </button>
-            </div>
+            ))}
+            <button
+              type="button"
+              className="slot-picker-option tactile"
+              onClick={() => {
+                handleUpdateTransportSlot(slotPicker.podId, slotPicker.slotIndex, null);
+                setSlotPicker(null);
+              }}
+            >
+              <span style={{ color: 'var(--text-muted)' }}>Clear slot</span>
+            </button>
           </div>
-        </div>
-      )}
+        )}
+      </LiquidBottomSheet>
 
-      {/* Full Crew / Train Pass / Pod / Stay Editor Sheets */}
+      {/* Full Crew / Train Pass / Pod / Stay Editor Sheets (All Portaled!) */}
       <TrainPassEditorSheet
         key={`tp-${trainEditorOpen ? 'open' : 'closed'}`}
         open={trainEditorOpen}
@@ -1063,13 +1171,15 @@ export function HomeScreen({
         onClose={() => setCrewManagerOpen(false)}
       />
 
-      <AddPodSheet
-        key={`pod-${addPodOpen ? transportFilter : 'closed'}`}
-        open={addPodOpen}
+      <PodEditorSheet
+        key={`pod-${podEditor.open ? podEditor.pod?.id ?? `new-${transportFilter}` : 'closed'}`}
+        open={podEditor.open}
+        initial={podEditor.pod}
         defaultMode={transportFilter}
         existingCount={trip.transportPods.filter((p) => p.mode === transportFilter).length}
-        onAdd={handleAddPod}
-        onClose={() => setAddPodOpen(false)}
+        onSave={handleSavePod}
+        onDelete={handleDeletePod}
+        onClose={() => setPodEditor({ open: false, pod: null })}
       />
 
       <StayEditorSheet

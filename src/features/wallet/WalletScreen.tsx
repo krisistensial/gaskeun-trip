@@ -7,6 +7,7 @@ import {
   CornerOrb,
   EmptyState,
   GlassCard,
+  LiquidBottomSheet,
 } from '../../components/atoms';
 import {
   calculateLedger,
@@ -527,38 +528,18 @@ export function WalletScreen({
       />
 
       {/* Member Pool IN Deposit History Drill-Down Sheet */}
-      {selectedMemberSummary && (
-        <div
-          className="gk-sheet-backdrop"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setSelectedMemberId(null)}
-        >
-          <div className="gk-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="gk-sheet__handle" />
-            <div className="gk-sheet__head">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Avatar
-                  initials={selectedMemberSummary.member.initials}
-                  size="md"
-                  bg={selectedMemberSummary.member.avatarBg}
-                  color={selectedMemberSummary.member.avatarColor}
-                />
-                <div>
-                  <h3 className="gk-sheet__title">{selectedMemberSummary.member.name}</h3>
-                  <p className="gk-sheet__sub">
-                    Paid {formatIDR(selectedMemberSummary.paidPool)} of{' '}
-                    {formatIDR(selectedMemberSummary.targetPool)}
-                  </p>
-                </div>
-              </div>
-              <CornerOrb
-                kind="close"
-                ariaLabel="Close deposit history"
-                onClick={() => setSelectedMemberId(null)}
-              />
-            </div>
-
+      <LiquidBottomSheet
+        open={Boolean(selectedMemberSummary)}
+        title={selectedMemberSummary?.member.name}
+        subtitle={
+          selectedMemberSummary
+            ? `Paid ${formatIDR(selectedMemberSummary.paidPool)} of ${formatIDR(selectedMemberSummary.targetPool)}`
+            : undefined
+        }
+        onClose={() => setSelectedMemberId(null)}
+      >
+        {selectedMemberSummary && (
+          <>
             <div className="tx-list" style={{ marginBottom: 14 }}>
               {selectedMemberSummary.deposits.length === 0 ? (
                 <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 8px' }}>
@@ -610,9 +591,9 @@ export function WalletScreen({
             >
               Add Deposit for {selectedMemberSummary.member.name}
             </Button>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </LiquidBottomSheet>
 
       {/* Smart Add / Edit Transaction Sheet (06e_Add_Transaction) */}
       <AddTransactionSheet

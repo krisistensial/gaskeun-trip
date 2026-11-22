@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Check, ChevronDown, ChevronUp, Copy, Link2, Settings2 } from 'lucide-react';
-import { Badge, Button, CornerOrb, Input } from '../atoms';
+import { Badge, Button, Input, LiquidBottomSheet } from '../atoms';
 import { buildInviteUrl } from '../../services/tripFactory';
 import type { SharedTrip } from '../../types/trip';
 import './sheets.css';
@@ -83,18 +83,13 @@ export function TripSettingsSheet({
   };
 
   return (
-    <div className="gk-sheet-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="gk-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="gk-sheet__handle" />
-        <div className="gk-sheet__head">
-          <div>
-            <h3 className="gk-sheet__title">Trip Settings</h3>
-            <p className="gk-sheet__sub">Edit trip identity, targets &amp; invite access</p>
-          </div>
-          <CornerOrb kind="close" ariaLabel="Close trip settings" onClick={onClose} />
-        </div>
-
-        {/* Shareable Trip Code & Invite Link */}
+    <LiquidBottomSheet
+      open={open}
+      title="Trip Settings"
+      subtitle="Edit trip identity, targets & invite access"
+      onClose={onClose}
+    >
+      {/* Shareable Trip Code & Invite Link */}
         <div
           style={{
             padding: 14,
@@ -244,7 +239,6 @@ export function TripSettingsSheet({
             Save Trip Settings
           </Button>
         </form>
-      </div>
-    </div>
+    </LiquidBottomSheet>
   );
 }

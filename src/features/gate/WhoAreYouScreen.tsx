@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Lock, UserRound } from 'lucide-react';
-import { Avatar, Badge, Button, CornerOrb } from '../../components/atoms';
+import { Avatar, Button, ConfirmDialog, CornerOrb } from '../../components/atoms';
 import type { SharedTrip } from '../../types/trip';
 import './gate.css';
 
@@ -20,12 +21,14 @@ export function WhoAreYouScreen({
   onRequestUnlockPin,
   onBack,
 }: WhoAreYouScreenProps) {
+  const [pendingPick, setPendingPick] = useState<{ id: string; name: string } | null>(null);
+
   return (
     <section className="gate-screen" aria-label="Choose your profile">
       <div>
+        {/* Clean Back Orb only — redundant trip code badge removed */}
         <div className="gate-nav-row">
           <CornerOrb kind="back" ariaLabel="Back to trip code" onClick={onBack} />
-          <Badge tone="matcha">{trip.code}</Badge>
         </div>
 
         <div className="gate-page-head">
@@ -50,7 +53,7 @@ export function WhoAreYouScreen({
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                onClick={() => onSelectProfile(member.id)}
+                onClick={() => setPendingPick({ id: member.id, name: member.name })}
               >
                 <Avatar
                   initials={member.initials}
@@ -69,7 +72,7 @@ export function WhoAreYouScreen({
           <button
             type="button"
             className={`crew-pick-card ${selectedMemberId === 'guest' ? 'crew-pick-card--selected' : ''}`}
-            onClick={() => onSelectProfile('guest')}
+            onClick={() => setPendingPick({ id: 'guest', name: 'Guest' })}
           >
             <span
               className="gk-avatar gk-avatar--md gk-avatar--solid"
@@ -95,8 +98,25 @@ export function WhoAreYouScreen({
         >
           {canEdit ? 'Crew Editing Unlocked' : 'Unlock Crew Editing (4-digit PIN)'}
         </Button>
-        <p className="gate-footer-note">Tap your profile to jump straight in</p>
+        <p className="gate-footer-note">Tap your profile to continue</p>
       </div>
+
+      {/* Crystal Liquid Profile Join Confirmation */}
+      <ConfirmDialog
+        open={Boolean(pendingPick)}
+        title={pendingPick ? `Join as ${pendingPick.name}?` : ''}
+        description={`You'll enter ${trip.title} as ${pendingPick?.name ?? 'Guest'}. You can switch profiles anytime from the menu.`}
+        cancelLabel="Cancel"
+        confirmLabel="Continue →"
+        onCancel={() => setPendingPick(null)}
+        onConfirm={() => {
+          if (pendingPick) {
+            const targetId = pendingPick.id;
+            setPendingPick(null);
+            onSelectProfile(targetId);
+          }
+        }}
+      />
     </section>
   );
 }

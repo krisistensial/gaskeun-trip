@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+import { useRegisterOverlay } from '../../context/OverlayContext';
 import { Button } from './Button';
 import './atoms.css';
 
@@ -22,9 +24,11 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  if (!open) return null;
+  useRegisterOverlay(open);
 
-  return (
+  if (!open || typeof document === 'undefined') return null;
+
+  return createPortal(
     <div
       className="gk-dialog-backdrop"
       role="dialog"
@@ -50,6 +54,7 @@ export function ConfirmDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

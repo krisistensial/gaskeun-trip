@@ -10,7 +10,7 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
-import { Badge, CornerOrb } from '../atoms';
+import { Badge, LiquidBottomSheet } from '../atoms';
 import type { SharedTrip } from '../../types/trip';
 import './sheets.css';
 
@@ -55,23 +55,18 @@ export function TripMenuSheet({
 }: TripMenuSheetProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  if (!open) return null;
-
   return (
-    <div className="gk-sheet-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="gk-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="gk-sheet__handle" />
-        <div className="gk-sheet__head">
-          <div>
-            <h3 className="gk-sheet__title">{trip.title}</h3>
-            <p className="gk-sheet__sub">
-              Code {trip.code} · Joined as <strong>{activeMemberName}</strong>
-            </p>
-          </div>
-          <CornerOrb kind="close" ariaLabel="Close menu" onClick={onClose} />
-        </div>
-
-        {/* Adaptive Home Focus Switcher */}
+    <LiquidBottomSheet
+      open={open}
+      title={trip.title}
+      subtitle={
+        <>
+          Code {trip.code} · Joined as <strong>{activeMemberName}</strong>
+        </>
+      }
+      onClose={onClose}
+    >
+      {/* Adaptive Home Focus Switcher */}
         <div className="gk-seg-pill" role="tablist" aria-label="Trip focus">
           <button
             type="button"
@@ -268,7 +263,6 @@ export function TripMenuSheet({
             </span>
           </button>
         </div>
-      </div>
-    </div>
+    </LiquidBottomSheet>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowUpRight,
   Download,
@@ -16,7 +17,9 @@ import {
   EmptyState,
   GlassCard,
   Input,
+  LiquidBottomSheet,
 } from '../../components/atoms';
+import { useRegisterOverlay } from '../../context/OverlayContext';
 import {
   compressAlbumPhoto,
   fetchDriveAlbum,
@@ -47,6 +50,8 @@ export function AlbumScreen({
   const [drivePhotos, setDrivePhotos] = useState<AlbumPhoto[]>([]);
   const [lightboxPhoto, setLightboxPhoto] = useState<AlbumPhoto | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useRegisterOverlay(Boolean(lightboxPhoto));
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -307,134 +312,129 @@ export function AlbumScreen({
       )}
 
       {/* Upload Sheet (+ Upload) */}
-      {uploadOpen && (
-        <div className="gk-sheet-backdrop" role="dialog" aria-modal="true" onClick={resetUpload}>
-          <div className="gk-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="gk-sheet__handle" />
-            <div className="gk-sheet__head">
-              <div>
-                <h3 className="gk-sheet__title">Add to Album</h3>
-                <p className="gk-sheet__sub">Uploading as {activeMemberName}</p>
-              </div>
-              <CornerOrb kind="close" ariaLabel="Close upload sheet" onClick={resetUpload} />
-            </div>
-
-            <form
-              onSubmit={handleConfirmUpload}
-              style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
-            >
-              {previewUrl && (
-                <img src={previewUrl} alt="Upload preview" className="album-upload-preview" />
-              )}
-
-              <Input
-                id="album-caption"
-                label="Location / Caption (Optional)"
-                placeholder="e.g. Goa Maria Ganjuran"
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-              />
-
-              <div>
-                <div className="gk-field__label" style={{ marginBottom: 6 }}>
-                  TRIP DAY
-                </div>
-                <div className="plan-filter-row">
-                  {tripDays.map((d, idx) => (
-                    <button
-                      key={d.id}
-                      type="button"
-                      className={`plan-chip ${uploadDayId === d.id ? 'plan-chip--active' : ''}`}
-                      onClick={() => setUploadDayId(d.id)}
-                    >
-                      Day {idx + 1} · {d.dayLabel}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {trip.gdriveScriptUrl && navigator.onLine && (
-                <Input
-                  id="album-drive-pin"
-                  label="4-Digit Crew PIN (for Drive Upload)"
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  placeholder="1234"
-                  value={crewPinInput}
-                  onChange={(e) => setCrewPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                />
-              )}
-
-              <Button type="submit" variant="matcha" size="lg" fullWidth disabled={uploading}>
-                {uploading
-                  ? 'Saving Photo...'
-                  : trip.gdriveScriptUrl && navigator.onLine
-                    ? 'Upload to Drive'
-                    : 'Save to Local Album'}
-              </Button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Full-Screen Lightbox */}
-      {lightboxPhoto && (
-        <div
-          className="album-lightbox"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setLightboxPhoto(null)}
+      <LiquidBottomSheet
+        open={uploadOpen}
+        title="Add to Album"
+        subtitle={`Uploading as ${activeMemberName}`}
+        onClose={resetUpload}
+      >
+        <form
+          onSubmit={handleConfirmUpload}
+          style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
         >
-          <div
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ color: '#FFFFFF' }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600 }}>
-                {lightboxPhoto.caption}
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.78 }}>
-                {lightboxPhoto.dayLabel} · {lightboxPhoto.uploaderName}
-                {lightboxPhoto.source === 'local' ? ' · Local' : ''}
-              </div>
+          {previewUrl && (
+            <img src={previewUrl} alt="Upload preview" className="album-upload-preview" />
+          )}
+
+          <Input
+            id="album-caption"
+            label="Location / Caption (Optional)"
+            placeholder="e.g. Goa Maria Ganjuran"
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+          />
+
+          <div>
+            <div className="gk-field__label" style={{ marginBottom: 6 }}>
+              TRIP DAY
             </div>
-            <CornerOrb
-              kind="close"
-              ariaLabel="Close lightbox"
-              onClick={() => setLightboxPhoto(null)}
-            />
+            <div className="plan-filter-row">
+              {tripDays.map((d, idx) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  className={`plan-chip ${uploadDayId === d.id ? 'plan-chip--active' : ''}`}
+                  onClick={() => setUploadDayId(d.id)}
+                >
+                  Day {idx + 1} · {d.dayLabel}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="album-lightbox__img-wrap" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={lightboxPhoto.url}
-              alt={lightboxPhoto.caption}
-              className="album-lightbox__img"
+          {trip.gdriveScriptUrl && navigator.onLine && (
+            <Input
+              id="album-drive-pin"
+              label="4-Digit Crew PIN (for Drive Upload)"
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              placeholder="1234"
+              value={crewPinInput}
+              onChange={(e) => setCrewPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
             />
-          </div>
+          )}
 
-          <div style={{ display: 'flex', gap: 10 }} onClick={(e) => e.stopPropagation()}>
-            <Button
-              variant="glass"
-              size="md"
-              fullWidth
-              leftIcon={<Download size={16} strokeWidth={2} />}
-              onClick={() => handleDownload(lightboxPhoto)}
+          <Button type="submit" variant="matcha" size="lg" fullWidth disabled={uploading}>
+            {uploading
+              ? 'Saving Photo...'
+              : trip.gdriveScriptUrl && navigator.onLine
+                ? 'Upload to Drive'
+                : 'Save to Local Album'}
+          </Button>
+        </form>
+      </LiquidBottomSheet>
+
+      {/* Full-Screen Lightbox (Portaled to document.body) */}
+      {lightboxPhoto &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="album-lightbox"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setLightboxPhoto(null)}
+          >
+            <div
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              onClick={(e) => e.stopPropagation()}
             >
-              Download
-            </Button>
-            <Button
-              variant="danger"
-              size="md"
-              leftIcon={<Trash2 size={16} strokeWidth={2} />}
-              onClick={() => setConfirmDelete(true)}
-            >
-              Delete
-            </Button>
-          </div>
-        </div>
-      )}
+              <div style={{ color: '#FFFFFF' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600 }}>
+                  {lightboxPhoto.caption}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.78 }}>
+                  {lightboxPhoto.dayLabel} · {lightboxPhoto.uploaderName}
+                  {lightboxPhoto.source === 'local' ? ' · Local' : ''}
+                </div>
+              </div>
+              <CornerOrb
+                kind="close"
+                ariaLabel="Close lightbox"
+                onClick={() => setLightboxPhoto(null)}
+              />
+            </div>
+
+            <div className="album-lightbox__img-wrap" onClick={(e) => e.stopPropagation()}>
+              <img
+                src={lightboxPhoto.url}
+                alt={lightboxPhoto.caption}
+                className="album-lightbox__img"
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+              <Button
+                variant="glass"
+                size="md"
+                fullWidth
+                leftIcon={<Download size={16} strokeWidth={2} />}
+                onClick={() => handleDownload(lightboxPhoto)}
+              >
+                Download
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
+                leftIcon={<Trash2 size={16} strokeWidth={2} />}
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       <ConfirmDialog
         open={confirmDelete}

@@ -375,6 +375,8 @@
       "id": "pod-bike-1",
       "mode": "bike",
       "label": "Bike 1",
+      "vehicleModel": "Vario 125",
+      "roleNote": "Lead",
       "meta": "Lead · Vario 125",
       "slots": [
         { "role": "Driver", "memberId": "m-kris" },
@@ -385,6 +387,8 @@
       "id": "pod-bike-2",
       "mode": "bike",
       "label": "Bike 2",
+      "vehicleModel": "Vario 125",
+      "roleNote": "",
       "meta": "Vario 125",
       "slots": [
         { "role": "Driver", "memberId": "m-rani" },
@@ -395,6 +399,8 @@
       "id": "pod-bike-3",
       "mode": "bike",
       "label": "Bike 3",
+      "vehicleModel": "Scoopy",
+      "roleNote": "",
       "meta": "Scoopy",
       "slots": [
         { "role": "Driver", "memberId": "m-mayang" },
@@ -405,6 +411,8 @@
       "id": "pod-bike-4",
       "mode": "bike",
       "label": "Bike 4",
+      "vehicleModel": "Beat",
+      "roleNote": "",
       "meta": "Beat",
       "slots": [
         { "role": "Driver", "memberId": "m-elano" },
@@ -415,6 +423,8 @@
       "id": "pod-bike-5",
       "mode": "bike",
       "label": "Bike 5",
+      "vehicleModel": "Vario 125",
+      "roleNote": "Sweep",
       "meta": "Sweep · Vario 125",
       "slots": [
         { "role": "Driver", "memberId": "m-chika" },
@@ -424,19 +434,31 @@
     {
       "id": "pod-train-1",
       "mode": "train",
-      "label": "KA Bengawan · Car 3",
-      "meta": "Rows 10–12 (Facing seats)",
+      "label": "KA Bengawan",
+      "meta": "Car 3 · Economy 3–2",
+      "trainLayout": {
+        "format": "3-2",
+        "carNumber": "Car 3",
+        "startRow": 10,
+        "endRow": 12,
+        "facingRows": true
+      },
       "slots": [
         { "role": "10A", "memberId": "m-kris" },
         { "role": "10B", "memberId": "m-anggi" },
         { "role": "10C", "memberId": "m-rani" },
         { "role": "10D", "memberId": "m-dora" },
-        { "role": "11A", "memberId": "m-chika" },
-        { "role": "11B", "memberId": "m-mayang" },
-        { "role": "11C", "memberId": "m-jason" },
-        { "role": "11D", "memberId": "m-elano" },
-        { "role": "12A", "memberId": "m-louis" },
-        { "role": "12B", "memberId": "m-valen" }
+        { "role": "10E", "memberId": "m-chika" },
+        { "role": "11A", "memberId": "m-mayang" },
+        { "role": "11B", "memberId": "m-jason" },
+        { "role": "11C", "memberId": "m-elano" },
+        { "role": "11D", "memberId": "m-louis" },
+        { "role": "11E", "memberId": "m-valen" },
+        { "role": "12A", "memberId": null },
+        { "role": "12B", "memberId": null },
+        { "role": "12C", "memberId": null },
+        { "role": "12D", "memberId": null },
+        { "role": "12E", "memberId": null }
       ]
     }
   ],

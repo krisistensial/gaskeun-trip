@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { Check, Lock, Plus, Trash2, Users } from 'lucide-react';
-import { Avatar, CornerOrb, EmptyState, GlassCard } from '../../components/atoms';
+import { Avatar, CornerOrb, EmptyState, GlassCard, LiquidBottomSheet } from '../../components/atoms';
 import type { PrepTask, SharedTrip, TripMember } from '../../types/trip';
 import './prep.css';
 
@@ -271,49 +271,35 @@ export function PrepScreen({
       </form>
 
       {/* Group PIC Avatar Picker Sheet */}
-      {picPickerTaskId && (
-        <div
-          className="gk-sheet-backdrop"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setPicPickerTaskId(null)}
-        >
-          <div className="gk-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="gk-sheet__handle" />
-            <div className="gk-sheet__head">
-              <div>
-                <h3 className="gk-sheet__title">Assign Task</h3>
-                <p className="gk-sheet__sub">Pick who handles this item</p>
-              </div>
-              <CornerOrb
-                kind="close"
-                ariaLabel="Close assignee picker"
-                onClick={() => setPicPickerTaskId(null)}
-              />
-            </div>
-            <div className="slot-picker-grid">
-              {trip.members.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className="slot-picker-option tactile"
-                  onClick={() => handleAssignPic(picPickerTaskId, m.id)}
-                >
-                  <Avatar initials={m.initials} size="sm" bg={m.avatarBg} color={m.avatarColor} />
-                  <span>{m.name}</span>
-                </button>
-              ))}
+      <LiquidBottomSheet
+        open={Boolean(picPickerTaskId)}
+        title="Assign Task"
+        subtitle="Pick who handles this item"
+        onClose={() => setPicPickerTaskId(null)}
+      >
+        {picPickerTaskId && (
+          <div className="slot-picker-grid">
+            {trip.members.map((m) => (
               <button
+                key={m.id}
                 type="button"
                 className="slot-picker-option tactile"
-                onClick={() => handleAssignPic(picPickerTaskId, undefined)}
+                onClick={() => handleAssignPic(picPickerTaskId, m.id)}
               >
-                <span style={{ color: 'var(--text-muted)' }}>Unassigned</span>
+                <Avatar initials={m.initials} size="sm" bg={m.avatarBg} color={m.avatarColor} />
+                <span>{m.name}</span>
               </button>
-            </div>
+            ))}
+            <button
+              type="button"
+              className="slot-picker-option tactile"
+              onClick={() => handleAssignPic(picPickerTaskId, undefined)}
+            >
+              <span style={{ color: 'var(--text-muted)' }}>Unassigned</span>
+            </button>
           </div>
-        </div>
-      )}
+        )}
+      </LiquidBottomSheet>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Lock } from 'lucide-react';
-import { Button, CornerOrb } from '../atoms';
+import { Button, LiquidBottomSheet } from '../atoms';
 import { verifyPin } from '../../services/tripFactory';
 import './sheets.css';
 
@@ -71,20 +71,17 @@ export function PinUnlockSheet({
   };
 
   return (
-    <div className="gk-sheet-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="gk-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="gk-sheet__handle" />
-        <div className="gk-sheet__head">
-          <div>
-            <h3 className="gk-sheet__title">Unlock Crew Editing</h3>
-            <p className="gk-sheet__sub">
-              Enter the 4-digit PIN for <strong>{tripCode}</strong>
-            </p>
-          </div>
-          <CornerOrb kind="close" ariaLabel="Close PIN dialog" onClick={onClose} />
-        </div>
-
-        <div className="gk-pin-row">
+    <LiquidBottomSheet
+      open={open}
+      title="Unlock Crew Editing"
+      subtitle={
+        <>
+          Enter the 4-digit PIN for <strong>{tripCode}</strong>
+        </>
+      }
+      onClose={onClose}
+    >
+      <div className="gk-pin-row">
           {digits.map((val, i) => (
             <input
               key={i}
@@ -128,7 +125,6 @@ export function PinUnlockSheet({
         >
           {checking ? 'Verifying...' : 'Unlock Editing'}
         </Button>
-      </div>
-    </div>
+    </LiquidBottomSheet>
   );
 }

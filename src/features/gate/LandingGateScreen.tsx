@@ -14,7 +14,7 @@ export interface LandingGateScreenProps {
 
 export function LandingGateScreen({
   savedTrips,
-  initialCode = 'SOLO-27',
+  initialCode = '',
   onJoinCode,
   onOpenCreate,
 }: LandingGateScreenProps) {
@@ -26,7 +26,7 @@ export function LandingGateScreen({
     e.preventDefault();
     const cleaned = normalizeTripCode(code);
     if (cleaned.length < 3) {
-      setError('Enter a valid trip code (e.g. SOLO-27)');
+      setError('Enter a valid trip code (e.g. BALI-27)');
       return;
     }
     setBusy(true);
@@ -68,7 +68,7 @@ export function LandingGateScreen({
                 id="trip-code-input"
                 className="gate-code-input"
                 value={code}
-                placeholder="SOLO-27"
+                placeholder="e.g. BALI-27"
                 autoComplete="off"
                 spellCheck={false}
                 onChange={(e) => {
@@ -109,18 +109,39 @@ export function LandingGateScreen({
         </Button>
 
         {savedTrips.length > 0 && (
-          <div className="gate-saved-pills" aria-label="Saved trips on this device">
-            {savedTrips.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className="gate-saved-chip tactile"
-                onClick={() => void onJoinCode(t.code)}
-              >
-                <span>{t.title}</span>
-                <span style={{ opacity: 0.65 }}>{t.code}</span>
-              </button>
-            ))}
+          <div
+            style={{
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+            }}
+            aria-label="Your saved trips"
+          >
+            <span
+              style={{
+                fontSize: 10.5,
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                color: 'var(--text-muted)',
+              }}
+            >
+              YOUR TRIPS
+            </span>
+            <div className="gate-saved-pills">
+              {savedTrips.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className="gate-saved-chip tactile"
+                  onClick={() => void onJoinCode(t.code)}
+                >
+                  <span>{t.title}</span>
+                  <span style={{ opacity: 0.65 }}>{t.code}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>

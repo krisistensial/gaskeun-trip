@@ -18,6 +18,7 @@ import {
   GlassCard,
   Input,
 } from '../../components/atoms';
+import { useRegisterOverlay } from '../../context/OverlayContext';
 import { isClosedOnDate, isValidMapsUrl } from '../../services/planUtils';
 import type { PlanItem, PlanItemType, RichNoteBlock, RouteTarget, TripDay } from '../../types/trip';
 import './plan.css';
@@ -70,6 +71,9 @@ export function PlanDetailEditScreen({
   const [showColorRow, setShowColorRow] = useState<boolean>(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Auto-hide bottom dock while inside Plan Detail / Inline Editor
+  useRegisterOverlay(true);
 
   const selectedDay = days.find((d) => d.id === draft.dayId);
   const closedCheck = isClosedOnDate(draft.closedDays, selectedDay?.date);

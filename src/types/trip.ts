@@ -84,11 +84,22 @@ export interface TransportSlot {
   lockedPassenger?: boolean;
 }
 
+export interface TrainCarLayout {
+  format: '3-2' | '2-2';
+  carNumber: string;
+  startRow: number;
+  endRow: number;
+  facingRows: boolean;
+}
+
 export interface TransportPod {
   id: string;
   mode: TransportMode;
   label: string;
-  meta?: string; // e.g. "KA Bengawan · Car 3" or "Vario 125"
+  vehicleModel?: string; // e.g. "Vario 125", "Scoopy", "Beat"
+  roleNote?: string;     // e.g. "Lead", "Sweep"
+  meta?: string;         // legacy display fallback
+  trainLayout?: TrainCarLayout;
   slots: TransportSlot[];
 }
 
@@ -107,6 +118,7 @@ export interface StayLodging {
   checkOut: string;
   address: string;
   mapsUrl?: string;
+  photoDataUrl?: string;
   rooms: StayRoom[];
 }
 
@@ -162,6 +174,7 @@ export interface TrainPassInfo {
   returnRoute: string;
   returnTime: string;
   returnDate: string;
+  trainPhotoDataUrl?: string;
 }
 
 export interface AlbumPhoto {

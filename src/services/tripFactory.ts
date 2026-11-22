@@ -217,3 +217,26 @@ export async function compressCoverImage(file: File): Promise<Blob> {
   );
   return jpegBlob ?? file;
 }
+
+/**
+ * Compresses an uploaded photo (Train Pass, Stay banner) via Canvas into
+ * a compact JPEG data URL suitable for offline IndexedDB / shared trip storage.
+ */
+export async function compressPhotoToDataUrl(file: File, maxWidth = 960): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = bitmap.width > maxWidth ? maxWidth / bitmap.width : 1;
+  const width = Math.round(bitmap.width * scale);
+  const height = Math.round(bitmap.height * scale);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    bitmap.close();
+    throw new Error('Canvas unavailable');
+  }
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  return canvas.toDataURL('image/jpeg', 0.78);
+}

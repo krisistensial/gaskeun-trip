@@ -5,6 +5,7 @@ import { ExpandingGlassDock } from './components/organisms/ExpandingGlassDock';
 import { PinUnlockSheet } from './components/organisms/PinUnlockSheet';
 import { TripMenuSheet, type HomePhase } from './components/organisms/TripMenuSheet';
 import { TripSettingsSheet } from './components/organisms/TripSettingsSheet';
+import { OverlayProvider } from './context/OverlayContext';
 import { AlbumScreen } from './features/album/AlbumScreen';
 import { CreateTripScreen } from './features/gate/CreateTripScreen';
 import { LandingGateScreen } from './features/gate/LandingGateScreen';
@@ -312,7 +313,8 @@ export default function App() {
   const showDock = route === 'hub' && !activeRouteTarget;
 
   return (
-    <div className="app-viewport">
+    <OverlayProvider>
+      <div className="app-viewport">
       <div className="ambient-mesh" aria-hidden="true">
         <div className="ambient-blob ambient-blob--matcha" />
         <div className="ambient-blob ambient-blob--sunlight" />
@@ -385,6 +387,7 @@ export default function App() {
             coverUrl={coverUrl}
             canEdit={canEdit}
             onOpenMenu={() => setMenuOpen(true)}
+            onOpenTripSettings={openTripSettingsGated}
             onSwitchTrip={() => setRoute('landing')}
             onNavigateTab={setActiveTab}
             onUploadCover={handleUploadCover}
@@ -540,6 +543,7 @@ export default function App() {
         tone={toast.tone}
         onClose={() => setToast((prev) => ({ ...prev, open: false }))}
       />
-    </div>
+      </div>
+    </OverlayProvider>
   );
 }

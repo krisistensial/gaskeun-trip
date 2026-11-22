@@ -12,6 +12,19 @@
   display: flex;
   justify-content: center;
   pointer-events: none;
+  transition:
+    transform var(--dur-normal) var(--ease-spring),
+    opacity var(--dur-fast) ease;
+}
+
+.gk-dock-wrap--hidden {
+  transform: translate(-50%, 110px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gk-dock-wrap--hidden .gk-dock {
+  pointer-events: none;
 }
 
 .gk-dock {
