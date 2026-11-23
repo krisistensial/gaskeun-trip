@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ArrowRight, Compass, Plus } from 'lucide-react';
+import { ArrowRight, Plus } from 'lucide-react';
 import { Button, GlassCard } from '../../components/atoms';
 import { normalizeTripCode } from '../../services/tripFactory';
 import type { SharedTrip } from '../../types/trip';
@@ -43,7 +43,14 @@ export function LandingGateScreen({
       <div className="gate-center-hero">
         <div className="gate-brand">
           <div className="gate-emblem" aria-hidden="true">
-            <Compass size={26} strokeWidth={1.8} />
+            <img
+              src={`${import.meta.env.BASE_URL}pwa-192x192.png`}
+              alt=""
+              className="gate-emblem__img"
+              width={68}
+              height={68}
+              decoding="async"
+            />
           </div>
           <h1 className="gate-wordmark">GASKEUN!</h1>
           <p className="gate-tagline">Group trips, beautifully organized.</p>

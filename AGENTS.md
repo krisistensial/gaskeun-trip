@@ -2,13 +2,13 @@
 
 > **App:** GASKEUN! Group Travel PWA (`vite-plugin-pwa`, dynamic base path: `/` on Vercel via `process.env.VERCEL` or `VITE_BASE_PATH`, `/gaskeun-trip/` on GitHub Pages; SPA fallback in `vercel.json`).
 > **Pilot Trip:** `SOLO-27` (Solo – Jogja, Feb 11–14, 2027 · Default Crew PIN: `1234`).
-> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–8.9 (UI/UX, Auto-Swap & Vercel).
+> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–8.10 (Liquid Glass Pictorial Logo, PWA Icons, UI/UX, Auto-Swap & Vercel).
 
 ---
 
 ## 1. Non-Negotiable Design Rules (Read `DESIGN.md` First)
 
-- **Visual DNA:** Light Liquid Glass (Option 2A Crystal Liquid) floating over a soft **Ambient Mesh Canvas** (`#F6F8F5` + blurred Matcha/Sunlight/Mint blobs), Matcha/Sage palette (`#4A7468` / `#2D4A42` / `#E3EDE6`), soft squircles (`24–32px`), self-hosted offline fonts (`Fredoka`, `Plus Jakarta Sans`, `Playfair Display`).
+- **Visual DNA:** Light Liquid Glass (Option 2A Crystal Liquid) floating over a soft **Ambient Mesh Canvas** (`#F6F8F5` + blurred Matcha/Sunlight/Mint blobs), Matcha/Sage palette (`#4A7468` / `#2D4A42` / `#E3EDE6`), soft squircles (`24–32px`), self-hosted offline fonts (`Fredoka`, `Plus Jakarta Sans`, `Playfair Display`), and full-bleed liquid-glass pictorial pin logo across PWA icons (`public/pwa-192x192.png`, `public/pwa-512x512.png`, `public/pwa-maskable-512x512.png`, `public/apple-touch-icon.png`, `public/favicon.png`, `public/favicon-32x32.png`) and the `LandingGateScreen` squircle emblem (Batch 8.10).
 - **100% English UI Copy:** Zero bilingual mixing and zero system-jargon strings (never print labels like "Day-H Mode", "Layer 1/2", "Offline Fallback", "1-Tap GMaps", or "Edit Mode").
 - **Anti-Chrome & Scale Contrast:**
   - **Zero Top Bar** — hero photography runs edge-to-edge under the status bar.
