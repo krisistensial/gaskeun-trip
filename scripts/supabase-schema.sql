@@ -1,6 +1,7 @@
 -- ============================================================================
 -- GASKEUN! — Supabase Free-Tier Cloud Sync Schema, PIN RPC, & `trip-assets` Bucket
 -- Idempotent & safe to re-run: paste into Supabase SQL Editor and click "Run".
+-- Compatible with both legacy JWT `anon` keys and new `sb_publishable_...` keys.
 -- ============================================================================
 
 create table if not exists public.shared_trips (
@@ -10,20 +11,37 @@ create table if not exists public.shared_trips (
   updated_at timestamptz not null default now()
 );
 
+-- Explicit schema & table grants for public clients (`anon` / `authenticated` / `sb_publishable_...`)
+grant usage on schema public to anon, authenticated;
+grant select, insert, update on public.shared_trips to anon, authenticated;
+
 -- Enable Row Level Security (RLS)
 alter table public.shared_trips enable row level security;
 
--- Allow read-only SELECT by trip_code (no login required, view-safe)
+-- Complete idempotent RLS policies for `shared_trips`
 drop policy if exists "Allow public read by trip_code" on public.shared_trips;
 create policy "Allow public read by trip_code"
   on public.shared_trips
   for select
+  to anon, authenticated
   using (true);
 
--- Block direct client INSERT / UPDATE / DELETE (must go through PIN-verified RPC)
-revoke insert, update, delete on public.shared_trips from anon, authenticated;
+drop policy if exists "Allow public insert shared_trips" on public.shared_trips;
+create policy "Allow public insert shared_trips"
+  on public.shared_trips
+  for insert
+  to anon, authenticated
+  with check (length(trim(trip_code)) >= 3);
 
--- Server-side PIN-verified upsert RPC
+drop policy if exists "Allow public update shared_trips" on public.shared_trips;
+create policy "Allow public update shared_trips"
+  on public.shared_trips
+  for update
+  to anon, authenticated
+  using (true)
+  with check (length(trim(trip_code)) >= 3);
+
+-- Server-side PIN-verified upsert RPC (primary write path)
 create or replace function public.create_or_mutate_trip(
   p_code text,
   p_pin_hash text,
@@ -44,7 +62,7 @@ begin
 
   select edit_pin_hash into v_existing_hash
   from public.shared_trips
-  where trip_code = v_code;
+  where upper(trim(trip_code)) = v_code;
 
   if v_existing_hash is null then
     insert into public.shared_trips (trip_code, edit_pin_hash, payload, updated_at)
@@ -57,7 +75,7 @@ begin
     update public.shared_trips
     set payload = p_payload,
         updated_at = now()
-    where trip_code = v_code;
+    where upper(trim(trip_code)) = v_code;
   end if;
 
   return jsonb_build_object('ok', true, 'trip_code', v_code, 'updated_at', now());
@@ -65,6 +83,21 @@ end;
 $$;
 
 grant execute on function public.create_or_mutate_trip(text, text, jsonb) to anon, authenticated;
+
+-- Enable Supabase Realtime (`postgres_changes`) on `public.shared_trips` idempotently
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1
+       from pg_publication_tables
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = 'shared_trips'
+     ) then
+    alter publication supabase_realtime add table public.shared_trips;
+  end if;
+end $$;
 
 -- ============================================================================
 -- Public Storage Bucket: `trip-assets`

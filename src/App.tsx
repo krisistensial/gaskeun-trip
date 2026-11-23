@@ -69,6 +69,7 @@ export default function App() {
   const [activeTrip, setActiveTrip] = useState<SharedTrip>(pilotSeed);
   const [localData, setLocalData] = useState<LocalPersonalData | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [lastSyncError, setLastSyncError] = useState<string | null>(null);
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
 
   const [activeTab, setActiveTab] = useState<DockTabId>('home');
@@ -117,16 +118,22 @@ export default function App() {
         if (res.status === 'updated' && res.trip) {
           setActiveTrip(res.trip);
           setLastSyncedAt(res.syncedAt);
+          setLastSyncError(null);
           void listSharedTrips().then(setSavedTrips);
           if (options?.notify) showToast('Synced latest trip updates', 'success');
         } else if (res.status === 'up-to-date') {
           setLastSyncedAt(res.syncedAt);
+          setLastSyncError(null);
           if (options?.notify) showToast('Already up to date', 'info');
+        } else if (res.status === 'error') {
+          const reason = res.errorMessage || 'Unknown Supabase error';
+          setLastSyncError(reason);
+          console.error('[GASKEUN Sync] Sync failed:', reason);
+          if (options?.notify) showToast(`Sync failed: ${reason}`, 'error');
         } else if (options?.notify) {
           if (res.status === 'offline') showToast('Device is offline', 'info');
           else if (res.status === 'unconfigured') showToast('Cloud sync not configured', 'info');
           else if (res.status === 'not-found') showToast('No cloud copy yet — saving locally', 'info');
-          else showToast('Could not reach Supabase right now', 'error');
         }
       } finally {
         setIsSyncingCloud(false);
@@ -303,9 +310,14 @@ export default function App() {
       void saveSharedTrip(next)
         .then(() => listSharedTrips().then(setSavedTrips))
         .then(() => pushOrQueueSharedTrip(next))
-        .then((status) => {
-          if (status === 'synced') {
+        .then((res) => {
+          if (res.status === 'synced') {
             setLastSyncedAt(new Date().toISOString());
+            setLastSyncError(null);
+          } else if (res.status === 'queued' && res.errorMessage) {
+            setLastSyncError(res.errorMessage);
+            console.error('[GASKEUN Sync] Cloud push failed:', res.errorMessage);
+            showToast(`Cloud save failed: ${res.errorMessage}`, 'error');
           }
         });
       return next;
@@ -403,8 +415,14 @@ export default function App() {
 
   const handleTripCreated = async (newTrip: SharedTrip) => {
     await saveSharedTrip(newTrip);
-    void pushOrQueueSharedTrip(newTrip).then((status) => {
-      if (status === 'synced') setLastSyncedAt(new Date().toISOString());
+    void pushOrQueueSharedTrip(newTrip).then((res) => {
+      if (res.status === 'synced') {
+        setLastSyncedAt(new Date().toISOString());
+        setLastSyncError(null);
+      } else if (res.status === 'queued' && res.errorMessage) {
+        setLastSyncError(res.errorMessage);
+        showToast(`Cloud save failed: ${res.errorMessage}`, 'error');
+      }
     });
     const all = await listSharedTrips();
     setSavedTrips(all);
@@ -704,6 +722,7 @@ export default function App() {
           activeMember={activeMember}
           activeMemberName={activeMemberName}
           lastSyncedAt={lastSyncedAt}
+          lastSyncError={lastSyncError}
           isSyncingCloud={isSyncingCloud}
           onForceSync={() =>
             void syncActiveTripFromCloud(activeTrip.code, activeTrip, {

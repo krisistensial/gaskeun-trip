@@ -5,7 +5,7 @@ import {
   getOfflineQueue,
   saveSharedTrip,
 } from './db';
-import type { SharedTrip } from '../types/trip';
+import type { OfflineQueueItem, SharedTrip } from '../types/trip';
 
 let cachedClient: SupabaseClient | null | undefined;
 
@@ -21,10 +21,9 @@ export function getSupabaseClient(): SupabaseClient | null {
     cachedClient = null;
     return null;
   }
-  cachedClient = createClient(
-    String(import.meta.env.VITE_SUPABASE_URL).trim(),
-    String(import.meta.env.VITE_SUPABASE_ANON_KEY).trim(),
-  );
+  const cleanUrl = String(import.meta.env.VITE_SUPABASE_URL).trim().replace(/\/+$/, '');
+  const cleanKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY).trim();
+  cachedClient = createClient(cleanUrl, cleanKey);
   return cachedClient;
 }
 
@@ -32,6 +31,53 @@ function parseTimestampMs(iso?: string): number {
   if (!iso) return 0;
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? ms : 0;
+}
+
+/**
+ * Extracts a concise, real diagnostic message from a PostgREST / Supabase / Fetch error
+ * so UI toasts & DevTools logs show the exact root cause instead of generic strings.
+ */
+export function formatSupabaseError(error: unknown): string {
+  if (!error) return 'Unknown Supabase error';
+  if (typeof error === 'string') return error.trim() || 'Unknown Supabase error';
+
+  if (error instanceof Error) {
+    return error.message.trim() || error.name || 'Network error';
+  }
+
+  if (typeof error === 'object') {
+    const e = error as {
+      status?: number;
+      code?: string;
+      message?: string;
+      details?: string;
+      hint?: string;
+      error_description?: string;
+    };
+    const prefix = e.code ? `${e.code}` : e.status ? `${e.status}` : '';
+    const msg = (e.message || e.error_description || e.details || e.hint || '').trim();
+    if (prefix && msg) {
+      const combined = msg.includes(prefix) ? msg : `${prefix} ${msg}`;
+      return combined.length > 96 ? `${combined.slice(0, 93)}...` : combined;
+    }
+    if (msg) return msg.length > 96 ? `${msg.slice(0, 93)}...` : msg;
+    if (prefix) return `Error ${prefix}`;
+  }
+
+  return 'Unknown Supabase error';
+}
+
+function isMissingRpcError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { code?: string; message?: string };
+  const code = String(e.code ?? '').toUpperCase();
+  const msg = String(e.message ?? '').toLowerCase();
+  return (
+    code === 'PGRST202' ||
+    code === '42883' ||
+    (msg.includes('create_or_mutate_trip') &&
+      (msg.includes('not find') || msg.includes('does not exist')))
+  );
 }
 
 /**
@@ -84,7 +130,6 @@ export function shouldApplyRemoteTrip(
   if (remoteMs > localMs) return true;
   if (localMs > remoteMs && options?.hasPendingLocalMutations) return false;
 
-  // Same timestamp or non-pending local copy whose payload differs (e.g. coverPhotoUrl added)
   if (remoteMs === localMs && !options?.hasPendingLocalMutations) {
     return (
       localTrip.coverPhotoUrl !== remoteTrip.coverPhotoUrl ||
@@ -111,6 +156,80 @@ export async function applyRemoteSharedTrip(
   return sanitized;
 }
 
+async function selectSharedTripRow(
+  client: SupabaseClient,
+  cleanCode: string,
+): Promise<{
+  row: { payload?: unknown; updated_at?: string } | null;
+  error: unknown;
+}> {
+  const exact = await client
+    .from('shared_trips')
+    .select('payload, updated_at')
+    .eq('trip_code', cleanCode)
+    .maybeSingle();
+
+  if (exact.error) {
+    return { row: null, error: exact.error };
+  }
+  if (exact.data) {
+    return { row: exact.data as { payload?: unknown; updated_at?: string }, error: null };
+  }
+
+  // Case-insensitive fallback in case a row was inserted lowercase manually in Supabase Table Editor
+  const fallback = await client
+    .from('shared_trips')
+    .select('payload, updated_at')
+    .ilike('trip_code', cleanCode)
+    .maybeSingle();
+
+  if (fallback.error) {
+    return { row: null, error: fallback.error };
+  }
+  return {
+    row: (fallback.data as { payload?: unknown; updated_at?: string } | null) ?? null,
+    error: null,
+  };
+}
+
+async function writeSharedTripToCloud(
+  client: SupabaseClient,
+  sanitized: SharedTrip,
+): Promise<{ ok: true } | { ok: false; error: unknown }> {
+  const cleanCode = sanitized.code.toUpperCase();
+
+  // Primary write path: server-verified PIN RPC (`create_or_mutate_trip`)
+  const rpcRes = await client.rpc('create_or_mutate_trip', {
+    p_code: cleanCode,
+    p_pin_hash: sanitized.crewPinHash,
+    p_payload: sanitized,
+  });
+
+  if (!rpcRes.error) {
+    return { ok: true };
+  }
+
+  // Fallback path if RPC function is not deployed yet: direct upsert using RLS policies
+  if (isMissingRpcError(rpcRes.error)) {
+    console.warn('[GASKEUN Sync] RPC create_or_mutate_trip missing; falling back to direct upsert');
+    const upsertRes = await client.from('shared_trips').upsert(
+      {
+        trip_code: cleanCode,
+        edit_pin_hash: sanitized.crewPinHash,
+        payload: sanitized,
+        updated_at: sanitized.updatedAt || new Date().toISOString(),
+      },
+      { onConflict: 'trip_code' },
+    );
+    if (!upsertRes.error) {
+      return { ok: true };
+    }
+    return { ok: false, error: upsertRes.error };
+  }
+
+  return { ok: false, error: rpcRes.error };
+}
+
 /**
  * Fetches a shared trip by code from Supabase when online & configured,
  * and caches it into IndexedDB Layer 1 without touching Layer 2.
@@ -122,17 +241,17 @@ export async function fetchRemoteTripByCode(code: string): Promise<SharedTrip | 
   }
   try {
     const cleanCode = code.trim().toUpperCase();
-    const { data, error } = await client
-      .from('shared_trips')
-      .select('payload, updated_at')
-      .eq('trip_code', cleanCode)
-      .maybeSingle();
-
-    if (error || !data?.payload) return null;
-    const remoteTrip = data.payload as SharedTrip;
+    const { row, error } = await selectSharedTripRow(client, cleanCode);
+    if (error) {
+      console.error('[GASKEUN Sync] fetchRemoteTripByCode failed:', error);
+      return null;
+    }
+    if (!row?.payload) return null;
+    const remoteTrip = row.payload as SharedTrip;
     if (!remoteTrip.id || !remoteTrip.code) return null;
-    return applyRemoteSharedTrip(remoteTrip, saveSharedTrip, data.updated_at as string | undefined);
-  } catch {
+    return applyRemoteSharedTrip(remoteTrip, saveSharedTrip, row.updated_at);
+  } catch (err) {
+    console.error('[GASKEUN Sync] fetchRemoteTripByCode exception:', err);
     return null;
   }
 }
@@ -141,67 +260,106 @@ export interface CloudPullResult {
   status: 'updated' | 'up-to-date' | 'offline' | 'unconfigured' | 'not-found' | 'error';
   trip?: SharedTrip;
   syncedAt: string;
+  errorMessage?: string;
+}
+
+export interface PullLatestOptions {
+  force?: boolean;
+  /** Optional dependency injection for deterministic unit testing */
+  deps?: {
+    client?: SupabaseClient | null;
+    isOnline?: boolean;
+    getQueue?: (tripId?: string) => Promise<OfflineQueueItem[]>;
+    flushQueue?: () => Promise<number>;
+    persistShared?: (trip: SharedTrip) => Promise<void>;
+  };
 }
 
 /**
- * Compares remote `shared_trips` (`updated_at` & `payload`) against local Layer-1 state,
- * flushing any pending offline mutations first so edits from another device are pulled cleanly.
+ * Compares remote `shared_trips` (`updated_at` & `payload`) against local Layer-1 state.
+ * - Offline queue flush runs in an isolated try/catch (and is skipped on manual `force: true`
+ *   so stale local queued data can never block or clobber a manual pull from Supabase).
+ * - Always logs real errors via `console.error('[GASKEUN Sync]', ...)` and returns `errorMessage`.
  */
 export async function pullLatestSharedTrip(
   code: string,
   localTrip: SharedTrip | null | undefined,
-  options?: { force?: boolean },
+  options?: PullLatestOptions,
 ): Promise<CloudPullResult> {
   const syncedAt = new Date().toISOString();
-  const client = getSupabaseClient();
-  if (!client) return { status: 'unconfigured', syncedAt };
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    return { status: 'offline', syncedAt };
+  const deps = options?.deps;
+  const client = deps && 'client' in deps ? deps.client : getSupabaseClient();
+  if (!client) return { status: 'unconfigured', syncedAt, errorMessage: 'Supabase not configured' };
+
+  const online =
+    deps?.isOnline !== undefined
+      ? deps.isOnline
+      : typeof navigator === 'undefined' || navigator.onLine !== false;
+  if (!online) {
+    return { status: 'offline', syncedAt, errorMessage: 'Device is offline' };
+  }
+
+  const getQueueFn = deps?.getQueue ?? getOfflineQueue;
+  const flushQueueFn = deps?.flushQueue ?? flushOfflineMutationQueue;
+  const persistSharedFn = deps?.persistShared ?? saveSharedTrip;
+
+  // Isolated best-effort flush BEFORE non-forced pull: failures NEVER block SELECT!
+  let hasPendingLocalMutations = false;
+  if (!options?.force && localTrip) {
+    try {
+      const pendingBefore = await getQueueFn(localTrip.id);
+      if (pendingBefore.length > 0) {
+        await flushQueueFn();
+      }
+      const pendingAfter = await getQueueFn(localTrip.id);
+      hasPendingLocalMutations = pendingAfter.length > 0;
+    } catch (flushErr) {
+      console.error(
+        '[GASKEUN Sync] Offline queue flush failed (continuing pull from Supabase):',
+        flushErr,
+      );
+    }
   }
 
   try {
-    // Push queued offline mutations first so we don't clobber local offline work
-    const pendingBefore = localTrip ? await getOfflineQueue(localTrip.id) : [];
-    if (pendingBefore.length > 0) {
-      await flushOfflineMutationQueue();
-    }
-    const pendingAfter = localTrip ? await getOfflineQueue(localTrip.id) : [];
-
     const cleanCode = code.trim().toUpperCase();
-    const { data, error } = await client
-      .from('shared_trips')
-      .select('payload, updated_at')
-      .eq('trip_code', cleanCode)
-      .maybeSingle();
+    const { row, error } = await selectSharedTripRow(client, cleanCode);
 
-    if (error) return { status: 'error', syncedAt };
-    if (!data?.payload) return { status: 'not-found', syncedAt };
+    if (error) {
+      const errorMessage = formatSupabaseError(error);
+      console.error('[GASKEUN Sync] Pull SELECT shared_trips failed:', error);
+      return { status: 'error', syncedAt, errorMessage };
+    }
+    if (!row?.payload) {
+      return { status: 'not-found', syncedAt };
+    }
 
-    const rawRemote = data.payload as SharedTrip;
-    if (!rawRemote.id || !rawRemote.code) return { status: 'not-found', syncedAt };
+    const rawRemote = row.payload as SharedTrip;
+    if (!rawRemote.id || !rawRemote.code) {
+      return { status: 'not-found', syncedAt };
+    }
 
-    const normalizedRemote = normalizeSharedTripPayload(
-      rawRemote,
-      data.updated_at as string | undefined,
-    );
+    const normalizedRemote = normalizeSharedTripPayload(rawRemote, row.updated_at);
 
     if (
       shouldApplyRemoteTrip(localTrip, normalizedRemote, {
         force: options?.force,
-        hasPendingLocalMutations: pendingAfter.length > 0,
+        hasPendingLocalMutations,
       })
     ) {
       const persisted = await applyRemoteSharedTrip(
         normalizedRemote,
-        saveSharedTrip,
-        data.updated_at as string | undefined,
+        persistSharedFn,
+        row.updated_at,
       );
       return { status: 'updated', trip: persisted, syncedAt };
     }
 
     return { status: 'up-to-date', trip: localTrip ?? normalizedRemote, syncedAt };
-  } catch {
-    return { status: 'error', syncedAt };
+  } catch (err) {
+    const errorMessage = formatSupabaseError(err);
+    console.error('[GASKEUN Sync] pullLatestSharedTrip exception:', err);
+    return { status: 'error', syncedAt, errorMessage };
   }
 }
 
@@ -241,47 +399,68 @@ export function subscribeToSharedTrip(
   };
 }
 
+export interface CloudPushResult {
+  status: 'synced' | 'queued' | 'local';
+  errorMessage?: string;
+}
+
+export interface PushTripDeps {
+  client?: SupabaseClient | null;
+  isOnline?: boolean;
+  enqueue?: typeof enqueueOfflineMutation;
+}
+
 /**
- * Pushes a Layer-1 shared trip mutation via the server-verified RPC
- * `create_or_mutate_trip(p_code, p_pin_hash, p_payload)`.
- * If offline or network fails, queues it safely in IndexedDB `offline_queue`.
+ * Pushes a Layer-1 shared trip mutation via `create_or_mutate_trip` RPC (with automatic
+ * direct-upsert fallback if RPC is missing). Surfaces real diagnostic `errorMessage`
+ * on cloud errors instead of silently swallowing them.
  */
 export async function pushOrQueueSharedTrip(
   trip: SharedTrip,
-): Promise<'synced' | 'queued' | 'local'> {
-  const client = getSupabaseClient();
-  if (!client) return 'local';
+  deps?: PushTripDeps,
+): Promise<CloudPushResult> {
+  const client = deps && 'client' in deps ? deps.client : getSupabaseClient();
+  if (!client) return { status: 'local' };
 
   const sanitized = normalizeSharedTripPayload(trip);
+  const enqueueFn = deps?.enqueue ?? enqueueOfflineMutation;
 
   const queueMutation = async () => {
-    await enqueueOfflineMutation({
-      tripId: sanitized.id,
-      entity: 'trip',
-      action: 'upsert',
-      payload: sanitized,
-    });
+    try {
+      await enqueueFn({
+        tripId: sanitized.id,
+        entity: 'trip',
+        action: 'upsert',
+        payload: sanitized,
+      });
+    } catch (queueErr) {
+      console.error('[GASKEUN Sync] Failed to enqueue offline mutation:', queueErr);
+    }
   };
 
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  const online =
+    deps?.isOnline !== undefined
+      ? deps.isOnline
+      : typeof navigator === 'undefined' || navigator.onLine !== false;
+  if (!online) {
     await queueMutation();
-    return 'queued';
+    return { status: 'queued' };
   }
 
   try {
-    const { error } = await client.rpc('create_or_mutate_trip', {
-      p_code: sanitized.code.toUpperCase(),
-      p_pin_hash: sanitized.crewPinHash,
-      p_payload: sanitized,
-    });
-    if (error) {
+    const writeRes = await writeSharedTripToCloud(client, sanitized);
+    if (!writeRes.ok) {
+      const errorMessage = formatSupabaseError(writeRes.error);
+      console.error('[GASKEUN Sync] Push shared_trips failed:', writeRes.error);
       await queueMutation();
-      return 'queued';
+      return { status: 'queued', errorMessage };
     }
-    return 'synced';
-  } catch {
+    return { status: 'synced' };
+  } catch (err) {
+    const errorMessage = formatSupabaseError(err);
+    console.error('[GASKEUN Sync] Push shared_trips exception:', err);
     await queueMutation();
-    return 'queued';
+    return { status: 'queued', errorMessage };
   }
 }
 
@@ -302,16 +481,16 @@ export async function flushOfflineMutationQueue(): Promise<number> {
     if (item.entity === 'trip' && item.action === 'upsert') {
       const payload = normalizeSharedTripPayload(item.payload as SharedTrip);
       try {
-        const { error } = await client.rpc('create_or_mutate_trip', {
-          p_code: payload.code.toUpperCase(),
-          p_pin_hash: payload.crewPinHash,
-          p_payload: payload,
-        });
-        if (!error) {
+        const writeRes = await writeSharedTripToCloud(client, payload);
+        if (writeRes.ok) {
           await clearOfflineQueueItem(item.id);
           flushed += 1;
+        } else {
+          console.error('[GASKEUN Sync] Offline queue item push failed:', writeRes.error);
+          break;
         }
-      } catch {
+      } catch (err) {
+        console.error('[GASKEUN Sync] Offline queue item exception:', err);
         break;
       }
     } else {

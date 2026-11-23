@@ -47,6 +47,7 @@ export interface TripMenuSheetProps {
   activeMember?: TripMember;
   activeMemberName: string;
   lastSyncedAt?: string | null;
+  lastSyncError?: string | null;
   isSyncingCloud?: boolean;
   onForceSync?: () => void;
   onPhaseChange: (phase: HomePhase) => void;
@@ -76,6 +77,7 @@ export function TripMenuSheet({
   activeMember,
   activeMemberName,
   lastSyncedAt,
+  lastSyncError,
   isSyncingCloud = false,
   onForceSync,
   onPhaseChange,
@@ -341,16 +343,21 @@ export function TripMenuSheet({
             </span>
             <span>
               <div className="gk-menu-item__title">Cloud Sync</div>
-              <div className="gk-menu-item__sub">
+              <div
+                className="gk-menu-item__sub"
+                style={lastSyncError && !isSyncingCloud ? { color: 'var(--accent-coral)' } : undefined}
+              >
                 {isSyncingCloud
                   ? 'Syncing with Supabase...'
-                  : cloudConnected
-                    ? formattedLastSync
-                      ? `Synced · ${formattedLastSync}`
-                      : 'Connected · Supabase'
-                    : cloudConfigured
-                      ? 'Device offline · Queued locally'
-                      : 'Offline / Local only'}
+                  : lastSyncError
+                    ? `Sync failed · ${lastSyncError}`
+                    : cloudConnected
+                      ? formattedLastSync
+                        ? `Synced · ${formattedLastSync}`
+                        : 'Connected · Supabase'
+                      : cloudConfigured
+                        ? 'Device offline · Queued locally'
+                        : 'Offline / Local only'}
               </div>
             </span>
           </span>
