@@ -2,8 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const nodeEnv =
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+const base = nodeEnv.VITE_BASE_PATH || (nodeEnv.VERCEL ? '/' : '/gaskeun-trip/');
+
 export default defineConfig({
-  base: '/gaskeun-trip/',
+  base,
   plugins: [
     react(),
     VitePWA({
@@ -17,13 +21,14 @@ export default defineConfig({
       manifest: {
         name: 'GASKEUN! — Group Travel Hub',
         short_name: 'GASKEUN!',
-        description: 'Group trips, beautifully organized. Offline-first itinerary, wallet, and crew hub.',
+        description:
+          'Group trips, beautifully organized. Offline-first itinerary, wallet, and crew hub.',
         theme_color: '#F6F8F5',
         background_color: '#F6F8F5',
         display: 'standalone',
         orientation: 'portrait',
-        scope: '/gaskeun-trip/',
-        start_url: '/gaskeun-trip/',
+        scope: base,
+        start_url: base,
         icons: [
           {
             src: 'assets/pwa-192.png',

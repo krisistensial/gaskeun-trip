@@ -19,6 +19,7 @@ import {
   LiquidBottomSheet,
 } from '../../components/atoms';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
+import { toggleStayRoomMember } from '../../services/crewSwap';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import type {
@@ -912,18 +913,7 @@ export function StayEditorSheet({
   };
 
   const toggleMemberInRoom = (roomId: string, memberId: string) => {
-    setRooms((prev) =>
-      prev.map((rm) => {
-        if (rm.id !== roomId) return rm;
-        const exists = rm.memberIds.includes(memberId);
-        return {
-          ...rm,
-          memberIds: exists
-            ? rm.memberIds.filter((id) => id !== memberId)
-            : [...rm.memberIds, memberId],
-        };
-      }),
-    );
+    setRooms((prev) => toggleStayRoomMember(prev, roomId, memberId));
   };
 
   const addRoom = () => {

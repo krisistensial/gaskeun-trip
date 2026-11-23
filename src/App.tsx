@@ -28,6 +28,7 @@ import {
   upsertPersonalTransaction,
 } from './services/db';
 import { exportTripToExcel } from './services/excelExporter';
+import { fetchDriveAlbumWithStatus, isAssetFileName } from './services/gdriveAlbum';
 import { uploadSharedImage } from './services/mediaUploader';
 import {
   canEditTrip,
@@ -63,6 +64,27 @@ type AppRoute = 'landing' | 'who' | 'create' | 'hub';
 const pilotSeed = seedData as unknown as SharedTrip;
 const defaultCoverPath = `${import.meta.env.BASE_URL}assets/default-cover.svg`;
 
+const DRIVE_ALBUM_CACHE_PREFIX = 'gaskeun_drive_album_v1_';
+
+function loadCachedDrivePhotos(tripId: string): AlbumPhoto[] {
+  try {
+    const raw = localStorage.getItem(`${DRIVE_ALBUM_CACHE_PREFIX}${tripId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as AlbumPhoto[];
+    return Array.isArray(parsed) ? parsed.filter((p) => p && typeof p.url === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedDrivePhotos(tripId: string, photos: AlbumPhoto[]): void {
+  try {
+    localStorage.setItem(`${DRIVE_ALBUM_CACHE_PREFIX}${tripId}`, JSON.stringify(photos.slice(0, 40)));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
 export default function App() {
   const [route, setRoute] = useState<AppRoute>('landing');
   const [savedTrips, setSavedTrips] = useState<SharedTrip[]>([pilotSeed]);
@@ -71,6 +93,9 @@ export default function App() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [driveAlbumPhotos, setDriveAlbumPhotos] = useState<AlbumPhoto[]>(() =>
+    loadCachedDrivePhotos(pilotSeed.id),
+  );
 
   const [activeTab, setActiveTab] = useState<DockTabId>('home');
   const [phase, setPhase] = useState<HomePhase>('pre-trip');
@@ -272,6 +297,50 @@ export default function App() {
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
   }, [showToast, syncActiveTripFromCloud]);
+
+  // Load cached Drive album photos immediately on trip change & silently refresh in background
+  // so the Home ALBUM collage displays live photos right away without visiting the Album tab first.
+  useEffect(() => {
+    setDriveAlbumPhotos(loadCachedDrivePhotos(activeTrip.id));
+  }, [activeTrip.id]);
+
+  useEffect(() => {
+    if (route !== 'hub') return;
+    const scriptUrl = activeTrip.gdriveScriptUrl?.trim();
+    if (!scriptUrl) return;
+
+    let alive = true;
+    const folderUrl = activeTrip.gdriveFolderUrl || activeTrip.albumUrl;
+    void fetchDriveAlbumWithStatus(scriptUrl, activeTrip.id, folderUrl).then((res) => {
+      if (!alive || !res.ok) return;
+      setDriveAlbumPhotos(res.photos);
+      saveCachedDrivePhotos(activeTrip.id, res.photos);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [route, activeTrip.id, activeTrip.gdriveScriptUrl, activeTrip.gdriveFolderUrl, activeTrip.albumUrl]);
+
+  const handleDrivePhotosSync = useCallback(
+    (photos: AlbumPhoto[]) => {
+      setDriveAlbumPhotos(photos);
+      saveCachedDrivePhotos(activeTrip.id, photos);
+    },
+    [activeTrip.id],
+  );
+
+  // Merged non-asset Album photos (Drive + Local) sorted newest-first for the Home ALBUM collage
+  const homeAlbumPhotos = useMemo(() => {
+    const seen = new Set<string>();
+    const combined: AlbumPhoto[] = [];
+    for (const p of [...driveAlbumPhotos, ...(localData?.localAlbumPhotos ?? [])]) {
+      if (!p?.id || !p.url || seen.has(p.id)) continue;
+      if (isAssetFileName(p.caption)) continue;
+      seen.add(p.id);
+      combined.push(p);
+    }
+    return combined.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [driveAlbumPhotos, localData?.localAlbumPhotos]);
 
   // Home Hero Cover is Layer 1 (`SharedTrip.coverPhotoUrl`) so every device displays the same cover
   const sharedCoverUrl = activeTrip.coverPhotoUrl || activeTrip.heroCoverUrl || '';
@@ -640,6 +709,7 @@ export default function App() {
               phase={phase}
               coverUrl={effectiveCoverUrl}
               hasCoverPhoto={hasCustomCoverPhoto}
+              albumPhotos={homeAlbumPhotos}
               activeMemberName={activeMemberName}
               canEdit={canEdit}
               onOpenMenu={() => setMenuOpen(true)}
@@ -684,9 +754,11 @@ export default function App() {
             <AlbumScreen
               trip={activeTrip}
               localPhotos={localData?.localAlbumPhotos ?? []}
+              cachedDrivePhotos={driveAlbumPhotos}
               activeMemberId={activeMemberId}
               activeMemberName={activeMemberName}
               canEdit={canEdit}
+              onDrivePhotosSync={handleDrivePhotosSync}
               onSaveLocalPhotos={(photos, msg) => void handleSaveLocalAlbumPhotos(photos, msg)}
               onUpdateTrip={handleUpdateTrip}
               onOpenSettings={openTripSettingsGated}

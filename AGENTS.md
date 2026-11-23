@@ -1,8 +1,8 @@
 # AGENTS.md — GASKEUN! Project Rules & Architecture Guide
 
-> **App:** GASKEUN! Group Travel PWA (`vite-plugin-pwa`, base path `/gaskeun-trip/`, deployed via GitHub Pages).
+> **App:** GASKEUN! Group Travel PWA (`vite-plugin-pwa`, dynamic base path: `/` on Vercel via `process.env.VERCEL` or `VITE_BASE_PATH`, `/gaskeun-trip/` on GitHub Pages; SPA fallback in `vercel.json`).
 > **Pilot Trip:** `SOLO-27` (Solo – Jogja, Feb 11–14, 2027 · Default Crew PIN: `1234`).
-> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–8.9.
+> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–8.9 (UI/UX, Auto-Swap & Vercel).
 
 ---
 
@@ -41,7 +41,9 @@
 - **Home (`src/features/home/`):**
   - **Large Editorial Hero Countdown (Batch 7):** Boxless magazine-scale Playfair serif countdown elevated & centered over hero photo (`DAYS` `clamp(112px, 34vw, 156px)`, `HOURS/MINS/SECS` `clamp(34px, 10vw, 46px)`), crisp white text + soft dark scrim over custom cover photos (`home-hero--photo`) and deep Matcha `#1E3A32` without a cover photo.
   - KAI 3–2 / 2–2 Train Seat Map with one-tap seat swap (`TrainSeatMap.tsx`), editable Crew/Pods/Stays/Train Pass.
-  - **Full-Bleed Photo Cards (Batches 6 & 8.7):** `Now` Spotlight card & all `Plan` stop states (`done`, `active`, `upcoming`) render stop photos with `isolation: isolate; overflow: hidden; backdrop-filter: none` on `.gk-glass.card-has-photo`, `position: absolute; inset: 0; object-fit: cover; z-index: 0` image, dark gradient scrim (`z-index: 1`), and transparent foreground (`z-index: 2`) with `onError` graceful fallback — never increases card height/width. Cover uploads in `PlanDetailEditScreen` show instant preview and auto-persist on existing stops (`onQuickPersistCover`) as well as on `Save Stop`.
+  - **Full-Bleed Gradient Photo Cards & Zero Boxed Inset Photos (Batches 6, 8.7 & 8.9):** `Now` Spotlight, all `Plan` stop states, `TRAIN PASS` Home tile, `Train Pass` Detail sheet, and `Stay / Homestay` cards render photos edge-to-edge (`position: absolute; inset: 0; object-fit: cover; z-index: 0`) with smooth directional/diagonal gradient scrims + CSS `mask-image` blending so foreground typography stays crisp, card dimensions never expand, and zero boxed inset photos exist. Cover uploads in `PlanDetailEditScreen` show instant preview and auto-persist on existing stops (`onQuickPersistCover`) as well as on `Save Stop`.
+  - **Dynamic Home `ALBUM` Collage (Batch 8.9 — `HomeScreen.tsx`, `home.css`, `App.tsx`):** Equal-height paired with `TRAIN PASS` (`align-items: stretch; min-height: 126px`), rendering up to 4 latest non-asset Album photos (preloaded from cached/live Google Drive + local Album photos) as an adaptive full-bleed mosaic (`1` full, `2` split, `3` 1+2 mosaic, `4` 2×2 grid) with soft top-left gradient scrim and count pill, falling back to the fanned polaroid empty state (`"Tap to add photos"`).
+  - **Auto-Swap Motorbikes & Anti-Duplicate Stay Rooms (Batch 8.9 — `src/services/crewSwap.ts`):** Selecting an already-assigned rider in `Assign Rider` (`HomeScreen.tsx`) automatically swaps them with the current slot's rider (across bikes or opposite slot on the same bike) and shows a clear swap/move toast without ever creating duplicate assignments. `StayEditorSheet` (`CrewEditors.tsx`) uses `toggleStayRoomMember` so adding a crew member to a room automatically removes them from any other room in the same homestay.
 - **Plan (`src/features/plan/`):**
   - Frozen header + 60fps rAF **Dotted Circular C-Arc Trail** (`arcMath.ts`) with magnetic center snap & depth scale/dimming, 3-column Table + 3-sheet `.xlsx` export (`excelExporter.ts`), unified `RouteMapView` (Leaflet + offline SVG trail), seamless `contentEditable` notes, and **Full-Bleed Photo Cards** matching non-photo card dimensions.
 - **Universal Photo Cropper & Google Drive Shared Media (Batches 5–6):**

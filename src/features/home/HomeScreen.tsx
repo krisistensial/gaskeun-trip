@@ -27,9 +27,11 @@ import {
 } from '../../components/atoms';
 import type { HomePhase } from '../../components/organisms/TripMenuSheet';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
+import { assignMotorbikeMember, findMemberBikeAssignment } from '../../services/crewSwap';
 import { calculateLedger, formatCompactIDR } from '../../services/ledger';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import type {
+  AlbumPhoto,
   DockTabId,
   RouteTarget,
   SharedTrip,
@@ -74,6 +76,7 @@ export interface HomeScreenProps {
   phase: HomePhase;
   coverUrl: string;
   hasCoverPhoto: boolean;
+  albumPhotos?: AlbumPhoto[];
   activeMemberName: string;
   canEdit: boolean;
   onOpenMenu: () => void;
@@ -92,6 +95,7 @@ export function HomeScreen({
   phase,
   coverUrl,
   hasCoverPhoto,
+  albumPhotos = [],
   activeMemberName,
   canEdit,
   onOpenMenu,
@@ -130,6 +134,12 @@ export function HomeScreen({
   const [showCrewJump, setShowCrewJump] = useState(true);
   const [heroCropFile, setHeroCropFile] = useState<File | null>(null);
   const [spotlightPhotoErrorUrl, setSpotlightPhotoErrorUrl] = useState<string>('');
+  const [failedPhotoUrls, setFailedPhotoUrls] = useState<Record<string, boolean>>({});
+
+  const markPhotoFailed = (url?: string) => {
+    if (!url) return;
+    setFailedPhotoUrls((prev) => (prev[url] ? prev : { ...prev, [url]: true }));
+  };
 
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const crewSectionRef = useRef<HTMLElement | null>(null);
@@ -259,6 +269,40 @@ export function HomeScreen({
     memberId: string | null,
   ) => {
     const targetPod = trip.transportPods.find((p) => p.id === podId);
+
+    // Motorbike Auto-Swap: never allow one crew member on two bikes simultaneously
+    if (targetPod?.mode === 'bike') {
+      const preview = assignMotorbikeMember(trip.transportPods, podId, slotIndex, memberId);
+      if (!preview.changed) return;
+
+      const newName = memberId ? memberById.get(memberId)?.name ?? 'Rider' : '';
+      const prevName = preview.swappedWithId
+        ? memberById.get(preview.swappedWithId)?.name ?? 'Rider'
+        : '';
+
+      let toastMsg = 'Motorbike slot updated';
+      if (!memberId) {
+        toastMsg = 'Slot cleared';
+      } else if (preview.swappedWithId && prevName) {
+        toastMsg = `Swapped ${newName} ↔ ${prevName}`;
+      } else if (preview.movedFromBikeLabel && !preview.sameBikeSwap) {
+        toastMsg = `Moved ${newName} from ${preview.movedFromBikeLabel}`;
+      } else if (preview.sameBikeSwap) {
+        toastMsg = `Moved ${newName} on ${targetPod.label}`;
+      } else {
+        toastMsg = `Assigned ${newName}`;
+      }
+
+      onUpdateTrip(
+        (prev) => ({
+          ...prev,
+          transportPods: assignMotorbikeMember(prev.transportPods, podId, slotIndex, memberId).pods,
+        }),
+        toastMsg,
+      );
+      return;
+    }
+
     let toastMsg = 'Transport slot updated';
     if (targetPod?.mode === 'train') {
       const prevOccupantId = targetPod.slots[slotIndex]?.memberId ?? null;
@@ -548,75 +592,137 @@ export function HomeScreen({
         );
       })()}
 
-      {/* Bento Quick-Access Duo (Train Pass with optional photo + Album) */}
-      <section className="bento-duo" aria-label="Quick access">
-        <GlassCard
-          variant="clear"
-          padding="md"
-          interactive
-          className="train-pass-tile"
-          onClick={() => setTrainSheetOpen(true)}
-        >
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                  color: 'var(--text-secondary)',
-                }}
-              >
-                Train Pass
-              </span>
-              <TrainFront size={16} strokeWidth={1.8} color="var(--brand-matcha)" />
-            </div>
-            <div className="train-route-code" style={{ marginTop: 4 }}>
-              {trip.trainPass?.outboundRoute ?? 'Add Ticket'}
-            </div>
-            {trip.trainPass?.trainPhotoDataUrl && (
-              <img
-                src={trip.trainPass.trainPhotoDataUrl}
-                alt={trip.trainPass.trainName}
-                className="train-pass-photo-strip"
-              />
-            )}
-          </div>
-          <div className="train-pass-notch">
-            <span>{trip.trainPass?.outboundTime ?? 'Tap to set up'}</span>
-            <strong>{trip.trainPass?.outboundCode ?? ''}</strong>
-          </div>
-        </GlassCard>
+      {/* Bento Quick-Access Duo (Seamless Full-Bleed Train Pass + Dynamic Album Collage) */}
+      {(() => {
+        const trainPhotoUrl = trip.trainPass?.trainPhotoDataUrl;
+        const showTrainPhoto = Boolean(trainPhotoUrl && !failedPhotoUrls[trainPhotoUrl]);
+        const validAlbumPhotos = albumPhotos.filter((p) => p.url && !failedPhotoUrls[p.url]);
+        const collagePhotos = validAlbumPhotos.slice(0, 4);
 
-        <GlassCard
-          variant="clear"
-          padding="md"
-          interactive
-          className="album-stack-tile"
-          onClick={() => onNavigateTab('album')}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span
-              style={{
-                fontSize: 10.5,
-                fontWeight: 700,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                color: 'var(--text-secondary)',
-              }}
+        return (
+          <section className="bento-duo" aria-label="Quick access">
+            <GlassCard
+              variant="clear"
+              padding="md"
+              interactive
+              className="train-pass-tile"
+              onClick={() => setTrainSheetOpen(true)}
             >
-              Album
-            </span>
-            <Images size={16} strokeWidth={1.8} color="var(--brand-matcha)" />
-          </div>
-          <div className="album-fanned" aria-hidden="true">
-            <span className="album-polaroid album-polaroid--1" />
-            <span className="album-polaroid album-polaroid--2" />
-            <span className="album-polaroid album-polaroid--3" />
-          </div>
-        </GlassCard>
-      </section>
+              {showTrainPhoto && trainPhotoUrl && (
+                <>
+                  <img
+                    src={trainPhotoUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="bento-photo-bg bento-photo-bg--train"
+                    onError={() => markPhotoFailed(trainPhotoUrl)}
+                  />
+                  <div className="bento-photo-scrim bento-photo-scrim--train" aria-hidden="true" />
+                </>
+              )}
+
+              <div className="bento-card-fg">
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      Train Pass
+                    </span>
+                    <TrainFront size={16} strokeWidth={1.8} color="var(--brand-matcha)" />
+                  </div>
+                  <div className="train-route-code" style={{ marginTop: 4 }}>
+                    {trip.trainPass?.outboundRoute ?? 'Add Ticket'}
+                  </div>
+                </div>
+                <div className="train-pass-notch">
+                  <span>{trip.trainPass?.outboundTime ?? 'Tap to set up'}</span>
+                  <strong>{trip.trainPass?.outboundCode ?? ''}</strong>
+                </div>
+              </div>
+            </GlassCard>
+
+            <GlassCard
+              variant="clear"
+              padding="md"
+              interactive
+              className="album-stack-tile"
+              onClick={() => onNavigateTab('album')}
+            >
+              {collagePhotos.length > 0 && (
+                <>
+                  <div
+                    className={`album-collage album-collage--${collagePhotos.length}`}
+                    aria-hidden="true"
+                  >
+                    {collagePhotos.map((photo) => (
+                      <img
+                        key={photo.id}
+                        src={photo.url}
+                        alt=""
+                        loading="lazy"
+                        className="album-collage__img"
+                        onError={() => markPhotoFailed(photo.url)}
+                      />
+                    ))}
+                  </div>
+                  <div className="bento-photo-scrim bento-photo-scrim--album" aria-hidden="true" />
+                </>
+              )}
+
+              <div className="bento-card-fg">
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    Album
+                  </span>
+                  <Images size={16} strokeWidth={1.8} color="var(--brand-matcha)" />
+                </div>
+
+                {collagePhotos.length > 0 ? (
+                  <span className="album-count-pill">
+                    {validAlbumPhotos.length} {validAlbumPhotos.length === 1 ? 'photo' : 'photos'}
+                  </span>
+                ) : (
+                  <div>
+                    <div className="album-fanned" aria-hidden="true">
+                      <span className="album-polaroid album-polaroid--1" />
+                      <span className="album-polaroid album-polaroid--2" />
+                      <span className="album-polaroid album-polaroid--3" />
+                    </div>
+                    <div className="album-empty-sub">Tap to add photos</div>
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+          </section>
+        );
+      })()}
 
       {/* Top Contributors Bar Chart */}
       {ledger.topContributors.length > 0 && (
@@ -990,102 +1096,118 @@ export function HomeScreen({
           </div>
         )}
 
-        {/* Homestay Cards with Optional Rounded Stay Banner Photo */}
-        {trip.stays.map((stay) => (
-          <GlassCard key={stay.id} variant="clear" padding="md">
-            {stay.photoDataUrl && (
-              <img src={stay.photoDataUrl} alt={stay.name} className="stay-photo-banner" />
-            )}
+        {/* Homestay Cards with Seamless Full-Bleed Edge-to-Edge Photo */}
+        {trip.stays.map((stay) => {
+          const showStayPhoto = Boolean(stay.photoDataUrl && !failedPhotoUrls[stay.photoDataUrl]);
+          return (
+            <GlassCard key={stay.id} variant="clear" padding="md" className="stay-card">
+              {showStayPhoto && stay.photoDataUrl && (
+                <>
+                  <img
+                    src={stay.photoDataUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="stay-card__bg"
+                    onError={() => markPhotoFailed(stay.photoDataUrl)}
+                  />
+                  <div className="stay-card__scrim" aria-hidden="true" />
+                </>
+              )}
 
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                gap: 10,
-                marginBottom: 10,
-              }}
-            >
-              <div>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <BedDouble size={16} strokeWidth={1.8} color="var(--brand-matcha)" />
-                  <h3
-                    style={{
-                      margin: 0,
-                      fontFamily: 'var(--font-display)',
-                      fontSize: 17,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {stay.name}
-                  </h3>
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
-                  {stay.checkIn} → {stay.checkOut}
-                </div>
-              </div>
-              <div style={{ display: 'inline-flex', gap: 6 }}>
-                {editingCrew && (
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    leftIcon={<Pencil size={12} strokeWidth={2} />}
-                    onClick={() => setStayEditor({ open: true, stay })}
-                  >
-                    Edit
-                  </Button>
-                )}
-                {stay.mapsUrl && (
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
-                    onClick={() =>
-                      onOpenRoute({
-                        title: stay.name,
-                        subtitle: `${stay.city} · ${stay.checkIn}`,
-                        address: stay.address,
-                        mapsUrl: stay.mapsUrl,
-                        dayLabel: 'Stay',
-                      })
-                    }
-                  >
-                    Route
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {stay.rooms.map((room) => (
-              <div key={room.id} className="stay-room-row">
-                <div>
-                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>{room.label}</div>
-                  {room.hasExtraBed && (
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+ Extra bed</span>
-                  )}
-                </div>
-                <div className="stay-avatars">
-                  {room.memberIds.map((mid) => {
-                    const m = memberById.get(mid);
-                    if (!m) return null;
-                    return (
-                      <Avatar
-                        key={mid}
-                        initials={m.initials}
-                        name={m.name}
-                        src={m.avatarDataUrl}
+              <div className="stay-card__fg">
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    marginBottom: 10,
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <BedDouble size={16} strokeWidth={1.8} color="var(--brand-matcha)" />
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontFamily: 'var(--font-display)',
+                          fontSize: 17,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {stay.name}
+                      </h3>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+                      {stay.checkIn} → {stay.checkOut}
+                    </div>
+                  </div>
+                  <div style={{ display: 'inline-flex', gap: 6 }}>
+                    {editingCrew && (
+                      <Button
+                        variant="glass"
                         size="sm"
-                        bg={m.avatarBg}
-                        color={m.avatarColor}
-                        variant={m.status === 'tentative' ? 'tentative' : 'solid'}
-                      />
-                    );
-                  })}
+                        leftIcon={<Pencil size={12} strokeWidth={2} />}
+                        onClick={() => setStayEditor({ open: true, stay })}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                    {stay.mapsUrl && (
+                      <Button
+                        variant="glass"
+                        size="sm"
+                        rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
+                        onClick={() =>
+                          onOpenRoute({
+                            title: stay.name,
+                            subtitle: `${stay.city} · ${stay.checkIn}`,
+                            address: stay.address,
+                            mapsUrl: stay.mapsUrl,
+                            dayLabel: 'Stay',
+                          })
+                        }
+                      >
+                        Route
+                      </Button>
+                    )}
+                  </div>
                 </div>
+
+                {stay.rooms.map((room) => (
+                  <div key={room.id} className="stay-room-row">
+                    <div>
+                      <div style={{ fontSize: 12.5, fontWeight: 600 }}>{room.label}</div>
+                      {room.hasExtraBed && (
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          + Extra bed
+                        </span>
+                      )}
+                    </div>
+                    <div className="stay-avatars">
+                      {room.memberIds.map((mid) => {
+                        const m = memberById.get(mid);
+                        if (!m) return null;
+                        return (
+                          <Avatar
+                            key={mid}
+                            initials={m.initials}
+                            name={m.name}
+                            src={m.avatarDataUrl}
+                            size="sm"
+                            bg={m.avatarBg}
+                            color={m.avatarColor}
+                            variant={m.status === 'tentative' ? 'tentative' : 'solid'}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </GlassCard>
-        ))}
+            </GlassCard>
+          );
+        })}
       </section>
 
       {/* Floating Jump Pill (Crew ↓) above Dock */}
@@ -1152,7 +1274,7 @@ export function HomeScreen({
         </div>
       </LiquidBottomSheet>
 
-      {/* Train Pass Detail Sheet (Portal + Train Photo Banner) */}
+      {/* Train Pass Detail Sheet (Portal + Seamless Full-Bleed Photo inside Outbound Card) */}
       <LiquidBottomSheet
         open={trainSheetOpen}
         title={trip.trainPass?.trainName ?? 'Train Pass'}
@@ -1163,23 +1285,30 @@ export function HomeScreen({
         }
         onClose={() => setTrainSheetOpen(false)}
       >
-        {trip.trainPass?.trainPhotoDataUrl && (
-          <img
-            src={trip.trainPass.trainPhotoDataUrl}
-            alt={trip.trainPass.trainName}
-            className="stay-photo-banner"
-          />
-        )}
-
         {trip.trainPass ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <GlassCard variant="tinted" padding="md">
-              <Badge tone="matcha">Outbound</Badge>
-              <div className="train-route-code" style={{ marginTop: 8 }}>
-                {trip.trainPass.outboundRoute}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
-                {trip.trainPass.outboundDate} · {trip.trainPass.outboundTime}
+            <GlassCard variant="tinted" padding="md" className="train-detail-hero-card">
+              {trip.trainPass.trainPhotoDataUrl &&
+                !failedPhotoUrls[trip.trainPass.trainPhotoDataUrl] && (
+                  <>
+                    <img
+                      src={trip.trainPass.trainPhotoDataUrl}
+                      alt=""
+                      aria-hidden="true"
+                      className="bento-photo-bg bento-photo-bg--train"
+                      onError={() => markPhotoFailed(trip.trainPass?.trainPhotoDataUrl)}
+                    />
+                    <div className="bento-photo-scrim bento-photo-scrim--train" aria-hidden="true" />
+                  </>
+                )}
+              <div className="stay-card__fg">
+                <Badge tone="matcha">Outbound</Badge>
+                <div className="train-route-code" style={{ marginTop: 8 }}>
+                  {trip.trainPass.outboundRoute}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
+                  {trip.trainPass.outboundDate} · {trip.trainPass.outboundTime}
+                </div>
               </div>
             </GlassCard>
 
@@ -1219,7 +1348,7 @@ export function HomeScreen({
         )}
       </LiquidBottomSheet>
 
-      {/* Inline Transport Slot Avatar Picker Sheet (Portal + Smart Train Seat Swap) */}
+      {/* Inline Transport Slot Avatar Picker Sheet (Portal + Smart Bike & Train Auto-Swap) */}
       <LiquidBottomSheet
         open={Boolean(slotPicker)}
         title="Assign Rider"
@@ -1230,6 +1359,7 @@ export function HomeScreen({
           (() => {
             const activeSlotPod = trip.transportPods.find((p) => p.id === slotPicker.podId);
             const isTrainPicker = activeSlotPod?.mode === 'train';
+            const isBikePicker = activeSlotPod?.mode === 'bike';
             const currentOccupantId = activeSlotPod?.slots[slotPicker.slotIndex]?.memberId ?? null;
             const currentOccupant = currentOccupantId
               ? memberById.get(currentOccupantId)
@@ -1237,13 +1367,16 @@ export function HomeScreen({
 
             return (
               <div
-                className={`slot-picker-grid ${isTrainPicker ? 'slot-picker-grid--train' : ''}`}
+                className={`slot-picker-grid ${isTrainPicker || isBikePicker ? 'slot-picker-grid--train' : ''}`}
               >
                 {trip.members.map((m) => {
                   const isCurrent = m.id === currentOccupantId;
                   const existingSeat = isTrainPicker
                     ? activeSlotPod?.slots.find((s) => s.memberId === m.id)?.role
                     : undefined;
+                  const existingBike = isBikePicker
+                    ? findMemberBikeAssignment(trip.transportPods, m.id)
+                    : null;
 
                   return (
                     <button
@@ -1297,6 +1430,40 @@ export function HomeScreen({
                           ) : (
                             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                               No seat
+                            </span>
+                          )}
+                        </span>
+                      )}
+
+                      {isBikePicker && (
+                        <span>
+                          {isCurrent ? (
+                            <Badge tone="matcha">Current</Badge>
+                          ) : existingBike && currentOccupant ? (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                color: 'var(--brand-matcha)',
+                              }}
+                            >
+                              <ArrowLeftRight size={12} strokeWidth={2} />
+                              <span>
+                                {existingBike.bikeLabel} · Swap with {currentOccupant.name}
+                              </span>
+                            </span>
+                          ) : existingBike ? (
+                            <Badge tone="neutral">{existingBike.bikeLabel}</Badge>
+                          ) : currentOccupant ? (
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                              Swap with {currentOccupant.name}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                              Unassigned
                             </span>
                           )}
                         </span>

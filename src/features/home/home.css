@@ -320,40 +320,140 @@
   gap: 12px;
 }
 
-/* --- Bento Quick-Access Duo (Boarding Pass + Photo Stack) --- */
+/* --- Bento Quick-Access Duo (Equal-Height Boarding Pass + Dynamic Album Collage) --- */
 .bento-duo {
   display: grid;
   grid-template-columns: 1.45fr 1fr;
   gap: 10px;
+  align-items: stretch;
 }
 
 .train-pass-tile {
   position: relative;
-  min-height: 124px;
+  min-height: 126px;
+  height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   text-align: left;
   overflow: hidden;
+  isolation: isolate;
 }
 
-.train-pass-photo-strip {
-  width: 100%;
-  height: 52px;
-  border-radius: 14px;
-  object-fit: cover;
-  margin-top: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.9);
+.bento-card-fg {
+  position: relative;
+  z-index: 2;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  min-height: 0;
 }
 
-.stay-photo-banner {
+/* Full-bleed edge-to-edge photo layer inside Bento tiles (zero boxed inset) */
+.bento-photo-bg {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: 128px;
-  border-radius: 20px;
+  height: 100%;
   object-fit: cover;
-  display: block;
-  margin-bottom: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.92);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.bento-photo-bg--train {
+  object-position: right center;
+  -webkit-mask-image: linear-gradient(
+    118deg,
+    transparent 12%,
+    rgba(0, 0, 0, 0.42) 48%,
+    rgba(0, 0, 0, 0.92) 78%,
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    118deg,
+    transparent 12%,
+    rgba(0, 0, 0, 0.42) 48%,
+    rgba(0, 0, 0, 0.92) 78%,
+    #000 100%
+  );
+}
+
+.bento-photo-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.bento-photo-scrim--train {
+  background: linear-gradient(
+    125deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(255, 255, 255, 0.88) 42%,
+    rgba(255, 255, 255, 0.38) 72%,
+    rgba(255, 255, 255, 0.12) 100%
+  );
+}
+
+/* Full-bleed Seamless Stay / Homestay Photo Card */
+.stay-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.stay-card__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+  z-index: 0;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.96) 0%,
+    rgba(0, 0, 0, 0.65) 45%,
+    rgba(0, 0, 0, 0.18) 80%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.96) 0%,
+    rgba(0, 0, 0, 0.65) 45%,
+    rgba(0, 0, 0, 0.18) 80%,
+    transparent 100%
+  );
+}
+
+.stay-card__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.72) 34%,
+    rgba(255, 255, 255, 0.88) 64%,
+    rgba(255, 255, 255, 0.97) 100%
+  );
+}
+
+.stay-card__fg {
+  position: relative;
+  z-index: 2;
+  background: transparent;
+}
+
+/* Full-bleed Outbound Boarding Card inside Train Pass Detail Sheet */
+.train-detail-hero-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
 }
 
 /* --- KAI-Style Train Seat Map (3–2 & 2–2 + Window/Aisle + Facing Rows) --- */
@@ -534,12 +634,88 @@
 
 .album-stack-tile {
   position: relative;
-  min-height: 118px;
+  min-height: 126px;
+  height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   text-align: left;
   overflow: hidden;
+  isolation: isolate;
+}
+
+.album-collage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  gap: 2px;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.album-collage--1 {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.album-collage--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: 1fr;
+}
+
+.album-collage--3 {
+  grid-template-columns: 1.2fr 1fr;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.album-collage--3 .album-collage__img:first-child {
+  grid-row: 1 / span 2;
+}
+
+.album-collage--4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.album-collage__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.bento-photo-scrim--album {
+  background: linear-gradient(
+    148deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(255, 255, 255, 0.78) 38%,
+    rgba(255, 255, 255, 0.22) 72%,
+    rgba(255, 255, 255, 0.08) 100%
+  );
+}
+
+.album-count-pill {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 3px 9px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--brand-forest);
+  box-shadow: 0 4px 10px -4px rgba(31, 45, 39, 0.16);
+}
+
+.album-empty-sub {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .album-fanned {

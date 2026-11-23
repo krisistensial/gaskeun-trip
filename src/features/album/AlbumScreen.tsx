@@ -52,9 +52,11 @@ import './album.css';
 export interface AlbumScreenProps {
   trip: SharedTrip;
   localPhotos: AlbumPhoto[];
+  cachedDrivePhotos?: AlbumPhoto[];
   activeMemberId: string | null;
   activeMemberName: string;
   canEdit: boolean;
+  onDrivePhotosSync?: (photos: AlbumPhoto[]) => void;
   onSaveLocalPhotos: (photos: AlbumPhoto[], toastMsg?: string) => void;
   onUpdateTrip: (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => void;
   onOpenSettings: () => void;
@@ -81,9 +83,11 @@ function PlatformThumbIcon({ platform }: { platform: ContentPlatform }) {
 export function AlbumScreen({
   trip,
   localPhotos,
+  cachedDrivePhotos = [],
   activeMemberId,
   activeMemberName,
   canEdit,
+  onDrivePhotosSync,
   onSaveLocalPhotos,
   onUpdateTrip,
   onOpenSettings,
@@ -94,7 +98,7 @@ export function AlbumScreen({
 
   // Photos tab state
   const [dayFilter, setDayFilter] = useState<string>('all');
-  const [drivePhotos, setDrivePhotos] = useState<AlbumPhoto[]>([]);
+  const [drivePhotos, setDrivePhotos] = useState<AlbumPhoto[]>(cachedDrivePhotos);
   const [syncHealth, setSyncHealth] = useState<SyncHealth>({ status: 'idle' });
   const [pushingLocal, setPushingLocal] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<AlbumPhoto | null>(null);
@@ -118,6 +122,18 @@ export function AlbumScreen({
   const [uploading, setUploading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const drivePhotosRef = useRef<AlbumPhoto[]>(drivePhotos);
+  drivePhotosRef.current = drivePhotos;
+
+  const commitDrivePhotos = useCallback(
+    (updater: AlbumPhoto[] | ((prev: AlbumPhoto[]) => AlbumPhoto[])) => {
+      const next = typeof updater === 'function' ? updater(drivePhotosRef.current) : updater;
+      drivePhotosRef.current = next;
+      setDrivePhotos(next);
+      onDrivePhotosSync?.(next);
+    },
+    [onDrivePhotosSync],
+  );
   const dayFilterRef = useRef<HTMLDivElement | null>(null);
   const ideaFilterRef = useRef<HTMLDivElement | null>(null);
   const dayFilterFade = useHorizontalScrollFade(dayFilterRef, [tripDays.length, albumTab]);
@@ -138,6 +154,7 @@ export function AlbumScreen({
       const res = await fetchDriveAlbumWithStatus(scriptUrl, trip.id, driveFolderUrl);
       if (res.ok) {
         setDrivePhotos(res.photos);
+        onDrivePhotosSync?.(res.photos);
         setSyncHealth({ status: 'ok' });
         if (notifyResult) {
           onNotify(
@@ -154,7 +171,7 @@ export function AlbumScreen({
         }
       }
     },
-    [trip.gdriveScriptUrl, trip.id, driveFolderUrl, onNotify],
+    [trip.gdriveScriptUrl, trip.id, driveFolderUrl, onNotify, onDrivePhotosSync],
   );
 
   useEffect(() => {
@@ -170,6 +187,7 @@ export function AlbumScreen({
       if (!alive) return;
       if (res.ok) {
         setDrivePhotos(res.photos);
+        onDrivePhotosSync?.(res.photos);
         setSyncHealth({ status: 'ok' });
       } else {
         setSyncHealth({ status: 'error', error: res.error || 'Connection failed' });
@@ -178,7 +196,7 @@ export function AlbumScreen({
     return () => {
       alive = false;
     };
-  }, [trip.gdriveScriptUrl, trip.id, driveFolderUrl]);
+  }, [trip.gdriveScriptUrl, trip.id, driveFolderUrl, onDrivePhotosSync]);
 
   const allPhotos = useMemo(() => {
     const merged = [...drivePhotos, ...localPhotos].sort((a, b) =>
@@ -304,7 +322,7 @@ export function AlbumScreen({
           source: 'drive',
           createdAt: new Date().toISOString(),
         };
-        setDrivePhotos((prev) => [drivePhoto, ...prev]);
+        commitDrivePhotos((prev) => [drivePhoto, ...prev]);
         setSyncHealth({ status: 'ok' });
         onNotify('Uploaded to Google Drive', 'success');
         resetUpload();
@@ -358,7 +376,7 @@ export function AlbumScreen({
     });
 
     if (res.ok && res.photo) {
-      setDrivePhotos((prev) => [res.photo!, ...prev]);
+      commitDrivePhotos((prev) => [res.photo!, ...prev]);
       setSyncHealth({ status: 'ok' });
       return true;
     }
@@ -424,7 +442,7 @@ export function AlbumScreen({
         'Photo removed from device',
       );
     } else {
-      setDrivePhotos((prev) => prev.filter((p) => p.id !== lightboxPhoto.id));
+      commitDrivePhotos((prev) => prev.filter((p) => p.id !== lightboxPhoto.id));
       onNotify('Hidden from gallery view (remove file in Drive to delete permanently)', 'info');
     }
     setConfirmDelete(false);
