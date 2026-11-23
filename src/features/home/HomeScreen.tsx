@@ -82,6 +82,7 @@ export interface HomeScreenProps {
   onNavigateTab: (tab: DockTabId) => void;
   onUploadCover: (cropped: CroppedImageResult) => void;
   onRequestUnlockPin: () => void;
+  onNotify?: (msg: string, tone?: 'success' | 'info' | 'error') => void;
   onOpenRoute: (target: RouteTarget) => void;
   onUpdateTrip: (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => void;
 }
@@ -99,6 +100,7 @@ export function HomeScreen({
   onNavigateTab,
   onUploadCover,
   onRequestUnlockPin,
+  onNotify,
   onOpenRoute,
   onUpdateTrip,
 }: HomeScreenProps) {
@@ -355,9 +357,16 @@ export function HomeScreen({
         <div className="home-hero__corners">
           <CornerOrb
             kind="custom"
-            ariaLabel="Change local cover photo"
+            ariaLabel={canEdit ? 'Change shared cover photo' : 'Unlock to change cover photo'}
             icon={<Camera size={18} strokeWidth={1.8} />}
-            onClick={() => coverInputRef.current?.click()}
+            onClick={() => {
+              if (!canEdit) {
+                onNotify?.('Unlock with Crew PIN to change the cover photo', 'info');
+                onRequestUnlockPin();
+                return;
+              }
+              coverInputRef.current?.click();
+            }}
           />
           <CornerOrb kind="menu" ariaLabel="Trip menu" onClick={onOpenMenu} />
         </div>
@@ -366,12 +375,21 @@ export function HomeScreen({
           ref={coverInputRef}
           type="file"
           accept="image/*"
-          style={{ display: 'none' }}
+          aria-hidden="true"
+          tabIndex={-1}
+          style={{
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            opacity: 0,
+            overflow: 'hidden',
+            pointerEvents: 'none',
+          }}
           onChange={(e) => {
             const file = e.target.files?.[0];
+            e.target.value = '';
             if (file) {
               setHeroCropFile(file);
-              e.target.value = '';
             }
           }}
         />

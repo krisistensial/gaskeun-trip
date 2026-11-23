@@ -10,6 +10,7 @@ import {
   base64ToBlob,
   buildTripAssetPath,
   dataUrlToBytes,
+  formatStorageFallbackReason,
   getFallbackMaxBytes,
   uploadSharedImage,
 } from './mediaUploader';
@@ -22,23 +23,27 @@ const sampleCropped = {
 };
 
 describe('Media Uploader strict routing (Google Drive Album-only vs Supabase trip-assets)', () => {
-  it('builds clean {TRIPCODE}/{kind}-{timestamp}.jpg paths and quota limits', () => {
-    expect(buildTripAssetPath('solo-27', 'hero', 1700000000000)).toBe(
-      'SOLO-27/hero-1700000000000.jpg',
+  it('builds unique {TRIPCODE}/{kind}-{timestamp}-{rand}.jpg paths and quota limits', () => {
+    expect(buildTripAssetPath('solo-27', 'hero', 1700000000000, 'image/jpeg', 'ab12c')).toBe(
+      'SOLO-27/hero-1700000000000-ab12c.jpg',
     );
-    expect(buildTripAssetPath('SOLO-27', 'idea', 1700000000001, 'image/png')).toBe(
-      'SOLO-27/idea-1700000000001.png',
+    expect(buildTripAssetPath('SOLO-27', 'idea', 1700000000001, 'image/png', 'xy99z')).toBe(
+      'SOLO-27/idea-1700000000001-xy99z.png',
     );
     expect(getFallbackMaxBytes('avatar')).toBe(FALLBACK_AVATAR_MAX_BYTES);
     expect(getFallbackMaxBytes('hero')).toBe(FALLBACK_COVER_MAX_BYTES);
     expect(getFallbackMaxBytes('idea')).toBe(FALLBACK_COVER_MAX_BYTES);
   });
 
-  it('routes UI assets (hero, plan, stay, train, avatar, idea) to Supabase trip-assets and NEVER calls Google Drive', async () => {
+  it('routes UI assets (hero, plan, stay, train, avatar, idea) to Supabase trip-assets with upsert:false and NEVER calls Google Drive', async () => {
     const driveSpy = vi.spyOn(gdriveAlbum, 'uploadPhotoToDrive');
-    const uploadMock = vi.fn().mockResolvedValue({ data: { path: 'SOLO-27/hero-1.jpg' }, error: null });
+    const uploadMock = vi
+      .fn()
+      .mockResolvedValue({ data: { path: 'SOLO-27/hero-1-abc.jpg' }, error: null });
     const getPublicUrlMock = vi.fn().mockImplementation((path: string) => ({
-      data: { publicUrl: `https://example.supabase.co/storage/v1/object/public/${TRIP_ASSETS_BUCKET}/${path}` },
+      data: {
+        publicUrl: `https://example.supabase.co/storage/v1/object/public/${TRIP_ASSETS_BUCKET}/${path}`,
+      },
     }));
     const fromMock = vi.fn().mockReturnValue({
       upload: uploadMock,
@@ -54,12 +59,13 @@ describe('Media Uploader strict routing (Google Drive Album-only vs Supabase tri
       });
 
       expect(res.source).toBe('supabase');
+      expect(res.reason).toBeUndefined();
       expect(res.url).toContain(`/storage/v1/object/public/${TRIP_ASSETS_BUCKET}/SOLO-27/${kind}-`);
       expect(fromMock).toHaveBeenCalledWith(TRIP_ASSETS_BUCKET);
       expect(uploadMock).toHaveBeenCalledWith(
-        expect.stringMatching(new RegExp(`^SOLO-27/${kind}-\\d+\\.jpg$`)),
+        expect.stringMatching(new RegExp(`^SOLO-27/${kind}-\\d+-[a-z0-9]+\\.jpg$`)),
         expect.any(Blob),
-        { contentType: 'image/jpeg', upsert: true },
+        { contentType: 'image/jpeg', upsert: false },
       );
     }
 
@@ -68,42 +74,83 @@ describe('Media Uploader strict routing (Google Drive Album-only vs Supabase tri
     driveSpy.mockRestore();
   });
 
-  it('falls back cleanly to local dataUrl when Supabase is unconfigured or upload fails (never touches Drive)', async () => {
+  it('returns clear diagnostic reasons when falling back to local dataUrl (never touches Drive)', async () => {
     const driveSpy = vi.spyOn(gdriveAlbum, 'uploadPhotoToDrive');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
+    // 1. Supabase env not configured
     const resUnconfigured = await uploadSharedImage(sampleCropped, {
       kind: 'avatar',
       trip: pilotTrip,
       supabaseClient: null,
     });
     expect(resUnconfigured.source).toBe('local');
+    expect(resUnconfigured.reason).toBe('Supabase not configured');
     expect(resUnconfigured.url).toBe(sampleCropped.dataUrl);
 
-    const failingSupabase = {
+    // 2. Device offline
+    const fakeOnlineClient = { storage: { from: vi.fn() } } as unknown as SupabaseClient;
+    const resOffline = await uploadSharedImage(sampleCropped, {
+      kind: 'hero',
+      trip: pilotTrip,
+      supabaseClient: fakeOnlineClient,
+      isOnline: false,
+    });
+    expect(resOffline.source).toBe('local');
+    expect(resOffline.reason).toBe('Offline');
+
+    // 3. Bucket missing error
+    const missingBucketSupabase = {
       storage: {
         from: () => ({
-          upload: vi.fn().mockResolvedValue({ data: null, error: { message: 'Bucket missing' } }),
+          upload: vi.fn().mockResolvedValue({ data: null, error: { message: 'Bucket not found' } }),
           getPublicUrl: vi.fn(),
         }),
       },
     } as unknown as SupabaseClient;
 
-    const resError = await uploadSharedImage(sampleCropped, {
+    const resBucketErr = await uploadSharedImage(sampleCropped, {
       kind: 'plan',
       trip: pilotTrip,
-      supabaseClient: failingSupabase,
+      supabaseClient: missingBucketSupabase,
     });
-    expect(resError.source).toBe('local');
-    expect(resError.error).toBe('Bucket missing');
-    expect(driveSpy).not.toHaveBeenCalled();
+    expect(resBucketErr.source).toBe('local');
+    expect(resBucketErr.reason).toBe('Bucket not found');
 
-    // Private / unreadable public URL check also falls back safely to local dataUrl
+    // 4. RLS policy blocked error
+    const rlsSupabase = {
+      storage: {
+        from: () => ({
+          upload: vi.fn().mockResolvedValue({
+            data: null,
+            error: { message: 'new row violates row-level security policy' },
+          }),
+          getPublicUrl: vi.fn(),
+        }),
+      },
+    } as unknown as SupabaseClient;
+
+    const resRlsErr = await uploadSharedImage(sampleCropped, {
+      kind: 'plan',
+      trip: pilotTrip,
+      supabaseClient: rlsSupabase,
+    });
+    expect(resRlsErr.source).toBe('local');
+    expect(resRlsErr.reason).toBe('RLS policy blocked');
+    expect(formatStorageFallbackReason('new row violates row-level security policy')).toBe(
+      'RLS policy blocked',
+    );
+
+    // 5. Private / unreadable public URL check falls back cleanly
     const privateBucketSupabase = {
       storage: {
         from: () => ({
-          upload: vi.fn().mockResolvedValue({ data: { path: 'SOLO-27/plan-1.jpg' }, error: null }),
+          upload: vi.fn().mockResolvedValue({ data: { path: 'SOLO-27/plan-1-abc.jpg' }, error: null }),
           getPublicUrl: () => ({
-            data: { publicUrl: 'https://example.supabase.co/storage/v1/object/public/trip-assets/SOLO-27/plan-1.jpg' },
+            data: {
+              publicUrl:
+                'https://example.supabase.co/storage/v1/object/public/trip-assets/SOLO-27/plan-1-abc.jpg',
+            },
           }),
         }),
       },
@@ -116,13 +163,15 @@ describe('Media Uploader strict routing (Google Drive Album-only vs Supabase tri
       verifyPublicUrl: async () => false,
     });
     expect(resPrivate.source).toBe('local');
+    expect(resPrivate.reason).toBe('Bucket not public');
     expect(resPrivate.url).toBe(sampleCropped.dataUrl);
-    expect(resPrivate.error).toContain('Public asset URL unavailable');
 
+    expect(driveSpy).not.toHaveBeenCalled();
     driveSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
-  it('safely converts dataUrl / base64 to binary Uint8Array and Blob', () => {
+  it('safely converts dataUrl / base64 to pure binary Uint8Array and Blob synchronously', () => {
     const bytes = dataUrlToBytes('data:image/jpeg;base64,SGVsbG8=');
     expect(bytes).toBeInstanceOf(Uint8Array);
     expect(Array.from(bytes)).toEqual([72, 101, 108, 108, 111]);

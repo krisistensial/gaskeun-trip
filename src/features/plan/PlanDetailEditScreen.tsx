@@ -353,17 +353,18 @@ export function PlanDetailEditScreen({
       onNotify?.(
         uploaded.source === 'supabase'
           ? 'Stop cover photo saved'
-          : uploaded.error
-            ? 'Cover photo saved locally (cloud bucket unavailable)'
-            : 'Stop cover photo saved',
-        'success',
+          : uploaded.reason
+            ? `Saved locally (${uploaded.reason})`
+            : 'Stop cover photo saved locally',
+        uploaded.source === 'supabase' ? 'success' : 'info',
       );
-    } catch {
+    } catch (err) {
+      console.warn('[GASKEUN PlanDetailEditScreen] Cover upload failed:', err);
       setDraft((prev) => ({ ...prev, coverUrl: cropped.dataUrl }));
       if (!isNew && onQuickPersistCover) {
         onQuickPersistCover(draft.id, cropped.dataUrl);
       }
-      onNotify?.('Saved cover photo locally', 'info');
+      onNotify?.('Saved locally (Upload error)', 'info');
     } finally {
       setUploadingCover(false);
     }
@@ -469,12 +470,21 @@ export function PlanDetailEditScreen({
             ref={coverInputRef}
             type="file"
             accept="image/*"
-            style={{ display: 'none' }}
+            aria-hidden="true"
+            tabIndex={-1}
+            style={{
+              position: 'absolute',
+              width: 1,
+              height: 1,
+              opacity: 0,
+              overflow: 'hidden',
+              pointerEvents: 'none',
+            }}
             onChange={(e) => {
               const f = e.target.files?.[0];
+              e.target.value = '';
               if (f) {
                 setCoverCropFile(f);
-                e.target.value = '';
               }
             }}
           />

@@ -333,9 +333,19 @@ export default function App() {
 
   const handleUploadCover = async (cropped: CroppedImageResult) => {
     try {
-      await saveLocalCoverBlob(activeTrip.id, cropped.blob);
-      const refreshed = await getLocalPersonal(activeTrip.id);
-      setLocalData(refreshed);
+      // Optimistically show the cropped photo right away so mobile feels instant
+      if (canEdit) {
+        setActiveTrip((prev) => ({ ...prev, heroCoverUrl: cropped.dataUrl }));
+      }
+
+      // Non-fatal local blob cache (iOS/Android WebKit private mode or quota must never block cloud save)
+      try {
+        await saveLocalCoverBlob(activeTrip.id, cropped.blob);
+        const refreshed = await getLocalPersonal(activeTrip.id);
+        setLocalData(refreshed);
+      } catch (cacheErr) {
+        console.warn('[GASKEUN handleUploadCover] Local blob cache skipped:', cacheErr);
+      }
 
       if (canEdit) {
         const uploaded = await uploadSharedImage(cropped, {
@@ -345,17 +355,21 @@ export default function App() {
           uploaderName: activeMemberName,
           fileName: 'hero-cover.jpg',
         });
-        handleUpdateTrip(
-          (prev) => ({ ...prev, heroCoverUrl: uploaded.url }),
+        const finalUrl = uploaded.url || cropped.dataUrl;
+        const msg =
           uploaded.source === 'supabase'
             ? 'Shared cover updated for the crew'
-            : 'Shared cover saved (syncs when online)',
-        );
+            : uploaded.reason
+              ? `Saved locally (${uploaded.reason})`
+              : 'Shared cover saved locally';
+        handleUpdateTrip((prev) => ({ ...prev, heroCoverUrl: finalUrl }), msg);
       } else {
         showToast('Cover photo saved locally on this device', 'success');
       }
-    } catch {
-      showToast('Could not process that photo', 'error');
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'Could not process that photo';
+      console.warn('[GASKEUN handleUploadCover] Failed:', err);
+      showToast(`Cover upload failed (${detail})`, 'error');
     }
   };
 
@@ -515,6 +529,7 @@ export default function App() {
               onNavigateTab={setActiveTab}
               onUploadCover={(cropped) => void handleUploadCover(cropped)}
               onRequestUnlockPin={() => requestUnlockPin()}
+              onNotify={showToast}
               onOpenRoute={(target) => setActiveRouteTarget(target)}
               onUpdateTrip={handleUpdateTrip}
             />

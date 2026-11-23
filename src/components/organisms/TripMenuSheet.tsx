@@ -2,6 +2,8 @@ import { useRef, useState, type FormEvent } from 'react';
 import {
   Camera,
   Check,
+  Cloud,
+  CloudOff,
   Download,
   Eye,
   EyeOff,
@@ -26,6 +28,7 @@ import {
   normalizePasscode,
   type TripAccessRole,
 } from '../../services/permissions';
+import { isCloudSyncConfigured } from '../../services/supabaseSync';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import type { SharedTrip, TripMember } from '../../types/trip';
 import './sheets.css';
@@ -172,6 +175,9 @@ export function TripMenuSheet({
   };
 
   const editorIds = new Set(trip.editorMemberIds ?? []);
+  const cloudConfigured = isCloudSyncConfigured();
+  const deviceOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+  const cloudConnected = cloudConfigured && deviceOnline;
 
   return (
     <LiquidBottomSheet
@@ -298,6 +304,43 @@ export function TripMenuSheet({
       </div>
 
       <div className="gk-menu-list">
+        {/* Compact Read-Only Cloud Sync Diagnostic Row */}
+        <div
+          className="gk-menu-item"
+          style={{ cursor: 'default', paddingTop: 10, paddingBottom: 10 }}
+          aria-label="Cloud sync status"
+        >
+          <span className="gk-menu-item__left">
+            <span
+              className="gk-menu-item__icon"
+              style={
+                cloudConnected
+                  ? { background: 'var(--accent-mint-soft)', color: 'var(--accent-mint)' }
+                  : undefined
+              }
+            >
+              {cloudConnected ? (
+                <Cloud size={17} strokeWidth={1.9} />
+              ) : (
+                <CloudOff size={17} strokeWidth={1.9} />
+              )}
+            </span>
+            <span>
+              <div className="gk-menu-item__title">Cloud Sync</div>
+              <div className="gk-menu-item__sub">
+                {cloudConnected
+                  ? 'Connected · Supabase'
+                  : cloudConfigured
+                    ? 'Device offline · Queued locally'
+                    : 'Offline / Local only'}
+              </div>
+            </span>
+          </span>
+          <Badge tone={cloudConnected ? 'mint' : cloudConfigured ? 'amber' : 'neutral'}>
+            {cloudConnected ? 'Supabase' : cloudConfigured ? 'Offline' : 'Local'}
+          </Badge>
+        </div>
+
         {/* Self-Service: My Passcode (for logged-in crew member) */}
         {activeMember && (
           <>

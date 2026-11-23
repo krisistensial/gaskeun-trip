@@ -75,7 +75,7 @@ grant execute on function public.create_or_mutate_trip(text, text, jsonb) to ano
 insert into storage.buckets (id, name, public)
 values ('trip-assets', 'trip-assets', true)
 on conflict (id) do update
-  set public = excluded.public;
+  set public = true;
 
 drop policy if exists "Allow public read trip-assets" on storage.objects;
 create policy "Allow public read trip-assets"
@@ -98,3 +98,10 @@ create policy "Allow public update trip-assets"
   to anon, authenticated
   using (bucket_id = 'trip-assets')
   with check (bucket_id = 'trip-assets');
+
+drop policy if exists "Allow public delete trip-assets" on storage.objects;
+create policy "Allow public delete trip-assets"
+  on storage.objects
+  for delete
+  to anon, authenticated
+  using (bucket_id = 'trip-assets');
