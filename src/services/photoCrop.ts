@@ -33,10 +33,10 @@ export const CROP_PRESETS: Record<Exclude<CropPresetId, 'album'>, CropPresetSpec
   'home-hero': {
     id: 'home-hero',
     title: 'Crop Cover Photo',
-    ratioLabel: '9:10',
-    aspect: 9 / 10,
+    ratioLabel: '3:4',
+    aspect: 3 / 4,
     outputW: 1080,
-    outputH: 1200,
+    outputH: 1440,
     quality: 0.86,
   },
   'plan-cover': {

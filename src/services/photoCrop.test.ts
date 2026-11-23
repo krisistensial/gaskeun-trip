@@ -14,8 +14,8 @@ describe('Universal Photo Cropper math & Full-Res Album Passthrough (photoCrop)'
   it('returns exact preset output dimensions for hero, plan, stay, train, and avatar', () => {
     expect(getCropOutputDimensions('home-hero', 'original', 2000, 1500)).toMatchObject({
       width: 1080,
-      height: 1200,
-      ratioLabel: '9:10',
+      height: 1440,
+      ratioLabel: '3:4',
     });
     expect(getCropOutputDimensions('plan-cover', 'original', 2000, 1500)).toMatchObject({
       width: 1200,

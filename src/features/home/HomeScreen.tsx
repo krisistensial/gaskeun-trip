@@ -390,11 +390,11 @@ export function HomeScreen({
 
   return (
     <div className="home-root">
-      {/* Full-Bleed Customizable Editorial Hero (Zero Top Bar) */}
+      {/* Full-Bleed Customizable Editorial Hero (Zero Top Bar, Immersive First-Screen) */}
       <section
         className={[
           'home-hero',
-          phase === 'on-trip' ? 'home-hero--compact' : '',
+          phase === 'on-trip' ? 'home-hero--compact' : 'home-hero--countdown',
           resolvedHasCoverPhoto ? 'home-hero--photo' : '',
         ]
           .filter(Boolean)

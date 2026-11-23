@@ -237,6 +237,36 @@ export default function App() {
     };
   }, [syncActiveTripFromCloud]);
 
+  // Dynamic Android/PWA status bar `theme-color`: dark (#141A18) while viewing Home Hero top,
+  // switching seamlessly back to soft sage-white (#F6F8F5) past the hero or on any other tab/route.
+  useEffect(() => {
+    const metaEl =
+      (document.getElementById('dynamic-theme-color') as HTMLMetaElement | null) ??
+      (document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null);
+    if (!metaEl) return;
+
+    const isHomeHeroScreen = route === 'hub' && !activeRouteTarget && activeTab === 'home';
+
+    const updateThemeColor = () => {
+      const heroThreshold = Math.max(240, window.innerHeight * 0.55);
+      const nextColor =
+        isHomeHeroScreen && window.scrollY < heroThreshold ? '#141A18' : '#F6F8F5';
+      if (metaEl.getAttribute('content') !== nextColor) {
+        metaEl.setAttribute('content', nextColor);
+      }
+    };
+
+    updateThemeColor();
+    if (!isHomeHeroScreen) return;
+
+    window.addEventListener('scroll', updateThemeColor, { passive: true });
+    window.addEventListener('resize', updateThemeColor, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', updateThemeColor);
+      window.removeEventListener('resize', updateThemeColor);
+    };
+  }, [route, activeTab, activeRouteTarget]);
+
   // Realtime Supabase subscription for active trip (`postgres_changes` on `shared_trips`)
   useEffect(() => {
     if (route !== 'hub' && route !== 'who') return;

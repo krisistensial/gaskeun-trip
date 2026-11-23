@@ -8,21 +8,44 @@
   gap: 18px;
 }
 
-/* --- Full-Bleed Editorial Hero (Elevated Magazine Countdown + Smart Photo Scrim) --- */
+/* --- Full-Bleed Immersive First-Screen Editorial Hero --- */
 .home-hero {
   position: relative;
   margin: calc(var(--safe-top) * -1 - 20px) -16px 0;
-  min-height: clamp(470px, 64vh, 590px);
+  min-height: 85vh;
+  min-height: calc(100svh - 92px);
+  max-height: 780px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: calc(var(--safe-top) + 20px) 18px 18px;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 18px 20px;
   overflow: hidden;
   border-radius: 0 0 36px 36px;
 }
 
+@media (min-width: 520px) {
+  .home-hero {
+    border-radius: 36px;
+  }
+}
+
+/* Soft top vignette blending dark Android status bar seamlessly into Hero top */
+.home-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(20, 26, 24, 0.85) 0%,
+    rgba(20, 26, 24, 0) 18%
+  );
+  z-index: 2;
+  pointer-events: none;
+}
+
 .home-hero--compact {
   min-height: max(300px, 37vh);
+  max-height: 390px;
 }
 
 .home-hero__bg {
@@ -31,6 +54,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
   z-index: 0;
   pointer-events: none;
 }
@@ -42,9 +66,9 @@
   background: linear-gradient(
     180deg,
     rgba(24, 36, 32, 0.08) 0%,
-    rgba(246, 248, 245, 0.04) 30%,
-    rgba(246, 248, 245, 0.44) 64%,
-    rgba(246, 248, 245, 0.88) 84%,
+    rgba(246, 248, 245, 0.04) 36%,
+    rgba(246, 248, 245, 0.42) 68%,
+    rgba(246, 248, 245, 0.88) 86%,
     #F6F8F5 100%
   );
   z-index: 1;
@@ -56,17 +80,17 @@
 .home-hero--photo .home-hero__fade {
   background:
     radial-gradient(
-      ellipse 88% 54% at 50% 42%,
+      ellipse 88% 50% at 50% 45%,
       rgba(15, 28, 24, 0.42) 0%,
-      rgba(15, 28, 24, 0.22) 56%,
+      rgba(15, 28, 24, 0.2) 56%,
       rgba(15, 28, 24, 0) 85%
     ),
     linear-gradient(
       180deg,
-      rgba(15, 28, 24, 0.22) 0%,
-      rgba(15, 28, 24, 0.36) 44%,
-      rgba(15, 28, 24, 0.28) 64%,
-      rgba(246, 248, 245, 0.84) 84%,
+      rgba(15, 28, 24, 0.16) 0%,
+      rgba(15, 28, 24, 0.34) 46%,
+      rgba(15, 28, 24, 0.24) 68%,
+      rgba(246, 248, 245, 0.82) 86%,
       #F6F8F5 100%
     );
 }
@@ -86,12 +110,13 @@
 
 .home-hero__center {
   position: relative;
-  z-index: 2;
+  z-index: 3;
   flex: 1 1 auto;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 16px 0 32px;
+  padding: 12px 0 24px;
   pointer-events: none;
 }
 
