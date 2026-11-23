@@ -2,7 +2,7 @@
 
 > **App:** GASKEUN! Group Travel PWA (`vite-plugin-pwa`, base path `/gaskeun-trip/`, deployed via GitHub Pages).
 > **Pilot Trip:** `SOLO-27` (Solo – Jogja, Feb 11–14, 2027 · Default Crew PIN: `1234`).
-> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–8.7.
+> **Current Baseline:** MVP Complete (Sprints 1–4) + HP Field-Test Polish Batches 1–8.8.
 
 ---
 
@@ -21,8 +21,8 @@
 ## 2. Architecture & Data Isolation
 
 - **Dual-Layer IndexedDB (`src/services/db.ts`):**
-  - **Layer 1 (`SharedTrip`):** Shared itinerary, crew, transport pods, stays, `pool`/`fundraise` transactions, `groupPrep`, and shared media URLs. Synced via Supabase RLS RPC + offline mutation queue (`src/services/supabaseSync.ts`) and Layer-1 JSON backup.
-  - **Layer 2 (`LocalPersonalData`):** Strictly local per-device `personalTransactions`, `personalPrep`, local cover blob cache, and pending local album photos. Never overwritten by shared sync or JSON import.
+  - **Layer 1 (`SharedTrip`):** Shared itinerary, crew (including optional 4-digit `passcode`), transport pods, stays, `pool`/`fundraise` transactions, `groupPrep`, `contentIdeas`, shared Home Hero `coverPhotoUrl`, and shared UI asset URLs. Synced across devices via Supabase RLS RPC, Realtime (`postgres_changes` on `shared_trips`), mount/focus/visibility auto-pull, manual `Sync` pill, and offline mutation queue (`src/services/supabaseSync.ts`) plus Layer-1 JSON backup.
+  - **Layer 2 (`LocalPersonalData`):** Strictly local per-device `personalTransactions`, `personalPrep`, and pending local album photos. Never overwritten by shared sync or JSON import.
 - **Permissions (`src/services/permissions.ts`):** Host (`isCreator`), host-designated `editorMemberIds`, or 4-digit Crew PIN SHA-256 unlock grant shared edit access (`canEditTrip`). Personal Wallet & Personal Prep remain PIN-free for all crew.
 - **Unified Ledger (`src/services/ledger.ts`):** Single IN/OUT ledger across `pool`, `fundraise`, and `personal` pockets with anti-double-deduction for out-of-pocket reimbursements.
 
@@ -49,7 +49,7 @@
     - **Original Passthrough (Zero Quality Loss):** In `album` preset + `Original` ratio with `zoom === 1`, `pan === 0`, `rotation === 0`, and file size `<= 12 MB`, skips Canvas re-encoding and uploads native full-res pixels directly via `uploadSharedImage`. Falls back to `maxDim: 4096, quality: 0.94` if `> 12 MB`.
     - **High-Res Canvas Crop:** Cropped/zoomed/rotated album photos preserve native source resolution up to `4096 px` longest side (never upscaling) with `imageSmoothingQuality = 'high'` and JPEG `0.94`.
   - `src/services/gdriveAlbum.ts` + `src/services/mediaUploader.ts` + `supabase/schema.sql` + `scripts/gdrive-apps-script.gs`:
-    - **Strict Channel Isolation (Batches 8.5 & 8.7):** Google Drive Apps Script is exclusively for `Album → Photos` (`kind: 'album'`). All UI assets (`hero`, `plan`, `stay`, `train`, `avatar`, `idea`) NEVER touch Google Drive — they convert base64 synchronously via `Uint8Array` -> `Blob` and upload to Supabase Storage public bucket `trip-assets` with unique filenames (`{tripCode}/{kind}-{timestamp}-{rand}.jpg`, `upsert: false`), returning a diagnostic `reason` when falling back to quota-safe compressed `dataUrl` (`<= 120 KB` cover / `<= 40 KB` avatar). `TripMenuSheet` displays a read-only `Cloud Sync` status row (`Connected · Supabase` vs `Offline / Local only`).
+    - **Strict Channel Isolation & Shared Cover Sync (Batches 8.5, 8.7 & 8.8):** Google Drive Apps Script is exclusively for `Album → Photos` (`kind: 'album'`). All UI assets (`hero`, `plan`, `stay`, `train`, `avatar`, `idea`) NEVER touch Google Drive — they convert base64 synchronously via `Uint8Array` -> `Blob` and upload to Supabase Storage public bucket `trip-assets` with unique filenames (`{tripCode}/{kind}-{timestamp}-{rand}.jpg`, `upsert: false`), returning a diagnostic `reason` when falling back to quota-safe compressed `dataUrl` (`<= 120 KB` cover / `<= 40 KB` avatar). Home Hero cover (`SharedTrip.coverPhotoUrl`, aligned with legacy `heroCoverUrl`) lives strictly in Layer 1 (`SharedTrip`), never in private Layer 2 storage, and syncs across devices automatically on mount, tab `visibilitychange`/`focus`, online reconnect, and Supabase Realtime (`postgres_changes` on `shared_trips`). `TripMenuSheet` displays a `Cloud Sync` row with local-time last-sync status and a compact **`Sync`** pill for manual pull, while `Export Shared Backup (.json)` clarifies `"Personal wallet & prep stay private"`.
     - Frontend constructs sharp `w1200` grid URLs, `w4096` Lightbox URLs, and direct `uc?export=download` download URLs from Drive file IDs without requiring Apps Script re-deploy.
 - **Calm Static `Now` Indicator (Batch 8.5):** `TrailDot` active state and `Now` Spotlight badge use a calm static Matcha `#4A7468` dot with a soft halo ring (no infinite pulsing/blinking animations).
 - **Seamless Album Header & Dynamic Alpha-Mask Horizontal Sliders (Batch 8.6 — `useHorizontalScrollFade.ts`, `AlbumScreen.tsx`, `PlanScreen.tsx`):**

@@ -12,6 +12,7 @@ import {
   Link2,
   Lock,
   LogOut,
+  RefreshCw,
   RotateCcw,
   Settings2,
   ShieldCheck,
@@ -45,6 +46,9 @@ export interface TripMenuSheetProps {
   roleLabel: TripAccessRole;
   activeMember?: TripMember;
   activeMemberName: string;
+  lastSyncedAt?: string | null;
+  isSyncingCloud?: boolean;
+  onForceSync?: () => void;
   onPhaseChange: (phase: HomePhase) => void;
   onUpdateActiveAvatar: (avatarDataUrl: string) => void;
   onSetMemberPasscode: (memberId: string, passcode: string | undefined, toastMsg?: string) => void;
@@ -71,6 +75,9 @@ export function TripMenuSheet({
   roleLabel,
   activeMember,
   activeMemberName,
+  lastSyncedAt,
+  isSyncingCloud = false,
+  onForceSync,
   onPhaseChange,
   onUpdateActiveAvatar,
   onSetMemberPasscode,
@@ -178,6 +185,13 @@ export function TripMenuSheet({
   const cloudConfigured = isCloudSyncConfigured();
   const deviceOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
   const cloudConnected = cloudConfigured && deviceOnline;
+
+  const formattedLastSync = (() => {
+    if (!lastSyncedAt) return null;
+    const d = new Date(lastSyncedAt);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  })();
 
   return (
     <LiquidBottomSheet
@@ -304,7 +318,7 @@ export function TripMenuSheet({
       </div>
 
       <div className="gk-menu-list">
-        {/* Compact Read-Only Cloud Sync Diagnostic Row */}
+        {/* Cloud Sync Status & Force Pull Row */}
         <div
           className="gk-menu-item"
           style={{ cursor: 'default', paddingTop: 10, paddingBottom: 10 }}
@@ -328,17 +342,41 @@ export function TripMenuSheet({
             <span>
               <div className="gk-menu-item__title">Cloud Sync</div>
               <div className="gk-menu-item__sub">
-                {cloudConnected
-                  ? 'Connected · Supabase'
-                  : cloudConfigured
-                    ? 'Device offline · Queued locally'
-                    : 'Offline / Local only'}
+                {isSyncingCloud
+                  ? 'Syncing with Supabase...'
+                  : cloudConnected
+                    ? formattedLastSync
+                      ? `Synced · ${formattedLastSync}`
+                      : 'Connected · Supabase'
+                    : cloudConfigured
+                      ? 'Device offline · Queued locally'
+                      : 'Offline / Local only'}
               </div>
             </span>
           </span>
-          <Badge tone={cloudConnected ? 'mint' : cloudConfigured ? 'amber' : 'neutral'}>
-            {cloudConnected ? 'Supabase' : cloudConfigured ? 'Offline' : 'Local'}
-          </Badge>
+          {cloudConfigured && onForceSync ? (
+            <Button
+              variant="glass"
+              size="sm"
+              disabled={isSyncingCloud || !deviceOnline}
+              leftIcon={
+                <RefreshCw
+                  size={13}
+                  strokeWidth={2}
+                  style={
+                    isSyncingCloud ? { animation: 'gaskeun-spin 0.9s linear infinite' } : undefined
+                  }
+                />
+              }
+              onClick={onForceSync}
+            >
+              Sync
+            </Button>
+          ) : (
+            <Badge tone={cloudConnected ? 'mint' : cloudConfigured ? 'amber' : 'neutral'}>
+              {cloudConnected ? 'Supabase' : cloudConfigured ? 'Offline' : 'Local'}
+            </Badge>
+          )}
         </div>
 
         {/* Self-Service: My Passcode (for logged-in crew member) */}
@@ -732,7 +770,7 @@ export function TripMenuSheet({
             </span>
             <span>
               <div className="gk-menu-item__title">Export Shared Backup (.json)</div>
-              <div className="gk-menu-item__sub">Personal notes &amp; cover stay private</div>
+              <div className="gk-menu-item__sub">Personal wallet &amp; prep stay private</div>
             </span>
           </span>
         </button>

@@ -81,16 +81,21 @@ export async function getSharedTripByCode(code: string): Promise<SharedTrip | un
 
 /**
  * Upserts ONLY Layer 1 (`shared_trips`).
+ * Preserves incoming `updatedAt` so remote timestamps and older pilot seeds
+ * compare accurately during cross-device Supabase sync.
  * Layer 2 (`local_personal`) is NEVER touched by shared updates or WhatsApp JSON imports.
  */
 export async function saveSharedTrip(trip: SharedTrip): Promise<void> {
   const db = await getGaskeunDB();
+  const sharedCover = trip.coverPhotoUrl || trip.heroCoverUrl || undefined;
   const normalized: SharedTrip = {
     ...trip,
     code: trip.code.trim().toUpperCase(),
+    coverPhotoUrl: sharedCover,
+    heroCoverUrl: sharedCover,
     // Enforce Layer 1 purity: strip any personal transactions if accidentally passed
     transactions: trip.transactions.filter((tx) => tx.pocket !== 'personal'),
-    updatedAt: new Date().toISOString(),
+    updatedAt: trip.updatedAt || new Date().toISOString(),
   };
   await db.put('shared_trips', normalized);
 }

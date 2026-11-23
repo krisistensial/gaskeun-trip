@@ -231,7 +231,9 @@ export interface SharedTrip {
   crewPinHash: string;
   /** Host-designated editors allowed to edit shared trip data without PIN */
   editorMemberIds?: string[];
-  /** Shared Home Hero cover photo URL (Drive thumbnail URL or compressed dataUrl) */
+  /** Shared Home Hero cover photo URL (Layer 1 — synced across all crew devices via Supabase) */
+  coverPhotoUrl?: string;
+  /** Legacy alias for coverPhotoUrl kept for backward compatibility with older snapshots */
   heroCoverUrl?: string;
   albumUrl: string;
   gdriveFolderUrl?: string;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import seedData from './data/seed-solo-jogja-2027.json';
 import { ConfirmDialog, Toast, type ToastTone } from './components/atoms';
 import { ExpandingGlassDock } from './components/organisms/ExpandingGlassDock';
@@ -21,7 +21,6 @@ import {
   getSharedTripByCode,
   listSharedTrips,
   saveLocalAlbumPhotos,
-  saveLocalCoverBlob,
   saveLocalPersonal,
   savePersonalPrep,
   saveSharedTrip,
@@ -39,9 +38,13 @@ import {
 import type { CroppedImageResult } from './services/photoCrop';
 import { clearActiveSession, loadSavedSession, saveActiveSession } from './services/session';
 import {
+  applyRemoteSharedTrip,
   fetchRemoteTripByCode,
   flushOfflineMutationQueue,
+  pullLatestSharedTrip,
   pushOrQueueSharedTrip,
+  shouldApplyRemoteTrip,
+  subscribeToSharedTrip,
 } from './services/supabaseSync';
 import { buildInviteUrl } from './services/tripFactory';
 import type {
@@ -65,6 +68,8 @@ export default function App() {
   const [savedTrips, setSavedTrips] = useState<SharedTrip[]>([pilotSeed]);
   const [activeTrip, setActiveTrip] = useState<SharedTrip>(pilotSeed);
   const [localData, setLocalData] = useState<LocalPersonalData | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
 
   const [activeTab, setActiveTab] = useState<DockTabId>('home');
   const [phase, setPhase] = useState<HomePhase>('pre-trip');
@@ -84,11 +89,53 @@ export default function App() {
     tone: 'success',
   });
 
-  const showToast = (message: string, tone: ToastTone = 'success') => {
-    setToast({ open: true, message, tone });
-  };
+  const activeTripRef = useRef<SharedTrip>(activeTrip);
+  activeTripRef.current = activeTrip;
+  const lastAutoPullMsRef = useRef<number>(0);
 
-  // Bootstrap IndexedDB pilot seed + URL ?code= deep-link + Auto-Restore remembered session
+  const showToast = useCallback((message: string, tone: ToastTone = 'success') => {
+    setToast({ open: true, message, tone });
+  }, []);
+
+  /**
+   * Pulls the latest Layer-1 `SharedTrip` payload (including shared `coverPhotoUrl`,
+   * Plan card covers, `contentIdeas`, and crew passcodes) from Supabase and merges
+   * cleanly without touching Layer 2 (`local_personal`).
+   */
+  const syncActiveTripFromCloud = useCallback(
+    async (
+      tripCode: string,
+      localSnapshot: SharedTrip | null,
+      options?: { force?: boolean; notify?: boolean },
+    ) => {
+      if (!tripCode) return;
+      setIsSyncingCloud(true);
+      try {
+        const res = await pullLatestSharedTrip(tripCode, localSnapshot, {
+          force: options?.force,
+        });
+        if (res.status === 'updated' && res.trip) {
+          setActiveTrip(res.trip);
+          setLastSyncedAt(res.syncedAt);
+          void listSharedTrips().then(setSavedTrips);
+          if (options?.notify) showToast('Synced latest trip updates', 'success');
+        } else if (res.status === 'up-to-date') {
+          setLastSyncedAt(res.syncedAt);
+          if (options?.notify) showToast('Already up to date', 'info');
+        } else if (options?.notify) {
+          if (res.status === 'offline') showToast('Device is offline', 'info');
+          else if (res.status === 'unconfigured') showToast('Cloud sync not configured', 'info');
+          else if (res.status === 'not-found') showToast('No cloud copy yet — saving locally', 'info');
+          else showToast('Could not reach Supabase right now', 'error');
+        }
+      } finally {
+        setIsSyncingCloud(false);
+      }
+    },
+    [showToast],
+  );
+
+  // Bootstrap IndexedDB pilot seed + URL ?code= deep-link + Auto-Restore remembered session + Cloud Pull
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -101,15 +148,15 @@ export default function App() {
         const params = new URLSearchParams(window.location.search);
         const queryCode = params.get('code')?.trim().toUpperCase();
         if (queryCode) {
-          const matched =
-            (await fetchRemoteTripByCode(queryCode)) ??
-            (await getSharedTripByCode(queryCode));
+          const remoteMatched = await fetchRemoteTripByCode(queryCode);
+          const matched = remoteMatched ?? (await getSharedTripByCode(queryCode));
           if (matched && alive) {
             const refreshed = await listSharedTrips();
             setSavedTrips(refreshed);
             const local = await getLocalPersonal(matched.id);
             setActiveTrip(matched);
             setLocalData(local);
+            if (remoteMatched) setLastSyncedAt(new Date().toISOString());
             if (local.activeMemberId) {
               saveActiveSession({
                 tripCode: matched.code,
@@ -124,7 +171,8 @@ export default function App() {
           }
         }
 
-        // Auto-remember last login session so reopening the PWA lands straight on Home
+        // Auto-remember last login session so reopening the PWA lands straight on Home,
+        // then immediately pull latest updates from Supabase in the background.
         const saved = loadSavedSession();
         if (saved) {
           const restored =
@@ -141,6 +189,11 @@ export default function App() {
             setLocalData(syncedLocal);
             setPinUnlockedCodes(saved.pinUnlockedCodes);
             setRoute('hub');
+            lastAutoPullMsRef.current = Date.now();
+            void syncActiveTripFromCloud(restored.code, restored, {
+              force: false,
+              notify: false,
+            });
           }
         }
       } catch {
@@ -150,36 +203,73 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [syncActiveTripFromCloud]);
 
-  // Automatically flush offline Layer-1 mutation queue when connectivity returns
+  // Realtime Supabase subscription for active trip (`postgres_changes` on `shared_trips`)
+  useEffect(() => {
+    if (route !== 'hub' && route !== 'who') return;
+    const code = activeTrip.code;
+    if (!code) return;
+
+    const unsubscribe = subscribeToSharedTrip(code, (remoteTrip) => {
+      const current = activeTripRef.current;
+      if (!shouldApplyRemoteTrip(current, remoteTrip)) return;
+      void applyRemoteSharedTrip(remoteTrip).then((persisted) => {
+        setActiveTrip(persisted);
+        setLastSyncedAt(new Date().toISOString());
+        void listSharedTrips().then(setSavedTrips);
+      });
+    });
+
+    return unsubscribe;
+  }, [route, activeTrip.code]);
+
+  // Auto-pull from Supabase when tab becomes visible or window regains focus
+  useEffect(() => {
+    if (route !== 'hub' && route !== 'who') return;
+
+    const triggerPull = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      const now = Date.now();
+      if (now - lastAutoPullMsRef.current < 2500) return;
+      lastAutoPullMsRef.current = now;
+      const current = activeTripRef.current;
+      void syncActiveTripFromCloud(current.code, current, { force: false, notify: false });
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') triggerPull();
+    };
+
+    window.addEventListener('focus', triggerPull);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', triggerPull);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [route, syncActiveTripFromCloud]);
+
+  // Automatically flush offline Layer-1 mutation queue and pull latest when connectivity returns
   useEffect(() => {
     const handleOnline = () => {
       void flushOfflineMutationQueue().then((flushedCount) => {
         if (flushedCount > 0) {
           showToast('Synced', 'success');
         }
+        const current = activeTripRef.current;
+        if (current?.code) {
+          void syncActiveTripFromCloud(current.code, current, { force: false, notify: false });
+        }
       });
     };
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, []);
+  }, [showToast, syncActiveTripFromCloud]);
 
-  // Maintain object URL for Layer 2 local cover blob fallback
-  const [localCoverUrl, setLocalCoverUrl] = useState<string>('');
-  useEffect(() => {
-    if (!localData?.coverBlob) {
-      setLocalCoverUrl('');
-      return;
-    }
-    const url = URL.createObjectURL(localData.coverBlob);
-    setLocalCoverUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [localData?.coverBlob]);
-
-  // Prefer Layer-1 shared heroCoverUrl so the whole crew sees the same cover, with offline blob cache fallback
-  const hasCustomCoverPhoto = Boolean(activeTrip.heroCoverUrl || localCoverUrl);
-  const effectiveCoverUrl = activeTrip.heroCoverUrl || localCoverUrl || defaultCoverPath;
+  // Home Hero Cover is Layer 1 (`SharedTrip.coverPhotoUrl`) so every device displays the same cover
+  const sharedCoverUrl = activeTrip.coverPhotoUrl || activeTrip.heroCoverUrl || '';
+  const hasCustomCoverPhoto = Boolean(sharedCoverUrl);
+  const effectiveCoverUrl = sharedCoverUrl || defaultCoverPath;
 
   const activeMemberId = localData?.activeMemberId ?? null;
   const activeMember = useMemo(
@@ -212,7 +302,12 @@ export default function App() {
       };
       void saveSharedTrip(next)
         .then(() => listSharedTrips().then(setSavedTrips))
-        .then(() => pushOrQueueSharedTrip(next));
+        .then(() => pushOrQueueSharedTrip(next))
+        .then((status) => {
+          if (status === 'synced') {
+            setLastSyncedAt(new Date().toISOString());
+          }
+        });
       return next;
     });
     if (toastMsg) showToast(toastMsg, 'success');
@@ -241,6 +336,7 @@ export default function App() {
     if (!found) return false;
 
     if (remote) {
+      setLastSyncedAt(new Date().toISOString());
       const refreshed = await listSharedTrips();
       setSavedTrips(refreshed);
     }
@@ -307,7 +403,9 @@ export default function App() {
 
   const handleTripCreated = async (newTrip: SharedTrip) => {
     await saveSharedTrip(newTrip);
-    void pushOrQueueSharedTrip(newTrip);
+    void pushOrQueueSharedTrip(newTrip).then((status) => {
+      if (status === 'synced') setLastSyncedAt(new Date().toISOString());
+    });
     const all = await listSharedTrips();
     setSavedTrips(all);
     const creatorId = newTrip.members[0]?.id ?? 'guest';
@@ -332,40 +430,43 @@ export default function App() {
   };
 
   const handleUploadCover = async (cropped: CroppedImageResult) => {
+    if (!canEdit) {
+      showToast('Unlock with Crew PIN to change the cover photo', 'info');
+      requestUnlockPin();
+      return;
+    }
+
     try {
       // Optimistically show the cropped photo right away so mobile feels instant
-      if (canEdit) {
-        setActiveTrip((prev) => ({ ...prev, heroCoverUrl: cropped.dataUrl }));
-      }
+      setActiveTrip((prev) => ({
+        ...prev,
+        coverPhotoUrl: cropped.dataUrl,
+        heroCoverUrl: cropped.dataUrl,
+      }));
 
-      // Non-fatal local blob cache (iOS/Android WebKit private mode or quota must never block cloud save)
-      try {
-        await saveLocalCoverBlob(activeTrip.id, cropped.blob);
-        const refreshed = await getLocalPersonal(activeTrip.id);
-        setLocalData(refreshed);
-      } catch (cacheErr) {
-        console.warn('[GASKEUN handleUploadCover] Local blob cache skipped:', cacheErr);
-      }
+      const uploaded = await uploadSharedImage(cropped, {
+        kind: 'hero',
+        trip: activeTrip,
+        caption: activeTrip.title,
+        uploaderName: activeMemberName,
+        fileName: 'hero-cover.jpg',
+      });
+      const finalUrl = uploaded.url || cropped.dataUrl;
+      const msg =
+        uploaded.source === 'supabase'
+          ? 'Shared cover updated for the crew'
+          : uploaded.reason
+            ? `Saved locally (${uploaded.reason})`
+            : 'Shared cover saved locally';
 
-      if (canEdit) {
-        const uploaded = await uploadSharedImage(cropped, {
-          kind: 'hero',
-          trip: activeTrip,
-          caption: activeTrip.title,
-          uploaderName: activeMemberName,
-          fileName: 'hero-cover.jpg',
-        });
-        const finalUrl = uploaded.url || cropped.dataUrl;
-        const msg =
-          uploaded.source === 'supabase'
-            ? 'Shared cover updated for the crew'
-            : uploaded.reason
-              ? `Saved locally (${uploaded.reason})`
-              : 'Shared cover saved locally';
-        handleUpdateTrip((prev) => ({ ...prev, heroCoverUrl: finalUrl }), msg);
-      } else {
-        showToast('Cover photo saved locally on this device', 'success');
-      }
+      handleUpdateTrip(
+        (prev) => ({
+          ...prev,
+          coverPhotoUrl: finalUrl,
+          heroCoverUrl: finalUrl,
+        }),
+        msg,
+      );
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'Could not process that photo';
       console.warn('[GASKEUN handleUploadCover] Failed:', err);
@@ -602,6 +703,14 @@ export default function App() {
           roleLabel={roleLabel}
           activeMember={activeMember}
           activeMemberName={activeMemberName}
+          lastSyncedAt={lastSyncedAt}
+          isSyncingCloud={isSyncingCloud}
+          onForceSync={() =>
+            void syncActiveTripFromCloud(activeTrip.code, activeTrip, {
+              force: true,
+              notify: true,
+            })
+          }
           onPhaseChange={(next) => {
             setPhase(next);
             showToast(
@@ -694,7 +803,7 @@ export default function App() {
           title="Import shared trip backup?"
           description={
             pendingImportTrip
-              ? `Update "${pendingImportTrip.title}" (${pendingImportTrip.code})? Your local cover photo, personal wallet, and private packing list stay untouched.`
+              ? `Update "${pendingImportTrip.title}" (${pendingImportTrip.code})? Your personal wallet and private packing list stay untouched.`
               : ''
           }
           confirmLabel="Import Update"

@@ -339,6 +339,11 @@ export function HomeScreen({
     );
   };
 
+  const resolvedCoverUrl = trip.coverPhotoUrl || trip.heroCoverUrl || coverUrl;
+  const resolvedHasCoverPhoto = Boolean(
+    trip.coverPhotoUrl || trip.heroCoverUrl || hasCoverPhoto,
+  );
+
   return (
     <div className="home-root">
       {/* Full-Bleed Customizable Editorial Hero (Zero Top Bar) */}
@@ -346,12 +351,12 @@ export function HomeScreen({
         className={[
           'home-hero',
           phase === 'on-trip' ? 'home-hero--compact' : '',
-          hasCoverPhoto ? 'home-hero--photo' : '',
+          resolvedHasCoverPhoto ? 'home-hero--photo' : '',
         ]
           .filter(Boolean)
           .join(' ')}
       >
-        <img src={coverUrl} alt="" className="home-hero__bg" />
+        <img src={resolvedCoverUrl} alt="" className="home-hero__bg" />
         <div className="home-hero__fade" aria-hidden="true" />
 
         <div className="home-hero__corners">
