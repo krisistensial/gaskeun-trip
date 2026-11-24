@@ -5,7 +5,37 @@ import type {
   PlanItemType,
 } from '../types/trip';
 
-export type PlanFilterOption = 'all' | PlanItemType | 'content';
+export type PlanFilterCategory = PlanItemType | 'content';
+
+export type PlanFilterOption = 'all' | PlanFilterCategory;
+
+export const ALL_PLAN_FILTER_CATEGORIES: readonly PlanFilterCategory[] = [
+  'transit',
+  'place',
+  'activity',
+  'content',
+] as const;
+
+/**
+ * Multi-select filter toggle for Plan rundown:
+ * - Empty array `[]` represents `All` (every stop type + scheduled content ideas).
+ * - Tapping `'all'` resets to `[]`.
+ * - Tapping an individual category toggles it on/off.
+ * - Selecting every available category automatically collapses back to `[]` (`All`),
+ *   and deselecting the last active category also returns `[]` (`All`).
+ */
+export function togglePlanFilter(
+  current: readonly PlanFilterCategory[],
+  clicked: PlanFilterOption,
+): PlanFilterCategory[] {
+  if (clicked === 'all') return [];
+  const exists = current.includes(clicked);
+  const next = exists ? current.filter((c) => c !== clicked) : [...current, clicked];
+  if (next.length === 0 || next.length >= ALL_PLAN_FILTER_CATEGORIES.length) {
+    return [];
+  }
+  return next;
+}
 
 export type PlanTimelineEntry =
   | { kind: 'stop'; id: string; sortKey: string; stop: PlanItem }
@@ -147,26 +177,30 @@ export function mergePlanEntries(
   stops: PlanItem[],
   ideas: ContentIdea[] | undefined,
   targetDayId: string | undefined,
-  filter: PlanFilterOption = 'all',
+  filter: PlanFilterOption | readonly PlanFilterCategory[] = 'all',
 ): PlanTimelineEntry[] {
   if (!targetDayId) return [];
 
+  const isAll =
+    filter === 'all' || (Array.isArray(filter) && filter.length === 0);
+  const activeSet: Set<PlanFilterCategory> | null = isAll
+    ? null
+    : new Set(Array.isArray(filter) ? filter : [filter]);
+
   const entries: PlanTimelineEntry[] = [];
 
-  if (filter !== 'content') {
-    for (const stop of stops) {
-      if (stop.dayId !== targetDayId) continue;
-      if (filter !== 'all' && stop.type !== filter) continue;
-      entries.push({
-        kind: 'stop',
-        id: stop.id,
-        sortKey: toSortTimeKey(stop.startTime),
-        stop,
-      });
-    }
+  for (const stop of stops) {
+    if (stop.dayId !== targetDayId) continue;
+    if (activeSet && !activeSet.has(stop.type)) continue;
+    entries.push({
+      kind: 'stop',
+      id: stop.id,
+      sortKey: toSortTimeKey(stop.startTime),
+      stop,
+    });
   }
 
-  if (filter === 'all' || filter === 'content') {
+  if (!activeSet || activeSet.has('content')) {
     for (const idea of ideas ?? []) {
       if (!idea.showInPlan || idea.dayId !== targetDayId) continue;
       entries.push({

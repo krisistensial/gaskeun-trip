@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "seedVersion": 6,
+  "seedVersion": 7,
   "id": "trip-solo-jogja-2027",
   "code": "SOLO-27",
   "title": "Solo – Jogja",
@@ -241,7 +241,7 @@
       "mapsVerified": true,
       "coords": [-7.8211, 110.3694],
       "costEstimate": 20000,
-      "status": "done",
+      "status": "upcoming",
       "notes": []
     },
     {
@@ -258,7 +258,7 @@
       "mapsVerified": true,
       "coords": [-7.8254, 110.3672],
       "costEstimate": 20000,
-      "status": "done",
+      "status": "upcoming",
       "notes": [
         { "id": "n-brief-1", "kind": "checklist", "text": "Confirm Kris leads & Chika sweeps", "checked": true },
         { "id": "n-brief-2", "kind": "checklist", "text": "All 5 bikes full tank Pertalite/Pertamax", "checked": true }
@@ -278,7 +278,7 @@
       "mapsVerified": true,
       "coords": [-7.9261, 110.3193],
       "costEstimate": 0,
-      "status": "active",
+      "status": "upcoming",
       "notes": [
         { "id": "n11", "kind": "paragraph", "text": "Iconic Javanese candi chapel & calm prayer garden." }
       ]

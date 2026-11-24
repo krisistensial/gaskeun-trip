@@ -7,6 +7,7 @@ import type {
   SharedTrip,
   Transaction,
 } from '../types/trip';
+import { sanitizeStopStatus } from './planSchedule';
 
 /**
  * Dual-Layer IndexedDB Architecture (`gaskeun-db`)
@@ -93,6 +94,12 @@ export async function saveSharedTrip(trip: SharedTrip): Promise<void> {
     code: trip.code.trim().toUpperCase(),
     coverPhotoUrl: sharedCover,
     heroCoverUrl: sharedCover,
+    itinerary: Array.isArray(trip.itinerary)
+      ? trip.itinerary.map((item) => ({
+          ...item,
+          status: sanitizeStopStatus(item.status),
+        }))
+      : [],
     // Enforce Layer 1 purity: strip any personal transactions if accidentally passed
     transactions: trip.transactions.filter((tx) => tx.pocket !== 'personal'),
     updatedAt: trip.updatedAt || new Date().toISOString(),
@@ -113,12 +120,26 @@ export async function ensureSeedTrip(seed: SharedTrip): Promise<SharedTrip> {
   const targetVersion = seed.seedVersion ?? 1;
   if (currentVersion < targetVersion) {
     const needsDay3Upgrade = currentVersion < 3;
-    const upgradedItinerary = needsDay3Upgrade
+    const needsPreTripStatusReset = currentVersion < 7;
+    const baseItinerary = needsDay3Upgrade
       ? [
           ...existing.itinerary.filter((i) => i.dayId !== 'day-3'),
           ...seed.itinerary.filter((i) => i.dayId === 'day-3'),
         ]
       : existing.itinerary;
+
+    const upgradedItinerary = needsPreTripStatusReset
+      ? baseItinerary.map((item) => {
+          if (item.status === 'idea') return item;
+          if (
+            item.status === 'active' ||
+            (item.status === 'done' && (item.id === 'it-6' || item.id === 'it-6b'))
+          ) {
+            return { ...item, status: 'upcoming' as const };
+          }
+          return item;
+        })
+      : baseItinerary;
 
     const isGenericDrive =
       !existing.gdriveFolderUrl ||

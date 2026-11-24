@@ -1,15 +1,12 @@
-import { useRef, useState, type FormEvent } from 'react';
-import { Camera, Eye, EyeOff, KeyRound, Lock, UserRound } from 'lucide-react';
+import { useState, type FormEvent } from 'react';
+import { Eye, EyeOff, KeyRound, Lock, UserRound } from 'lucide-react';
 import { Avatar, Button, CornerOrb, LiquidBottomSheet } from '../../components/atoms';
-import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
-import { uploadSharedImage } from '../../services/mediaUploader';
 import {
   isValidPasscode,
   memberHasPasscode,
   normalizePasscode,
   verifyMemberPasscode,
 } from '../../services/permissions';
-import type { CroppedImageResult } from '../../services/photoCrop';
 import type { SharedTrip, TripMember } from '../../types/trip';
 import './gate.css';
 
@@ -18,7 +15,6 @@ export interface WhoAreYouScreenProps {
   selectedMemberId: string | null;
   canEdit: boolean;
   onSelectProfile: (memberId: string) => void;
-  onUpdateMemberAvatar: (memberId: string, avatarDataUrl: string) => void;
   onSetMemberPasscode: (memberId: string, passcode: string | undefined, toastMsg?: string) => void;
   onRequestUnlockPin: () => void;
   onBack: () => void;
@@ -29,19 +25,16 @@ export function WhoAreYouScreen({
   selectedMemberId,
   canEdit,
   onSelectProfile,
-  onUpdateMemberAvatar,
   onSetMemberPasscode,
   onRequestUnlockPin,
   onBack,
 }: WhoAreYouScreenProps) {
   const [pendingPickId, setPendingPickId] = useState<string | null>(null);
-  const [cropFile, setCropFile] = useState<File | null>(null);
   const [pinInput, setPinInput] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [showOptionalSetup, setShowOptionalSetup] = useState(false);
   const [pinError, setPinError] = useState('');
   const [shakeCount, setShakeCount] = useState(0);
-  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const pendingMember: TripMember | undefined =
     pendingPickId && pendingPickId !== 'guest'
@@ -70,19 +63,6 @@ export function WhoAreYouScreen({
   const triggerPinError = (msg: string) => {
     setPinError(msg);
     setShakeCount((c) => c + 1);
-  };
-
-  const handleCroppedAvatar = async (cropped: CroppedImageResult) => {
-    setCropFile(null);
-    if (!pendingMember) return;
-    const uploaded = await uploadSharedImage(cropped, {
-      kind: 'avatar',
-      trip,
-      caption: pendingMember.name,
-      uploaderName: pendingMember.name,
-      fileName: `avatar-${pendingMember.name.toLowerCase()}.jpg`,
-    });
-    onUpdateMemberAvatar(pendingMember.id, uploaded.url);
   };
 
   const handleConfirmJoin = (e?: FormEvent) => {
@@ -215,65 +195,14 @@ export function WhoAreYouScreen({
           <div className="who-sheet-body">
             {pendingMember ? (
               <>
-                <button
-                  type="button"
-                  className="tactile"
-                  onClick={() => avatarInputRef.current?.click()}
-                  style={{
-                    position: 'relative',
-                    display: 'inline-flex',
-                    borderRadius: '50%',
-                  }}
-                  aria-label="Add or change profile photo"
-                >
-                  <Avatar
-                    initials={pendingMember.initials}
-                    name={pendingMember.name}
-                    src={pendingMember.avatarDataUrl}
-                    size="xl"
-                    bg={pendingMember.avatarBg}
-                    color={pendingMember.avatarColor}
-                    variant="selected"
-                  />
-                  <span
-                    style={{
-                      position: 'absolute',
-                      right: -2,
-                      bottom: -2,
-                      width: 28,
-                      height: 28,
-                      borderRadius: 14,
-                      background: 'var(--brand-matcha)',
-                      color: '#FFFFFF',
-                      border: '2px solid #FFFFFF',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Camera size={13} strokeWidth={2} />
-                  </span>
-                </button>
-                <Button
-                  variant="glass"
-                  size="sm"
-                  leftIcon={<Camera size={13} strokeWidth={2} />}
-                  onClick={() => avatarInputRef.current?.click()}
-                >
-                  {pendingMember.avatarDataUrl ? 'Change photo' : 'Add photo'}
-                </Button>
-                <input
-                  ref={avatarInputRef}
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) {
-                      setCropFile(f);
-                      e.target.value = '';
-                    }
-                  }}
+                <Avatar
+                  initials={pendingMember.initials}
+                  name={pendingMember.name}
+                  src={pendingMember.avatarDataUrl}
+                  size="xl"
+                  bg={pendingMember.avatarBg}
+                  color={pendingMember.avatarColor}
+                  variant="selected"
                 />
 
                 {/* Required 4-Digit Passcode Prompt for Locked Profiles */}
@@ -418,14 +347,6 @@ export function WhoAreYouScreen({
           </div>
         </form>
       </LiquidBottomSheet>
-
-      <PhotoCropperSheet
-        open={Boolean(cropFile)}
-        file={cropFile}
-        preset="avatar"
-        onCancel={() => setCropFile(null)}
-        onConfirm={(res) => void handleCroppedAvatar(res)}
-      />
     </section>
   );
 }

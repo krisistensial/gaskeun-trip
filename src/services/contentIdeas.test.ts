@@ -7,6 +7,7 @@ import {
   formatPlatformLabel,
   mergePlanEntries,
   normalizeReferenceUrl,
+  togglePlanFilter,
 } from './contentIdeas';
 
 describe('Content Ideas platform detection, thumbnails & Plan rundown merge', () => {
@@ -138,6 +139,46 @@ describe('Content Ideas platform detection, thumbnails & Plan rundown merge', ()
 
     const placesOnly = mergePlanEntries(stops, ideas, 'day-3', 'place');
     expect(placesOnly.map((e) => e.id)).toEqual(['it-7', 'it-7b']);
+
+    const placesAndContent = mergePlanEntries(stops, ideas, 'day-3', ['place', 'content']);
+    expect(placesAndContent.map((e) => e.id)).toEqual([
+      'it-7',
+      'idea-convoy',
+      'it-7b',
+      'idea-anytime',
+    ]);
+
+    const emptyAll = mergePlanEntries(stops, ideas, 'day-3', []);
+    expect(emptyAll.map((e) => e.id)).toEqual([
+      'it-7',
+      'idea-convoy',
+      'it-7b',
+      'idea-anytime',
+    ]);
+  });
+
+  it('supports multi-select Plan filters and collapses back to All when all or none are selected', () => {
+    let state = togglePlanFilter([], 'place');
+    expect(state).toEqual(['place']);
+
+    state = togglePlanFilter(state, 'content');
+    expect(state).toEqual(['place', 'content']);
+
+    state = togglePlanFilter(state, 'transit');
+    expect(state).toEqual(['place', 'content', 'transit']);
+
+    // Selecting the 4th (final) category automatically collapses to All ([])
+    state = togglePlanFilter(state, 'activity');
+    expect(state).toEqual([]);
+
+    // Tapping an item then tapping it again returns cleanly to All ([])
+    state = togglePlanFilter([], 'transit');
+    expect(state).toEqual(['transit']);
+    state = togglePlanFilter(state, 'transit');
+    expect(state).toEqual([]);
+
+    // Tapping All always resets to []
+    expect(togglePlanFilter(['place', 'activity'], 'all')).toEqual([]);
   });
 
   it('enforces creator or Host/Editor edit rights for existing content ideas while letting all crew add', () => {

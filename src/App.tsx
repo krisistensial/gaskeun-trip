@@ -99,6 +99,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<DockTabId>('home');
   const [phase, setPhase] = useState<HomePhase>('pre-trip');
+  const [homeHeroDockHidden, setHomeHeroDockHidden] = useState<boolean>(true);
   const [pinUnlockedCodes, setPinUnlockedCodes] = useState<string[]>(
     () => loadSavedSession()?.pinUnlockedCodes ?? [],
   );
@@ -662,6 +663,12 @@ export default function App() {
   };
 
   const showDock = route === 'hub' && !activeRouteTarget;
+  const dockHiddenForHero =
+    route === 'hub' &&
+    !activeRouteTarget &&
+    activeTab === 'home' &&
+    phase === 'pre-trip' &&
+    homeHeroDockHidden;
 
   return (
     <OverlayProvider>
@@ -690,7 +697,6 @@ export default function App() {
               selectedMemberId={activeMemberId}
               canEdit={canEdit}
               onSelectProfile={handleSelectProfile}
-              onUpdateMemberAvatar={handleUpdateMemberAvatar}
               onSetMemberPasscode={handleSetMemberPasscode}
               onRequestUnlockPin={() => requestUnlockPin()}
               onBack={() => setRoute('landing')}
@@ -746,6 +752,7 @@ export default function App() {
               onOpenTripSettings={openTripSettingsGated}
               onSwitchTrip={handleLeaveTrip}
               onNavigateTab={setActiveTab}
+              onHeroDockHiddenChange={setHomeHeroDockHidden}
               onUploadCover={(cropped) => void handleUploadCover(cropped)}
               onRequestUnlockPin={() => requestUnlockPin()}
               onNotify={showToast}
@@ -757,6 +764,7 @@ export default function App() {
           {route === 'hub' && !activeRouteTarget && activeTab === 'plan' && (
             <PlanScreen
               trip={activeTrip}
+              homePhase={phase}
               activeMemberId={activeMemberId}
               activeMemberName={activeMemberName}
               canEdit={canEdit}
@@ -811,7 +819,13 @@ export default function App() {
           )}
         </main>
 
-        {showDock && <ExpandingGlassDock activeTab={activeTab} onChange={setActiveTab} />}
+        {showDock && (
+          <ExpandingGlassDock
+            activeTab={activeTab}
+            hidden={dockHiddenForHero}
+            onChange={setActiveTab}
+          />
+        )}
 
         <TripMenuSheet
           open={menuOpen}

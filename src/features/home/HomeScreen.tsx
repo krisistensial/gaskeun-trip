@@ -30,6 +30,7 @@ import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet'
 import { assignMotorbikeMember, findMemberBikeAssignment } from '../../services/crewSwap';
 import { calculateLedger, formatCompactIDR } from '../../services/ledger';
 import type { CroppedImageResult } from '../../services/photoCrop';
+import { resolvePlanLiveState } from '../../services/planSchedule';
 import type {
   AlbumPhoto,
   DockTabId,
@@ -83,6 +84,7 @@ export interface HomeScreenProps {
   onOpenTripSettings: () => void;
   onSwitchTrip: () => void;
   onNavigateTab: (tab: DockTabId) => void;
+  onHeroDockHiddenChange?: (hidden: boolean) => void;
   onUploadCover: (cropped: CroppedImageResult) => void;
   onRequestUnlockPin: () => void;
   onNotify?: (msg: string, tone?: 'success' | 'info' | 'error') => void;
@@ -102,6 +104,7 @@ export function HomeScreen({
   onOpenTripSettings,
   onSwitchTrip,
   onNavigateTab,
+  onHeroDockHiddenChange,
   onUploadCover,
   onRequestUnlockPin,
   onNotify,
@@ -132,6 +135,7 @@ export function HomeScreen({
     label: string;
   } | null>(null);
   const [showCrewJump, setShowCrewJump] = useState(true);
+  const [heroDockHidden, setHeroDockHidden] = useState<boolean>(() => phase === 'pre-trip');
   const [heroCropFile, setHeroCropFile] = useState<File | null>(null);
   const [spotlightPhotoErrorUrl, setSpotlightPhotoErrorUrl] = useState<string>('');
   const [failedPhotoUrls, setFailedPhotoUrls] = useState<Record<string, boolean>>({});
@@ -142,7 +146,47 @@ export function HomeScreen({
   };
 
   const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const heroRef = useRef<HTMLElement | null>(null);
   const crewSectionRef = useRef<HTMLElement | null>(null);
+  const heroDockHiddenRef = useRef<boolean>(phase === 'pre-trip');
+
+  useEffect(() => {
+    const syncDockState = (nextHidden: boolean) => {
+      heroDockHiddenRef.current = nextHidden;
+      setHeroDockHidden(nextHidden);
+      onHeroDockHiddenChange?.(nextHidden);
+    };
+
+    if (phase !== 'pre-trip') {
+      syncDockState(false);
+      return;
+    }
+
+    const initialHidden = (typeof window !== 'undefined' ? window.scrollY : 0) < 64;
+    syncDockState(initialHidden);
+
+    let rafId = 0;
+    const handleScroll = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        const y = window.scrollY;
+        const currentlyHidden = heroDockHiddenRef.current;
+        if (currentlyHidden && y >= 64) {
+          syncDockState(false);
+        } else if (!currentlyHidden && y <= 24) {
+          syncDockState(true);
+        }
+      });
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      window.removeEventListener('scroll', handleScroll);
+      onHeroDockHiddenChange?.(false);
+    };
+  }, [phase, onHeroDockHiddenChange]);
 
   useEffect(() => {
     setCountdown(getCountdownParts(trip.departureAt));
@@ -179,9 +223,18 @@ export function HomeScreen({
   const trainPods = trip.transportPods.filter((p) => p.mode === 'train');
   const carPods = trip.transportPods.filter((p) => p.mode === 'car');
 
+  const liveSchedule = useMemo(
+    () =>
+      resolvePlanLiveState(trip.days, trip.itinerary, new Date(), {
+        simulateLive: phase === 'on-trip',
+      }),
+    [trip.days, trip.itinerary, phase],
+  );
+
   const activeStop =
-    trip.itinerary.find((item) => item.status === 'active') ??
-    trip.itinerary.find((item) => item.status === 'upcoming');
+    (liveSchedule.activeStopId
+      ? trip.itinerary.find((item) => item.id === liveSchedule.activeStopId)
+      : undefined) ?? trip.itinerary.find((item) => item.status !== 'idea');
   const activeIndex = activeStop
     ? trip.itinerary.findIndex((item) => item.id === activeStop.id)
     : -1;
@@ -390,11 +443,12 @@ export function HomeScreen({
 
   return (
     <div className="home-root">
-      {/* Full-Bleed Customizable Editorial Hero (Zero Top Bar, Immersive First-Screen) */}
+      {/* Full-Bleed Customizable Editorial Hero (Zero Top Bar · Full-Screen Pre-Trip Reveal) */}
       <section
+        ref={heroRef}
         className={[
           'home-hero',
-          phase === 'on-trip' ? 'home-hero--compact' : 'home-hero--countdown',
+          phase === 'on-trip' ? 'home-hero--compact' : 'home-hero--fullscreen',
           resolvedHasCoverPhoto ? 'home-hero--photo' : '',
         ]
           .filter(Boolean)
@@ -483,6 +537,25 @@ export function HomeScreen({
             </button>
             <p className="home-subtitle">{trip.subtitle}</p>
           </div>
+
+          {phase === 'pre-trip' && (
+            <button
+              type="button"
+              className={`home-scroll-cue tactile ${!heroDockHidden ? 'home-scroll-cue--hidden' : ''}`}
+              tabIndex={heroDockHidden ? 0 : -1}
+              aria-hidden={!heroDockHidden}
+              onClick={() => {
+                const heroHeight = heroRef.current?.offsetHeight ?? window.innerHeight * 0.85;
+                window.scrollTo({
+                  top: Math.max(240, heroHeight - 56),
+                  behavior: 'smooth',
+                });
+              }}
+            >
+              <span>Scroll to explore</span>
+              <ChevronDown size={14} strokeWidth={2.2} />
+            </button>
+          )}
         </div>
       </section>
 
@@ -1210,8 +1283,8 @@ export function HomeScreen({
         })}
       </section>
 
-      {/* Floating Jump Pill (Crew ↓) above Dock */}
-      {showCrewJump && (
+      {/* Floating Jump Pill (Crew ↓) above Dock — stays hidden during full-screen countdown */}
+      {showCrewJump && !heroDockHidden && (
         <button
           type="button"
           className="floating-crew-jump"

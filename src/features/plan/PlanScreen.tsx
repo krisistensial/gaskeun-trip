@@ -17,21 +17,23 @@ import {
   TrailDot,
 } from '../../components/atoms';
 import { ContentIdeaSheet } from '../../components/organisms/ContentIdeaSheet';
+import type { HomePhase } from '../../components/organisms/TripMenuSheet';
 import { useHorizontalScrollFade } from '../../hooks/useHorizontalScrollFade';
 import {
   formatPlatformLabel,
   mergePlanEntries,
-  type PlanFilterOption,
+  togglePlanFilter,
+  type PlanFilterCategory,
 } from '../../services/contentIdeas';
 import { exportTripToExcel } from '../../services/excelExporter';
 import { formatCompactIDR } from '../../services/ledger';
 import { toggleStopDoneStatus } from '../../services/permissions';
+import { resolvePlanLiveState } from '../../services/planSchedule';
 import { isClosedOnDate } from '../../services/planUtils';
 import type {
   ContentIdea,
   ContentIdeaStatus,
   PlanItem,
-  PlanItemStatus,
   PlanItemType,
   RouteTarget,
   SharedTrip,
@@ -56,63 +58,9 @@ function formatStopType(type: PlanItemType): string {
   return 'Place';
 }
 
-function getLocalTodayIso(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
-
-function parseMinutes(hhmm?: string): number {
-  if (!hhmm) return -1;
-  const [h, m] = hhmm.split(':').map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return -1;
-  return h * 60 + m;
-}
-
-/**
- * Resolves the effective display status of each stop on the selected day:
- * - Explicit manual `done` or `active` always wins.
- * - On the actual trip date (`day.date === today`), highlights the stop matching
- *   the device's local clock as `active`.
- */
-function resolveEffectiveStatuses(
-  items: PlanItem[],
-  dayDate?: string,
-): Map<string, PlanItemStatus> {
-  const result = new Map<string, PlanItemStatus>();
-  const hasExplicitActive = items.some((i) => i.status === 'active');
-  const isToday = Boolean(dayDate && dayDate === getLocalTodayIso());
-  const now = new Date();
-  const nowMins = now.getHours() * 60 + now.getMinutes();
-
-  let autoActiveId: string | null = null;
-  if (isToday && !hasExplicitActive) {
-    for (let i = 0; i < items.length; i += 1) {
-      const stop = items[i];
-      if (stop.status === 'done' || stop.status === 'idea') continue;
-      const startM = parseMinutes(stop.startTime);
-      const nextStart = items[i + 1] ? parseMinutes(items[i + 1].startTime) : 24 * 60;
-      const endM = stop.endTime ? parseMinutes(stop.endTime) : nextStart;
-      if (startM >= 0 && nowMins >= startM && nowMins < Math.max(startM + 30, endM)) {
-        autoActiveId = stop.id;
-        break;
-      }
-    }
-  }
-
-  for (const item of items) {
-    if (item.status === 'done') {
-      result.set(item.id, 'done');
-    } else if (item.status === 'active' || item.id === autoActiveId) {
-      result.set(item.id, 'active');
-    } else {
-      result.set(item.id, item.status);
-    }
-  }
-  return result;
-}
-
 export interface PlanScreenProps {
   trip: SharedTrip;
+  homePhase?: HomePhase;
   activeMemberId: string | null;
   activeMemberName: string;
   canEdit: boolean;
@@ -124,6 +72,7 @@ export interface PlanScreenProps {
 
 export function PlanScreen({
   trip,
+  homePhase = 'pre-trip',
   activeMemberId,
   activeMemberName,
   canEdit,
@@ -133,29 +82,38 @@ export function PlanScreen({
   onNotify,
 }: PlanScreenProps) {
   const [viewMode, setViewMode] = useState<'trail' | 'table'>('trail');
+  const [nowDate, setNowDate] = useState<Date>(() => new Date());
   const [selectedDayId, setSelectedDayId] = useState<string>(
-    trip.days.find((d) => d.id === 'day-3')?.id ?? trip.days[0]?.id ?? 'day-1',
+    () => resolvePlanLiveState(trip.days, trip.itinerary).defaultDayId,
   );
-  const [typeFilter, setTypeFilter] = useState<PlanFilterOption>('all');
+  const [selectedFilters, setSelectedFilters] = useState<PlanFilterCategory[]>([]);
   const [editingStopId, setEditingStopId] = useState<string | null>(null);
   const [draftNewStop, setDraftNewStop] = useState<PlanItem | null>(null);
   const [activeIdeaModal, setActiveIdeaModal] = useState<ContentIdea | null>(null);
   const [failedPhotoIds, setFailedPhotoIds] = useState<Record<string, boolean>>({});
   const [stageHeight, setStageHeight] = useState<number>(ARC_HEIGHT);
-  const [centeredStopId, setCenteredStopId] = useState<string | null>(null);
 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const listInnerRef = useRef<HTMLDivElement | null>(null);
   const dayStripRef = useRef<HTMLDivElement | null>(null);
   const filterRowRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const dotRefs = useRef<Map<string, HTMLElement>>(new Map());
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const metricsRef = useRef<{
+    halfH: number;
+    rows: Array<{ id: string; centerY: number }>;
+  }>({ halfH: ARC_HEIGHT / 2, rows: [] });
   const centeredIdRef = useRef<string | null>(null);
   const userInteractedRef = useRef<boolean>(false);
 
   const dayStripFade = useHorizontalScrollFade(dayStripRef, [trip.days.length, canEdit]);
   const filterRowFade = useHorizontalScrollFade(filterRowRef, [viewMode]);
+
+  const filterKey = selectedFilters.join(',');
+  const isContentOnlyFilter =
+    selectedFilters.length === 1 && selectedFilters[0] === 'content';
 
   const selectedDay = trip.days.find((d) => d.id === selectedDayId) ?? trip.days[0];
   const dayLabelStr = selectedDay?.isIdeas
@@ -171,14 +129,32 @@ export function PlanScreen({
   );
 
   const timelineEntries = useMemo(
-    () => mergePlanEntries(trip.itinerary, trip.contentIdeas, selectedDay?.id, typeFilter),
-    [trip.itinerary, trip.contentIdeas, selectedDay?.id, typeFilter],
+    () => mergePlanEntries(trip.itinerary, trip.contentIdeas, selectedDay?.id, selectedFilters),
+    [trip.itinerary, trip.contentIdeas, selectedDay?.id, selectedFilters],
   );
 
-  const effectiveStatusMap = useMemo(
-    () => resolveEffectiveStatuses(allDayItems, selectedDay?.date),
-    [allDayItems, selectedDay?.date],
+  // Lightweight 60s real-time clock tick so NOW advances automatically on Hari-H without refresh
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setNowDate(new Date());
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Re-sync default day cleanly if user switches to a different trip
+  useEffect(() => {
+    setSelectedDayId(resolvePlanLiveState(trip.days, trip.itinerary).defaultDayId);
+  }, [trip.id]);
+
+  const liveState = useMemo(
+    () =>
+      resolvePlanLiveState(trip.days, trip.itinerary, nowDate, {
+        simulateLive: homePhase === 'on-trip',
+      }),
+    [trip.days, trip.itinerary, nowDate, homePhase],
   );
+
+  const effectiveStatusMap = liveState.stopStatuses;
 
   const dottedArcPath = useMemo(
     () => buildDottedArcPath(14, 56, stageHeight),
@@ -192,73 +168,99 @@ export function PlanScreen({
       : null;
 
   /**
-   * 60fps rAF Frozen Arc Geometry + Depth Scale/Dimming + Magnetic "Tugh" Haptic:
-   * - Reads the frozen `.trail-stage` bounds (rail stays 100% still).
-   * - Places every TrailDot center at exact `(getArcX(u), y)` directly on the dotted rail.
-   * - Scales & dims non-centered cards smoothly (`scale: 0.88–1.00`, `opacity: 0.52–1.00`).
-   * - Triggers subtle micro-haptic `navigator.vibrate?.(12)` + spring settle when a new
-   *   card locks into the center apex.
+   * Pre-measures every row's static vertical center inside `.trail-scroll-viewport`
+   * OUTSIDE scroll frames so scrolling triggers ZERO `getBoundingClientRect()` layout reads.
    */
-  const syncArcPositions = useCallback(() => {
-    const stageEl = stageRef.current;
-    if (!stageEl) return;
-    const stageRect = stageEl.getBoundingClientRect();
-    if (stageRect.height < 40) return;
-
-    const halfH = Math.max(120, stageRect.height / 2);
-    const stageCenterY = stageRect.top + halfH;
-
-    let closestId: string | null = null;
-    let minDist = Number.POSITIVE_INFINITY;
+  const measureArcMetrics = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const h = scroller.clientHeight || stageRef.current?.clientHeight || ARC_HEIGHT;
+    const halfH = Math.max(120, h / 2);
+    const rows: Array<{ id: string; centerY: number }> = [];
 
     for (const entry of timelineEntries) {
       const rowEl = rowRefs.current.get(entry.id);
-      const dotEl = dotRefs.current.get(entry.id);
-      const cardEl = cardRefs.current.get(entry.id);
-      if (!rowEl || !dotEl || !cardEl) continue;
+      if (!rowEl) continue;
+      rows.push({
+        id: entry.id,
+        centerY: rowEl.offsetTop + rowEl.offsetHeight / 2,
+      });
+    }
 
-      const rowRect = rowEl.getBoundingClientRect();
-      const dotCenterY = rowRect.top + rowRect.height / 2;
-      const u = (dotCenterY - stageCenterY) / halfH;
-      const absU = Math.min(1, Math.abs(u));
+    metricsRef.current = { halfH, rows };
+  }, [timelineEntries]);
 
-      if (Math.abs(u) < minDist) {
-        minDist = Math.abs(u);
-        closestId = entry.id;
+  /**
+   * Silky GPU-composited 60/120fps Arc Geometry:
+   * - Reads `scroller.scrollTop` ONCE (zero layout thrashing, zero React setState mid-scroll).
+   * - Places every TrailDot at exact `(getArcX(u), y)` on the frozen circular rail.
+   * - Updates only `transform: translate3d(...) scale(...)`, `opacity`, and the DOM class
+   *   `.trail-item--centered` directly via refs so mobile scrolling stays locked at 60+ fps.
+   */
+  const syncArcPositions = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    let { halfH, rows } = metricsRef.current;
+    if (rows.length !== timelineEntries.length) {
+      measureArcMetrics();
+      ({ halfH, rows } = metricsRef.current);
+    }
+    if (rows.length === 0) return;
+
+    const scrollTop = scroller.scrollTop;
+    let closestId: string | null = null;
+    let minDist = Number.POSITIVE_INFINITY;
+
+    for (let i = 0; i < rows.length; i += 1) {
+      const metric = rows[i];
+      const dotEl = dotRefs.current.get(metric.id);
+      const cardEl = cardRefs.current.get(metric.id);
+      if (!dotEl || !cardEl) continue;
+
+      const u = (metric.centerY - scrollTop - halfH) / halfH;
+      const absU = Math.abs(u);
+
+      if (absU < minDist) {
+        minDist = absU;
+        closestId = metric.id;
       }
 
+      const clampedAbsU = absU > 1 ? 1 : absU;
       const exactX = getArcX(u);
-      const focus = Math.pow(Math.max(0, 1 - absU), 1.35);
+      const focus = Math.pow(1 - clampedAbsU, 1.35);
 
       const dotScale = 0.86 + focus * 0.24;
-      dotEl.style.transform = `translate3d(${(exactX - DOT_HALF_SIZE).toFixed(2)}px, 0, 0) scale(${dotScale.toFixed(3)})`;
+      dotEl.style.transform = `translate3d(${(exactX - DOT_HALF_SIZE).toFixed(1)}px, 0, 0) scale(${dotScale.toFixed(3)})`;
 
-      const cardShiftX = exactX - ARC_MAX_X; // 0 at deepest apex -> -28px at top/bottom
-      const cardScale = 0.88 + focus * 0.12; // 1.00 at center -> 0.88–0.93 above/below
-      const cardOpacity = 0.52 + focus * 0.48; // 1.00 at center -> 0.52–0.68 above/below
-      cardEl.style.transform = `translate3d(${cardShiftX.toFixed(2)}px, 0, 0) scale(${cardScale.toFixed(4)})`;
+      const cardShiftX = exactX - ARC_MAX_X; // 0 at apex -> -28px at top/bottom
+      const cardScale = 0.88 + focus * 0.12;
+      const cardOpacity = 0.52 + focus * 0.48;
+      cardEl.style.transform = `translate3d(${cardShiftX.toFixed(1)}px, 0, 0) scale(${cardScale.toFixed(3)})`;
       cardEl.style.opacity = cardOpacity.toFixed(3);
     }
 
     if (closestId && closestId !== centeredIdRef.current) {
-      const hadPrevious = centeredIdRef.current !== null;
+      const prevId = centeredIdRef.current;
+      if (prevId) {
+        rowRefs.current.get(prevId)?.classList.remove('trail-item--centered');
+      }
+      rowRefs.current.get(closestId)?.classList.add('trail-item--centered');
       centeredIdRef.current = closestId;
-      setCenteredStopId(closestId);
 
       if (
-        hadPrevious &&
+        prevId !== null &&
         userInteractedRef.current &&
         typeof navigator !== 'undefined' &&
         typeof navigator.vibrate === 'function'
       ) {
         try {
-          navigator.vibrate(12);
+          navigator.vibrate(10);
         } catch {
           // Safe no-op on unsupported browsers
         }
       }
     }
-  }, [timelineEntries]);
+  }, [timelineEntries.length, measureArcMetrics]);
 
   // Measure frozen trail stage height so dotted SVG path stays 100% circular (zero stretching)
   useEffect(() => {
@@ -267,7 +269,7 @@ export function PlanScreen({
     if (!stageEl) return;
 
     const updateSize = () => {
-      const h = Math.round(stageEl.getBoundingClientRect().height);
+      const h = Math.round(stageEl.clientHeight);
       if (h >= 160) setStageHeight(h);
     };
     updateSize();
@@ -281,10 +283,11 @@ export function PlanScreen({
     return () => window.removeEventListener('resize', updateSize);
   }, [viewMode, activeEditingItem]);
 
-  // Attach 60fps rAF scroll listener on the dedicated trail scroll viewport
+  // Attach silky rAF scroll listener + ResizeObserver for cached metrics on the trail viewport
   useEffect(() => {
     if (viewMode !== 'trail' || activeEditingItem || timelineEntries.length === 0) return;
     const scroller = scrollRef.current;
+    const listInner = listInnerRef.current;
     if (!scroller) return;
 
     let rafId = 0;
@@ -296,34 +299,53 @@ export function PlanScreen({
       });
     };
 
+    const handleLayoutChange = () => {
+      measureArcMetrics();
+      scheduleSync();
+    };
+
     const markUserInteracted = () => {
       userInteractedRef.current = true;
     };
 
+    measureArcMetrics();
     syncArcPositions();
-    const initRaf = window.requestAnimationFrame(syncArcPositions);
+    const initRaf = window.requestAnimationFrame(() => {
+      measureArcMetrics();
+      syncArcPositions();
+    });
+
+    let listRo: ResizeObserver | null = null;
+    if (listInner && typeof ResizeObserver !== 'undefined') {
+      listRo = new ResizeObserver(handleLayoutChange);
+      listRo.observe(listInner);
+    }
 
     scroller.addEventListener('scroll', scheduleSync, { passive: true });
     scroller.addEventListener('touchstart', markUserInteracted, { passive: true });
     scroller.addEventListener('wheel', markUserInteracted, { passive: true });
     scroller.addEventListener('pointerdown', markUserInteracted, { passive: true });
-    window.addEventListener('resize', scheduleSync, { passive: true });
+    window.addEventListener('resize', handleLayoutChange, { passive: true });
 
     return () => {
       window.cancelAnimationFrame(initRaf);
       if (rafId) window.cancelAnimationFrame(rafId);
+      listRo?.disconnect();
       scroller.removeEventListener('scroll', scheduleSync);
       scroller.removeEventListener('touchstart', markUserInteracted);
       scroller.removeEventListener('wheel', markUserInteracted);
       scroller.removeEventListener('pointerdown', markUserInteracted);
-      window.removeEventListener('resize', scheduleSync);
+      window.removeEventListener('resize', handleLayoutChange);
     };
-  }, [viewMode, activeEditingItem, timelineEntries, stageHeight, syncArcPositions]);
+  }, [viewMode, activeEditingItem, timelineEntries, stageHeight, measureArcMetrics, syncArcPositions]);
 
   // Auto-center the active ("Now") stop when switching day/filter so it opens right at arc apex
   useEffect(() => {
     if (viewMode !== 'trail' || activeEditingItem || timelineEntries.length === 0) return;
     userInteractedRef.current = false;
+    if (centeredIdRef.current) {
+      rowRefs.current.get(centeredIdRef.current)?.classList.remove('trail-item--centered');
+    }
     centeredIdRef.current = null;
 
     const targetEntry =
@@ -345,11 +367,12 @@ export function PlanScreen({
           rowEl.offsetTop - scroller.clientHeight / 2 + rowEl.offsetHeight / 2;
         scroller.scrollTop = Math.max(0, targetTop);
       }
+      measureArcMetrics();
       syncArcPositions();
     });
 
     return () => window.cancelAnimationFrame(raf);
-  }, [selectedDayId, typeFilter, viewMode, activeEditingItem, timelineEntries.length]);
+  }, [selectedDayId, filterKey, viewMode, activeEditingItem, timelineEntries.length]);
 
   const handleAddDay = () => {
     if (!canEdit) {
@@ -589,34 +612,39 @@ export function PlanScreen({
           {canEdit && <DayPill variant="add" onClick={handleAddDay} />}
         </div>
 
-        {/* Category Filter Pills (including Amber Content filter) */}
+        {/* Multi-Select Category Filter Pills (selecting all collapses to All) */}
         <div
           ref={filterRowRef}
           data-fade={filterRowFade.dataFade}
           className="plan-filter-row plan-filter-row--bleed"
-          role="tablist"
+          role="group"
           aria-label="Stop type filter"
         >
-          {(['all', 'transit', 'place', 'activity', 'content'] as const).map((f) => (
-            <button
-              key={f}
-              type="button"
-              className={[
-                'plan-chip',
-                'tactile',
-                typeFilter === f
-                  ? f === 'content'
-                    ? 'plan-chip--content-active'
-                    : 'plan-chip--active'
-                  : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              onClick={() => setTypeFilter(f)}
-            >
-              {f === 'all' ? 'All' : f === 'content' ? 'Content' : formatStopType(f)}
-            </button>
-          ))}
+          {(['all', 'transit', 'place', 'activity', 'content'] as const).map((f) => {
+            const isActive =
+              f === 'all' ? selectedFilters.length === 0 : selectedFilters.includes(f);
+            return (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={isActive}
+                className={[
+                  'plan-chip',
+                  'tactile',
+                  isActive
+                    ? f === 'content'
+                      ? 'plan-chip--content-active'
+                      : 'plan-chip--active'
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => setSelectedFilters((prev) => togglePlanFilter(prev, f))}
+              >
+                {f === 'all' ? 'All' : f === 'content' ? 'Content' : formatStopType(f)}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -625,26 +653,26 @@ export function PlanScreen({
         <div className="plan-table-scroll">
           <EmptyState
             icon={
-              typeFilter === 'content' ? (
+              isContentOnlyFilter ? (
                 <Clapperboard size={22} strokeWidth={1.8} />
               ) : (
                 <CalendarPlus size={22} strokeWidth={1.8} />
               )
             }
             title={
-              typeFilter === 'content'
+              isContentOnlyFilter
                 ? `No content shoots for ${dayLabelStr}`
                 : `No stops for ${dayLabelStr}`
             }
             description={
-              typeFilter === 'content'
+              isContentOnlyFilter
                 ? 'Enable "Show in Plan Rundown" on any idea in Album → Ideas to schedule it here.'
                 : canEdit
                   ? 'Tap the floating + button to add a place, transit leg, or group activity.'
                   : 'No stops planned for this day yet.'
             }
             action={
-              typeFilter !== 'content' && canEdit ? (
+              !isContentOnlyFilter && canEdit ? (
                 <Button variant="matcha" size="sm" onClick={handleAddNewStop}>
                   Add First Stop
                 </Button>
@@ -677,12 +705,10 @@ export function PlanScreen({
             </svg>
           </div>
 
-          {/* Dedicated Scroll Viewport with Mandatory Center Snap + Magnetic "Tugh" */}
+          {/* Dedicated Scroll Viewport with Silky GPU Arc Motion */}
           <div ref={scrollRef} className="trail-scroll-viewport">
-            <div className="trail-list-inner">
+            <div ref={listInnerRef} className="trail-list-inner">
               {timelineEntries.map((entry) => {
-                const isCentered = centeredStopId === entry.id;
-
                 if (entry.kind === 'idea') {
                   const idea = entry.idea;
                   const isShot = idea.status === 'shot';
@@ -695,7 +721,7 @@ export function PlanScreen({
                         if (el) rowRefs.current.set(idea.id, el);
                         else rowRefs.current.delete(idea.id);
                       }}
-                      className={`trail-item ${isCentered ? 'trail-item--centered' : ''}`}
+                      className="trail-item"
                     >
                       <button
                         ref={(el) => {
@@ -811,7 +837,7 @@ export function PlanScreen({
                       if (el) rowRefs.current.set(stop.id, el);
                       else rowRefs.current.delete(stop.id);
                     }}
-                    className={`trail-item ${isCentered ? 'trail-item--centered' : ''}`}
+                    className="trail-item"
                   >
                     {canEdit ? (
                       <button
@@ -1064,6 +1090,7 @@ export function PlanScreen({
                 }
 
                 const stop = entry.stop;
+                const effStatus = effectiveStatusMap.get(stop.id) ?? stop.status;
                 return (
                   <button
                     key={stop.id}
@@ -1080,8 +1107,8 @@ export function PlanScreen({
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
-                        textDecoration: stop.status === 'done' ? 'line-through' : undefined,
-                        opacity: stop.status === 'done' ? 0.65 : 1,
+                        textDecoration: effStatus === 'done' ? 'line-through' : undefined,
+                        opacity: effStatus === 'done' ? 0.65 : 1,
                       }}
                     >
                       {stop.title}

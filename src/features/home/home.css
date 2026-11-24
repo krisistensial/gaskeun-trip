@@ -8,7 +8,7 @@
   gap: 18px;
 }
 
-/* --- Full-Bleed Immersive First-Screen Editorial Hero --- */
+/* --- Full-Bleed Immersive Editorial Hero (Full-Screen Countdown Reveal + Dynamic Status Bar) --- */
 .home-hero {
   position: relative;
   margin: calc(var(--safe-top) * -1 - 20px) -16px 0;
@@ -23,9 +23,19 @@
   border-radius: 0 0 36px 36px;
 }
 
+.home-hero--fullscreen {
+  min-height: 100dvh;
+  max-height: none;
+  padding-bottom: calc(var(--safe-bottom) + 22px);
+}
+
 @media (min-width: 520px) {
   .home-hero {
     border-radius: 36px;
+  }
+
+  .home-hero--fullscreen {
+    min-height: calc(100dvh - 40px);
   }
 }
 
@@ -42,7 +52,6 @@
   z-index: 2;
   pointer-events: none;
 }
-
 .home-hero--compact {
   min-height: max(300px, 37vh);
   max-height: 390px;
@@ -158,6 +167,36 @@
   font-weight: 500;
   color: var(--text-secondary);
   text-shadow: 0 1px 10px rgba(246, 248, 245, 0.9);
+}
+
+/* Subtle Editorial Scroll Cue at the bottom of Full-Screen Countdown */
+.home-scroll-cue {
+  align-self: center;
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--brand-forest);
+  box-shadow: 0 6px 18px -8px rgba(31, 45, 39, 0.16);
+  transition:
+    opacity var(--dur-normal) ease,
+    transform var(--dur-normal) var(--ease-spring);
+}
+
+.home-scroll-cue--hidden {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
 }
 
 /* --- Large Boxless Editorial Magazine Serif Countdown --- */
