@@ -4,15 +4,18 @@ import type { SharedTrip } from '../types/trip';
 import {
   canEditTrip,
   changeOwnPasscode,
+  getHostReadableCrewEditPin,
   getMemberRoleLabel,
   isHostMember,
   isValidPasscode,
   memberHasPasscode,
   normalizePasscode,
   resetMemberPasscodeByHost,
+  setCrewEditPinByHost,
   setMemberPasscodeByHost,
   setMemberPasscodeInTrip,
   toggleStopDoneStatus,
+  verifyCrewEditPin,
   verifyMemberPasscode,
 } from './permissions';
 
@@ -117,5 +120,39 @@ describe('Per-Member 4-Digit Passcode Guard', () => {
     const hostReset = resetMemberPasscodeByHost(hostSet.trip, 'm-kris', 'm-dora');
     expect(hostReset.ok).toBe(true);
     expect(hostReset.trip.members.find((m) => m.id === 'm-dora')?.passcode).toBeUndefined();
+  });
+});
+
+describe('Host-Customizable Shared Crew Editing PIN', () => {
+  it('verifies legacy hashed PIN, lets only Host update it, and rejects the old PIN immediately', async () => {
+    // Legacy pilot trip without explicit crewEditPin falls back to crewPinHash
+    expect(await verifyCrewEditPin(pilotTrip, '1234')).toBe(true);
+    expect(await verifyCrewEditPin(pilotTrip, '9999')).toBe(false);
+
+    // Non-host (Viewer, designated Editor, or Guest) cannot change Crew Editing PIN
+    const viewerAttempt = setCrewEditPinByHost(pilotTrip, 'm-rani', '7890');
+    expect(viewerAttempt.ok).toBe(false);
+    expect(viewerAttempt.trip.crewEditPin).toBeUndefined();
+
+    const withRaniEditor: SharedTrip = { ...pilotTrip, editorMemberIds: ['m-kris', 'm-rani'] };
+    const editorAttempt = setCrewEditPinByHost(withRaniEditor, 'm-rani', '7890');
+    expect(editorAttempt.ok).toBe(false);
+
+    const guestAttempt = setCrewEditPinByHost(pilotTrip, 'guest', '7890');
+    expect(guestAttempt.ok).toBe(false);
+
+    // Invalid 4-digit formats are rejected even for Host
+    expect(setCrewEditPinByHost(pilotTrip, 'm-kris', '123').ok).toBe(false);
+    expect(setCrewEditPinByHost(pilotTrip, 'm-kris', 'abcd').ok).toBe(false);
+
+    // Host updates Crew Editing PIN -> synced in Layer-1 trip payload
+    const updated = setCrewEditPinByHost(pilotTrip, 'm-kris', '7890');
+    expect(updated.ok).toBe(true);
+    expect(updated.trip.crewEditPin).toBe('7890');
+    expect(getHostReadableCrewEditPin(updated.trip)).toBe('7890');
+
+    // Old PIN is immediately rejected and new PIN unlocks cleanly
+    expect(await verifyCrewEditPin(updated.trip, '1234')).toBe(false);
+    expect(await verifyCrewEditPin(updated.trip, '7890')).toBe(true);
   });
 });

@@ -1,4 +1,5 @@
 import type { PlanItemStatus, SharedTrip, TripMember } from '../types/trip';
+import { verifyPin } from './tripFactory';
 
 export type TripAccessRole = 'Host' | 'Editor' | 'Viewer';
 
@@ -183,4 +184,70 @@ export function resetMemberPasscodeByHost(
     ok: true,
     trip: setMemberPasscodeInTrip(trip, targetMemberId, undefined),
   };
+}
+
+/* ==========================================================================
+   Shared Crew Editing PIN (Host-Customizable, Synced in Layer 1)
+   ========================================================================== */
+
+const LEGACY_PILOT_PIN_HASH =
+  '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4';
+
+/**
+ * Verifies a 4-digit Crew Editing PIN against the trip's synced `crewEditPin`
+ * when configured, falling back to `crewPinHash` for legacy trips.
+ * Once the Host sets a custom `crewEditPin`, any older PIN is immediately rejected.
+ */
+export async function verifyCrewEditPin(
+  trip: Pick<SharedTrip, 'crewPinHash' | 'crewEditPin'>,
+  inputPin: string,
+): Promise<boolean> {
+  const clean = inputPin.trim();
+  if (!isValidPasscode(clean)) return false;
+  if (isValidPasscode(trip.crewEditPin)) {
+    return clean === trip.crewEditPin!.trim();
+  }
+  return verifyPin(clean, trip.crewPinHash);
+}
+
+/**
+ * Host-only update for the shared 4-digit Crew Editing PIN.
+ * Stores `crewEditPin` inside Layer-1 `SharedTrip` so it syncs cleanly across all devices
+ * while keeping `crewPinHash` compatible with existing Supabase RPC row hashes.
+ */
+export function setCrewEditPinByHost(
+  trip: SharedTrip,
+  actorMemberId: string | null,
+  newPin: string,
+): PasscodeActionResult {
+  if (!isHostMember(trip, actorMemberId)) {
+    return { ok: false, trip, error: 'Only the trip host can change the Crew Editing PIN' };
+  }
+  const clean = newPin.trim();
+  if (!isValidPasscode(clean)) {
+    return { ok: false, trip, error: 'Crew Editing PIN must be 4 digits' };
+  }
+  return {
+    ok: true,
+    trip: {
+      ...trip,
+      crewEditPin: clean,
+    },
+  };
+}
+
+/**
+ * Returns the readable 4-digit Crew Editing PIN strictly for the Host-only reveal toggle
+ * inside `Crew Access & Editors`. Never call or expose this in non-host UI.
+ */
+export function getHostReadableCrewEditPin(
+  trip: Pick<SharedTrip, 'crewPinHash' | 'crewEditPin'>,
+): string | null {
+  if (isValidPasscode(trip.crewEditPin)) {
+    return trip.crewEditPin!.trim();
+  }
+  if (trip.crewPinHash === LEGACY_PILOT_PIN_HASH) {
+    return '1234';
+  }
+  return null;
 }

@@ -151,6 +151,7 @@ export async function buildNewTrip(input: CreateTripInput): Promise<SharedTrip> 
     endDate: input.endDate,
     departureAt: `${input.startDate}T${startTime}:00+07:00`,
     crewPinHash,
+    crewEditPin: input.crewPin.trim(),
     editorMemberIds: [creatorId],
     albumUrl: '',
     financeConfig: {

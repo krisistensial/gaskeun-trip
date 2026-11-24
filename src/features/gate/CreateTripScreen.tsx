@@ -186,7 +186,7 @@ export function CreateTripScreen({
                 type="password"
                 inputMode="numeric"
                 maxLength={4}
-                placeholder="1234"
+                placeholder="••••"
                 value={crewPin}
                 onChange={(e) => setCrewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
               />

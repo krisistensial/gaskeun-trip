@@ -229,6 +229,8 @@ export interface SharedTrip {
   endDate: string;
   departureAt: string; // ISO with timezone offset
   crewPinHash: string;
+  /** Host-customizable 4-digit Crew Editing PIN synced in Layer 1 (never leaked in non-host UI) */
+  crewEditPin?: string;
   /** Host-designated editors allowed to edit shared trip data without PIN */
   editorMemberIds?: string[];
   /** Shared Home Hero cover photo URL (Layer 1 — synced across all crew devices via Supabase) */

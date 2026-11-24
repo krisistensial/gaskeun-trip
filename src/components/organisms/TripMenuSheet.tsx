@@ -24,6 +24,7 @@ import { PhotoCropperSheet } from './PhotoCropperSheet';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import {
   changeOwnPasscode,
+  getHostReadableCrewEditPin,
   isValidPasscode,
   memberHasPasscode,
   normalizePasscode,
@@ -53,6 +54,7 @@ export interface TripMenuSheetProps {
   onPhaseChange: (phase: HomePhase) => void;
   onUpdateActiveAvatar: (avatarDataUrl: string) => void;
   onSetMemberPasscode: (memberId: string, passcode: string | undefined, toastMsg?: string) => void;
+  onUpdateCrewEditPin: (newPin: string) => void;
   onToggleEditorMember: (memberId: string) => void;
   onRequestUnlock: () => void;
   onLockEditing: () => void;
@@ -83,6 +85,7 @@ export function TripMenuSheet({
   onPhaseChange,
   onUpdateActiveAvatar,
   onSetMemberPasscode,
+  onUpdateCrewEditPin,
   onToggleEditorMember,
   onRequestUnlock,
   onLockEditing,
@@ -114,6 +117,11 @@ export function TripMenuSheet({
   const [hostShowPin, setHostShowPin] = useState(false);
   const [confirmResetMember, setConfirmResetMember] = useState<TripMember | null>(null);
 
+  // Host-only Shared Crew Editing PIN state
+  const [revealCrewEditPin, setRevealCrewEditPin] = useState(false);
+  const [crewEditPinInput, setCrewEditPinInput] = useState('');
+  const [showCrewEditPinInput, setShowCrewEditPinInput] = useState(false);
+
   const resetLocalPanels = () => {
     setShowEditorsList(false);
     setShowMyPasscode(false);
@@ -124,6 +132,9 @@ export function TripMenuSheet({
     setHostPinTargetId(null);
     setHostPinValue('');
     setConfirmResetMember(null);
+    setRevealCrewEditPin(false);
+    setCrewEditPinInput('');
+    setShowCrewEditPinInput(false);
   };
 
   const handleCroppedAvatar = async (cropped: CroppedImageResult) => {
@@ -182,6 +193,16 @@ export function TripMenuSheet({
     setHostPinValue('');
     setHostShowPin(false);
   };
+
+  const handleHostSaveCrewEditPin = (e: FormEvent) => {
+    e.preventDefault();
+    if (!isHost || !isValidPasscode(crewEditPinInput)) return;
+    onUpdateCrewEditPin(crewEditPinInput);
+    setCrewEditPinInput('');
+    setShowCrewEditPinInput(false);
+  };
+
+  const hostReadableCrewEditPin = isHost ? getHostReadableCrewEditPin(trip) : null;
 
   const editorIds = new Set(trip.editorMemberIds ?? []);
   const cloudConfigured = isCloudSyncConfigured();
@@ -543,6 +564,70 @@ export function TripMenuSheet({
 
             {showEditorsList && (
               <div className="menu-crew-panel">
+                {/* Host-Only Shared Crew Editing PIN Card */}
+                <form className="menu-crew-pin-card" onSubmit={handleHostSaveCrewEditPin}>
+                  <div className="menu-crew-pin-head">
+                    <div>
+                      <div className="menu-crew-pin-title">Crew Editing PIN</div>
+                      <div className="menu-crew-pin-sub">
+                        4-digit code to unlock shared editing
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="menu-crew-pin-badge tactile"
+                      aria-label={revealCrewEditPin ? 'Hide Crew Editing PIN' : 'Show Crew Editing PIN'}
+                      onClick={() => setRevealCrewEditPin((v) => !v)}
+                    >
+                      <span className="menu-crew-pin-digits">
+                        {revealCrewEditPin ? hostReadableCrewEditPin ?? 'Custom' : '••••'}
+                      </span>
+                      {revealCrewEditPin ? (
+                        <EyeOff size={13} strokeWidth={2} />
+                      ) : (
+                        <Eye size={13} strokeWidth={2} />
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="menu-host-pin-inline">
+                    <div className="menu-pin-shell menu-pin-shell--compact">
+                      <input
+                        id="host-crew-edit-pin"
+                        type={showCrewEditPinInput ? 'text' : 'password'}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        placeholder="••••"
+                        aria-label="New 4-digit Crew Editing PIN"
+                        value={crewEditPinInput}
+                        className="menu-pin-input menu-pin-input--compact"
+                        onChange={(e) => setCrewEditPinInput(normalizePasscode(e.target.value))}
+                      />
+                      <button
+                        type="button"
+                        className="menu-pin-eye"
+                        aria-label={showCrewEditPinInput ? 'Hide new PIN' : 'Show new PIN'}
+                        onClick={() => setShowCrewEditPinInput((s) => !s)}
+                      >
+                        {showCrewEditPinInput ? (
+                          <EyeOff size={14} strokeWidth={1.9} />
+                        ) : (
+                          <Eye size={14} strokeWidth={1.9} />
+                        )}
+                      </button>
+                    </div>
+                    <Button
+                      type="submit"
+                      variant="matcha"
+                      size="sm"
+                      disabled={crewEditPinInput.length < 4}
+                    >
+                      Save PIN
+                    </Button>
+                  </div>
+                </form>
+
                 {trip.members.map((m) => {
                   const isCreator = Boolean(m.isCreator);
                   const isEd = isCreator || editorIds.has(m.id);

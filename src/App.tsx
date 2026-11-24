@@ -34,6 +34,7 @@ import {
   canEditTrip,
   getMemberRoleLabel,
   isHostMember,
+  setCrewEditPinByHost,
   setMemberPasscodeInTrip,
 } from './services/permissions';
 import type { CroppedImageResult } from './services/photoCrop';
@@ -495,6 +496,21 @@ export default function App() {
     );
   };
 
+  const handleUpdateCrewEditPin = (newPin: string) => {
+    const check = setCrewEditPinByHost(activeTrip, activeMemberId, newPin);
+    if (!check.ok) {
+      showToast(check.error || 'Could not update Crew Editing PIN', 'error');
+      return;
+    }
+    handleUpdateTrip(
+      (prev) => {
+        const res = setCrewEditPinByHost(prev, activeMemberId, newPin);
+        return res.ok ? res.trip : prev;
+      },
+      'Crew Editing PIN updated',
+    );
+  };
+
   const handleToggleEditorMember = (memberId: string) => {
     handleUpdateTrip((prev) => {
       const hostIds = prev.members.filter((m) => m.isCreator).map((m) => m.id);
@@ -859,6 +875,7 @@ export default function App() {
             }
           }}
           onSetMemberPasscode={handleSetMemberPasscode}
+          onUpdateCrewEditPin={handleUpdateCrewEditPin}
           onToggleEditorMember={handleToggleEditorMember}
           onRequestUnlock={() => requestUnlockPin()}
           onLockEditing={() => {
@@ -910,8 +927,7 @@ export default function App() {
 
         <PinUnlockSheet
           open={pinSheetOpen}
-          tripCode={activeTrip.code}
-          expectedHash={activeTrip.crewPinHash}
+          trip={activeTrip}
           onUnlocked={() => {
             const codeUpper = activeTrip.code.toUpperCase();
             const nextUnlocked = Array.from(new Set([...pinUnlockedCodes, codeUpper]));
