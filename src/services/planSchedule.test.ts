@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanItem, TripDay } from '../types/trip';
-import { resolvePlanLiveState } from './planSchedule';
+import {
+  getGoogleMapsRouteUrl,
+  hasGoogleMapsRoute,
+  resolvePlanLiveState,
+} from './planSchedule';
 
 const DAYS: TripDay[] = [
   { id: 'day-1', date: '2027-02-11', dayLabel: 'Thu', dateNum: '11', city: 'Solo' },
@@ -167,5 +171,30 @@ describe('Real-time Plan schedule resolver (resolvePlanLiveState)', () => {
     expect(preview.activeStopId).toBe('it-1');
     expect(preview.stopStatuses.get('it-1')).toBe('active');
     expect(preview.stopStatuses.get('it-7')).toBe('upcoming');
+  });
+});
+
+describe('Google Maps Route URL detection (hasGoogleMapsRoute)', () => {
+  it('returns true for valid http/https Google Maps URLs and false for empty, whitespace, undefined, or non-URL values', () => {
+    expect(hasGoogleMapsRoute({ mapsUrl: 'https://maps.app.goo.gl/goa-maria-ganjuran' })).toBe(
+      true,
+    );
+    expect(
+      hasGoogleMapsRoute({ mapsUrl: '  https://www.google.com/maps/place/Solo  ' }),
+    ).toBe(true);
+    expect(hasGoogleMapsRoute({ mapsUrl: 'http://maps.google.com/?q=-7.79,110.36' })).toBe(true);
+    expect(
+      getGoogleMapsRouteUrl({ mapsUrl: '  https://maps.app.goo.gl/purwosari-station  ' }),
+    ).toBe('https://maps.app.goo.gl/purwosari-station');
+
+    // Empty, whitespace, undefined, null, or invalid non-http(s) strings -> false
+    expect(hasGoogleMapsRoute(undefined)).toBe(false);
+    expect(hasGoogleMapsRoute(null)).toBe(false);
+    expect(hasGoogleMapsRoute({})).toBe(false);
+    expect(hasGoogleMapsRoute({ mapsUrl: '' })).toBe(false);
+    expect(hasGoogleMapsRoute({ mapsUrl: '   ' })).toBe(false);
+    expect(hasGoogleMapsRoute({ mapsUrl: 'maps.app.goo.gl/no-scheme' })).toBe(false);
+    expect(hasGoogleMapsRoute({ mapsUrl: 'javascript:alert(1)' })).toBe(false);
+    expect(hasGoogleMapsRoute({ mapsUrl: 'not a url' })).toBe(false);
   });
 });

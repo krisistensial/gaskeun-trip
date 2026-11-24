@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { ArrowUpRight, MapPin, Navigation, WifiOff } from 'lucide-react';
 import { Badge, Button, CornerOrb, GlassCard } from '../../components/atoms';
+import { getGoogleMapsRouteUrl, hasGoogleMapsRoute } from '../../services/planSchedule';
 import { normalizeExternalUrl } from '../../services/planUtils';
 import type { PlanItem, RouteTarget } from '../../types/trip';
 import './plan.css';
@@ -178,15 +179,29 @@ export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewP
       ? `https://www.google.com/maps/search/?api=1&query=${focusedStop.coords[0]},${focusedStop.coords[1]}`
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(target.address || target.title)}`);
 
-  // Crisp SVG Schematic Trail coordinates for Offline / Tile-Error fallback
+  // Crisp 100% Local Vector SVG Schematic Trail for Offline / Tile-Error resilience
+  // Renders all stops cleanly (single curved trail up to 5 stops, serpentine 2-row path for 6+ stops)
   const schematicNodes = useMemo(() => {
-    const visible = stops.slice(0, 6);
-    const count = visible.length;
-    return visible.map((stop, idx) => {
-      const t = count <= 1 ? 0.5 : idx / (count - 1);
-      const x = 44 + t * 272;
-      const y = count <= 1 ? 112 : 148 - Math.sin(t * Math.PI) * 74 + (idx % 2 === 0 ? 10 : -10);
-      return { stop, idx, x, y };
+    const count = stops.length;
+    if (count <= 5) {
+      return stops.map((stop, idx) => {
+        const t = count <= 1 ? 0.5 : idx / (count - 1);
+        const x = 44 + t * 272;
+        const y = count <= 1 ? 112 : 144 - Math.sin(t * Math.PI) * 68 + (idx % 2 === 0 ? 8 : -8);
+        return { stop, idx, x, y };
+      });
+    }
+    const topCount = Math.ceil(count / 2);
+    const bottomCount = count - topCount;
+    return stops.map((stop, idx) => {
+      if (idx < topCount) {
+        const t = topCount <= 1 ? 0.5 : idx / (topCount - 1);
+        return { stop, idx, x: 42 + t * 276, y: 60 };
+      }
+      const bIdx = idx - topCount;
+      // Serpentine right-to-left on bottom row so connector flows naturally
+      const t = bottomCount <= 1 ? 0.5 : 1 - bIdx / (bottomCount - 1);
+      return { stop, idx, x: 42 + t * 276, y: 158 };
     });
   }, [stops]);
 
@@ -266,41 +281,50 @@ export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewP
               />
             )}
 
-            {schematicNodes.map(({ stop, idx, x, y }) => (
-              <g key={stop.id}>
-                {stop.isFocused && <circle cx={x} cy={y} r="19" fill="#2B946B" opacity="0.18" />}
-                <circle
-                  cx={x}
-                  cy={y}
-                  r={stop.isFocused ? 13 : 10}
-                  fill={stop.isFocused ? '#2B946B' : '#4A7468'}
-                  stroke="#FFFFFF"
-                  strokeWidth="2.5"
-                />
-                <text
-                  x={x}
-                  y={y + 4}
-                  textAnchor="middle"
-                  fill="#FFFFFF"
-                  fontSize={stop.isFocused ? '11' : '10'}
-                  fontWeight="700"
-                  fontFamily="Fredoka, sans-serif"
+            {schematicNodes.map(({ stop, idx, x, y }) => {
+              const planStop = target.dayItems?.find((it) => it.id === stop.id);
+              return (
+                <g
+                  key={stop.id}
+                  style={planStop && onSelectPlanItem ? { cursor: 'pointer' } : undefined}
+                  onClick={() => {
+                    if (planStop && onSelectPlanItem) onSelectPlanItem(planStop);
+                  }}
                 >
-                  {idx + 1}
-                </text>
-                <text
-                  x={x}
-                  y={y + (stop.isFocused ? 27 : 23)}
-                  textAnchor="middle"
-                  fill="#182420"
-                  fontSize="9.5"
-                  fontWeight="600"
-                  fontFamily="Plus Jakarta Sans, sans-serif"
-                >
-                  {stop.title.length > 14 ? `${stop.title.slice(0, 13)}…` : stop.title}
-                </text>
-              </g>
-            ))}
+                  {stop.isFocused && <circle cx={x} cy={y} r="19" fill="#2B946B" opacity="0.18" />}
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={stop.isFocused ? 13 : 10}
+                    fill={stop.isFocused ? '#2B946B' : '#4A7468'}
+                    stroke="#FFFFFF"
+                    strokeWidth="2.5"
+                  />
+                  <text
+                    x={x}
+                    y={y + 4}
+                    textAnchor="middle"
+                    fill="#FFFFFF"
+                    fontSize={stop.isFocused ? '11' : '10'}
+                    fontWeight="700"
+                    fontFamily="Fredoka, sans-serif"
+                  >
+                    {idx + 1}
+                  </text>
+                  <text
+                    x={x}
+                    y={y + (stop.isFocused ? 27 : 23)}
+                    textAnchor="middle"
+                    fill="#182420"
+                    fontSize="9.5"
+                    fontWeight="600"
+                    fontFamily="Plus Jakarta Sans, sans-serif"
+                  >
+                    {stop.title.length > 13 ? `${stop.title.slice(0, 12)}…` : stop.title}
+                  </text>
+                </g>
+              );
+            })}
           </svg>
         </div>
       ) : (
@@ -402,14 +426,14 @@ export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewP
                     </div>
                   </div>
                 </div>
-                {stop.mapsUrl && (
+                {hasGoogleMapsRoute(stop) && (
                   <Button
                     variant="glass"
                     size="sm"
                     rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
                     onClick={(e) => {
                       e.stopPropagation();
-                      const url = normalizeExternalUrl(stop.mapsUrl);
+                      const url = getGoogleMapsRouteUrl(stop);
                       if (url) window.open(url, '_blank', 'noopener,noreferrer');
                     }}
                   >

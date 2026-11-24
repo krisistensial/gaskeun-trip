@@ -60,6 +60,37 @@ export function sanitizeStopStatus(raw: unknown): PlanItemStatus {
 }
 
 /**
+ * Extracts a valid `http://` or `https://` Google Maps / route URL from a stop
+ * (returns `null` if missing, whitespace-only, or not a valid HTTP(S) URL).
+ */
+export function getGoogleMapsRouteUrl(
+  stop?: Pick<PlanItem, 'mapsUrl'> | null,
+): string | null {
+  const raw = stop?.mapsUrl;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed || !/^https?:\/\//i.test(trimmed)) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (!parsed.hostname) return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns `true` ONLY when a stop has a non-empty, valid `http://` or `https://`
+ * Google Maps URL configured in `stop.mapsUrl`.
+ */
+export function hasGoogleMapsRoute(
+  stop?: Pick<PlanItem, 'mapsUrl'> | null,
+): boolean {
+  return getGoogleMapsRouteUrl(stop) !== null;
+}
+
+/**
  * Pure real-time schedule resolver for the `Plan` & `Home` views.
  *
  * Accepts either:

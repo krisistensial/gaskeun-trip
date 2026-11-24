@@ -21,6 +21,7 @@ import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet'
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import type { CroppedImageResult } from '../../services/photoCrop';
+import { getGoogleMapsRouteUrl, hasGoogleMapsRoute } from '../../services/planSchedule';
 import { buildSavedPlanItem, isClosedOnDate, isValidMapsUrl } from '../../services/planUtils';
 import type {
   PlanItem,
@@ -118,7 +119,7 @@ export interface PlanDetailEditScreenProps {
   dayItems: PlanItem[];
   isNew: boolean;
   canEdit: boolean;
-  onOpenRoute: (target: RouteTarget) => void;
+  onOpenRoute?: (target: RouteTarget) => void;
   onQuickPersistNotesHtml?: (itemId: string, notesHtml: string) => void;
   onQuickPersistCover?: (itemId: string, coverUrl: string | undefined) => void;
   onNotify?: (msg: string, tone?: 'success' | 'info' | 'error') => void;
@@ -132,10 +133,8 @@ export function PlanDetailEditScreen({
   uploaderName,
   item,
   days,
-  dayItems,
   isNew,
   canEdit,
-  onOpenRoute,
   onQuickPersistNotesHtml,
   onQuickPersistCover,
   onNotify,
@@ -382,29 +381,18 @@ export function PlanDetailEditScreen({
 
   return (
     <section className="detail-root" aria-label="Plan stop detail and editor">
-      {/* Clean Header Row: Back Orb Left + Route Right */}
+      {/* Clean Header Row: Back Orb Left + Conditional Google Maps Route Right */}
       <div className="detail-nav">
         <CornerOrb kind="back" ariaLabel="Back to plan" onClick={onBack} />
-        {(draft.type === 'place' || draft.type === 'transit') && (
+        {hasGoogleMapsRoute(draft) && (
           <Button
             variant="matcha"
             size="sm"
             rightIcon={<ArrowUpRight size={14} strokeWidth={2} />}
-            onClick={() =>
-              onOpenRoute({
-                title: draft.title || 'Selected Stop',
-                subtitle: draft.locationHint,
-                address: draft.address,
-                parkingNote: draft.parkingNote,
-                mapsUrl: draft.mapsUrl,
-                coords: draft.coords,
-                dayLabel: selectedDay?.isIdeas
-                  ? 'Ideas'
-                  : `${selectedDay?.dayLabel ?? ''} ${selectedDay?.dateNum ?? ''}`.trim(),
-                dayItems,
-                focusedItemId: draft.id,
-              })
-            }
+            onClick={() => {
+              const url = getGoogleMapsRouteUrl(draft);
+              if (url) window.open(url, '_blank', 'noopener,noreferrer');
+            }}
           >
             Route
           </Button>

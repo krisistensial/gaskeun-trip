@@ -34,6 +34,28 @@
   gap: 10px;
 }
 
+.plan-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.plan-map-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.25px solid rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: var(--brand-matcha);
+  box-shadow: 0 8px 20px -10px rgba(31, 45, 39, 0.16);
+}
+
 .plan-title {
   margin: 0;
   font-family: var(--font-display);
@@ -47,6 +69,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  height: 38px;
   padding: 3px;
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.72);

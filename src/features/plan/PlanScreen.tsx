@@ -6,6 +6,7 @@ import {
   Check,
   Clapperboard,
   FileSpreadsheet,
+  Map as MapIcon,
 } from 'lucide-react';
 import {
   Badge,
@@ -28,7 +29,11 @@ import {
 import { exportTripToExcel } from '../../services/excelExporter';
 import { formatCompactIDR } from '../../services/ledger';
 import { toggleStopDoneStatus } from '../../services/permissions';
-import { resolvePlanLiveState } from '../../services/planSchedule';
+import {
+  getGoogleMapsRouteUrl,
+  hasGoogleMapsRoute,
+  resolvePlanLiveState,
+} from '../../services/planSchedule';
 import { isClosedOnDate } from '../../services/planUtils';
 import type {
   ContentIdea,
@@ -553,17 +558,35 @@ export function PlanScreen({
     );
   };
 
-  const openStopRoute = (stop: PlanItem) => {
+  const openExternalGoogleMaps = (stop: PlanItem) => {
+    const url = getGoogleMapsRouteUrl(stop);
+    if (!url) return;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const openDayOfflineRouteMap = () => {
+    const fallbackAllStops = trip.itinerary
+      .filter((item) => item.status !== 'idea')
+      .slice()
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const mapStops = allDayItems.length > 0 ? allDayItems : fallbackAllStops;
+    const focused =
+      mapStops.find((s) => effectiveStatusMap.get(s.id) === 'active') ??
+      mapStops.find((s) => effectiveStatusMap.get(s.id) !== 'done') ??
+      mapStops[0];
+
     onOpenRoute({
-      title: stop.title,
-      subtitle: stop.locationHint,
-      address: stop.address,
-      parkingNote: stop.parkingNote,
-      mapsUrl: stop.mapsUrl,
-      coords: stop.coords,
-      dayLabel: dayLabelStr,
-      dayItems: allDayItems,
-      focusedItemId: stop.id,
+      title: focused?.title || `${dayLabelStr || 'Trip'} Route`,
+      subtitle: selectedDay?.city
+        ? `${dayLabelStr} · ${selectedDay.city}`
+        : focused?.locationHint || trip.title,
+      address: focused?.address,
+      parkingNote: focused?.parkingNote,
+      mapsUrl: focused?.mapsUrl,
+      coords: focused?.coords,
+      dayLabel: dayLabelStr || 'Route',
+      dayItems: mapStops,
+      focusedItemId: focused?.id,
     });
   };
 
@@ -594,29 +617,40 @@ export function PlanScreen({
 
   return (
     <div className="plan-root">
-      {/* FROZEN HEADER: Title, Trail|Table Switcher, Vertical Day Pills, Category Filters */}
+      {/* FROZEN HEADER: Title, Offline Route Map Icon + Trail|Table Switcher, Day Pills, Filters */}
       <div className="plan-frozen-header">
         <header className="plan-header">
           <h1 className="plan-title">Plan</h1>
-          <div className="plan-view-switch" role="tablist" aria-label="Plan view mode">
+          <div className="plan-header-actions">
             <button
               type="button"
-              role="tab"
-              aria-selected={viewMode === 'trail'}
-              className={`plan-view-btn ${viewMode === 'trail' ? 'plan-view-btn--active' : ''}`}
-              onClick={() => setViewMode('trail')}
+              className="plan-map-btn tactile"
+              aria-label="Open offline route map"
+              title="Offline route map"
+              onClick={openDayOfflineRouteMap}
             >
-              Trail
+              <MapIcon size={18} strokeWidth={1.9} />
             </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === 'table'}
-              className={`plan-view-btn ${viewMode === 'table' ? 'plan-view-btn--active' : ''}`}
-              onClick={() => setViewMode('table')}
-            >
-              Table
-            </button>
+            <div className="plan-view-switch" role="tablist" aria-label="Plan view mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'trail'}
+                className={`plan-view-btn ${viewMode === 'trail' ? 'plan-view-btn--active' : ''}`}
+                onClick={() => setViewMode('trail')}
+              >
+                Trail
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'table'}
+                className={`plan-view-btn ${viewMode === 'table' ? 'plan-view-btn--active' : ''}`}
+                onClick={() => setViewMode('table')}
+              >
+                Table
+              </button>
+            </div>
           </div>
         </header>
 
@@ -977,7 +1011,7 @@ export function PlanScreen({
                             ) : (
                               <span />
                             )}
-                            {(stop.type === 'place' || stop.type === 'transit') && (
+                            {hasGoogleMapsRoute(stop) && (
                               <Button
                                 variant={showPhoto ? 'glass' : 'matcha'}
                                 size="sm"
@@ -985,7 +1019,7 @@ export function PlanScreen({
                                 rightIcon={<ArrowUpRight size={14} strokeWidth={2} />}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  openStopRoute(stop);
+                                  openExternalGoogleMaps(stop);
                                 }}
                               >
                                 Route
@@ -1028,7 +1062,7 @@ export function PlanScreen({
                               >
                                 Closed
                               </Badge>
-                            ) : stop.type === 'place' || stop.type === 'transit' ? (
+                            ) : hasGoogleMapsRoute(stop) ? (
                               <Button
                                 variant={showPhoto ? 'glass' : 'ghost'}
                                 size="sm"
@@ -1036,7 +1070,7 @@ export function PlanScreen({
                                 rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  openStopRoute(stop);
+                                  openExternalGoogleMaps(stop);
                                 }}
                               >
                                 Route
