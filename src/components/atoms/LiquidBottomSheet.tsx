@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import { triggerFeedback } from '../../services/feedback';
+import { useBackHandler } from '../../services/pwaHistory';
 import { CornerOrb } from './CornerOrb';
 import '../organisms/sheets.css';
 
@@ -26,6 +27,7 @@ export function LiquidBottomSheet({
   children,
 }: LiquidBottomSheetProps) {
   useRegisterOverlay(open);
+  useBackHandler(open, onClose, 'sheet', title);
 
   const wasOpenRef = useRef(false);
   useEffect(() => {

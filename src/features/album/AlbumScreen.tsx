@@ -32,6 +32,7 @@ import { ContentIdeaSheet } from '../../components/organisms/ContentIdeaSheet';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import { useHorizontalScrollFade } from '../../hooks/useHorizontalScrollFade';
+import { useBackHandler } from '../../services/pwaHistory';
 import { formatPlatformLabel } from '../../services/contentIdeas';
 import { triggerFeedback } from '../../services/feedback';
 import {
@@ -113,6 +114,7 @@ export function AlbumScreen({
   const [editingIdea, setEditingIdea] = useState<ContentIdea | null>(null);
 
   useRegisterOverlay(Boolean(lightboxPhoto));
+  useBackHandler(Boolean(lightboxPhoto), () => setLightboxPhoto(null), 'sheet', 'album-lightbox');
 
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);

@@ -35,6 +35,7 @@ import {
   hasGoogleMapsRoute,
   resolvePlanLiveState,
 } from '../../services/planSchedule';
+import { useBackHandler } from '../../services/pwaHistory';
 import { isClosedOnDate } from '../../services/planUtils';
 import type {
   ContentIdea,
@@ -189,6 +190,16 @@ export function PlanScreen({
     : editingStopId
       ? trip.itinerary.find((i) => i.id === editingStopId) ?? null
       : null;
+
+  useBackHandler(
+    Boolean(activeEditingItem),
+    () => {
+      setDraftNewStop(null);
+      setEditingStopId(null);
+    },
+    'view',
+    'plan-detail-edit',
+  );
 
   /**
    * Pre-measures every row's static vertical center inside `.trail-scroll-viewport`

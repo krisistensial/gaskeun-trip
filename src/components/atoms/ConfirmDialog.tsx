@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useRegisterOverlay } from '../../context/OverlayContext';
+import { useBackHandler } from '../../services/pwaHistory';
 import { Button } from './Button';
 import './atoms.css';
 
@@ -25,6 +26,7 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   useRegisterOverlay(open);
+  useBackHandler(open, onCancel, 'sheet', title);
 
   if (!open || typeof document === 'undefined') return null;
 

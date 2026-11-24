@@ -41,6 +41,7 @@ import {
   setMemberPasscodeInTrip,
 } from './services/permissions';
 import type { CroppedImageResult } from './services/photoCrop';
+import { pwaHistory, useBackHandler } from './services/pwaHistory';
 import {
   clearActiveSession,
   filterJoinedTrips,
@@ -167,8 +168,43 @@ export default function App() {
 
   const activeTripRef = useRef<SharedTrip>(activeTrip);
   activeTripRef.current = activeTrip;
+  const activeTabRef = useRef<DockTabId>(activeTab);
+  activeTabRef.current = activeTab;
   const lastAutoPullMsRef = useRef<number>(0);
   const shellRef = useRef<HTMLElement | null>(null);
+
+  // Initialize root history marker (`depth: 0`) so Android/PWA hardware Back exits cleanly only at root
+  useEffect(() => {
+    pwaHistory.initRoot();
+  }, []);
+
+  // Register full-screen sub-views (`RouteMapView`, `CreateTripScreen`, `WhoAreYouScreen`) on the back stack
+  useBackHandler(
+    route === 'hub' && Boolean(activeRouteTarget),
+    () => setActiveRouteTarget(null),
+    'view',
+    'route-map',
+  );
+  useBackHandler(route === 'create', () => setRoute('landing'), 'view', 'create-trip');
+  useBackHandler(route === 'who', () => setRoute('landing'), 'view', 'who-are-you');
+
+  // Clear tab history entries whenever leaving the main Hub so Landing/Gate back stack stays clean
+  useEffect(() => {
+    if (route !== 'hub') {
+      pwaHistory.clearByKind('tab');
+    }
+  }, [route]);
+
+  const handleNavigateTab = useCallback((nextTab: DockTabId) => {
+    const prevTab = activeTabRef.current;
+    if (prevTab === nextTab) return;
+    pwaHistory.push({
+      kind: 'tab',
+      key: nextTab,
+      onBack: () => setActiveTab(prevTab),
+    });
+    setActiveTab(nextTab);
+  }, []);
 
   // Permanently keep the Floating Glass Dock visible for the session once user leaves Home or enters Live Trail View
   useEffect(() => {
@@ -650,6 +686,7 @@ export default function App() {
 
   const handleLeaveTrip = () => {
     clearActiveSession();
+    pwaHistory.clearAll();
     setActiveRouteTarget(null);
     setRoute('landing');
     showToast('Returned to Landing Gate', 'info');
@@ -976,7 +1013,7 @@ export default function App() {
               onOpenMenu={() => setMenuOpen(true)}
               onOpenTripSettings={openTripSettingsGated}
               onSwitchTrip={handleLeaveTrip}
-              onNavigateTab={setActiveTab}
+              onNavigateTab={handleNavigateTab}
               isDockVisible={isDockVisible}
               onRevealDock={() => setHasRevealedDock(true)}
               onUploadCover={(cropped) => void handleUploadCover(cropped)}
@@ -992,7 +1029,7 @@ export default function App() {
           <ExpandingGlassDock
             activeTab={activeTab}
             hidden={dockHiddenForHero}
-            onChange={setActiveTab}
+            onChange={handleNavigateTab}
           />
         )}
 

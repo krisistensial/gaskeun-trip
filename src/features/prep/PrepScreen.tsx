@@ -22,6 +22,7 @@ import {
 } from '../../components/atoms';
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import { triggerFeedback } from '../../services/feedback';
+import { useBackHandler } from '../../services/pwaHistory';
 import type { PrepTask, SharedTrip, TripMember } from '../../types/trip';
 import {
   advanceDeleteVerify,
@@ -101,6 +102,12 @@ export function PrepScreen({
   const [editError, setEditError] = useState<string>('');
 
   useRegisterOverlay(deleteState.stage !== 'idle');
+  useBackHandler(
+    deleteState.stage !== 'idle',
+    () => setDeleteState(cancelDeleteVerify()),
+    'sheet',
+    'prep-delete-dialog',
+  );
 
   const canEditActiveTab = !viewOnlyMode && (tab === 'personal' || canEdit);
 
