@@ -1062,7 +1062,9 @@ export function PlanScreen({
                           variant="clear"
                           padding="md"
                           interactive
-                          className={showPhoto ? 'card-has-photo' : undefined}
+                          className={['trail-card', showPhoto ? 'card-has-photo' : '']
+                            .filter(Boolean)
+                            .join(' ')}
                           onClick={() => setEditingStopId(stop.id)}
                         >
                           {showPhoto && (
@@ -1088,6 +1090,7 @@ export function PlanScreen({
                             {closedCheck.closed ? (
                               <Badge
                                 tone="coral"
+                                className="plan-warning-pill"
                                 icon={<AlertTriangle size={11} strokeWidth={2} />}
                               >
                                 Closed
@@ -1112,8 +1115,10 @@ export function PlanScreen({
                             <p className="trail-upcoming-hint">{stop.locationHint}</p>
                           )}
                           {stop.specialScheduleNote && (
-                            <div style={{ marginTop: 6 }}>
-                              <Badge tone="amber">{stop.specialScheduleNote}</Badge>
+                            <div className="plan-schedule-note-wrap">
+                              <Badge tone="amber" className="plan-warning-pill">
+                                {stop.specialScheduleNote}
+                              </Badge>
                             </div>
                           )}
                         </GlassCard>

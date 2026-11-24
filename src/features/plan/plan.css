@@ -202,6 +202,8 @@
 .trail-item {
   position: relative;
   z-index: 1;
+  min-width: 0;
+  max-width: 100%;
   contain: layout style;
 }
 
@@ -232,9 +234,18 @@
 
 .trail-item__card-wrap {
   margin-left: 62px;
+  min-width: 0;
+  max-width: calc(100% - 62px);
   transform-origin: left center;
   will-change: transform, opacity;
   backface-visibility: hidden;
+}
+
+.trail-item__card-wrap > .gk-glass,
+.trail-card {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 /* True 60–120fps Compositor-Thread Circular Arc via CSS Scroll-Driven Animations
@@ -382,6 +393,8 @@
 }
 
 .trail-past-title {
+  min-width: 0;
+  overflow-wrap: break-word;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
@@ -393,10 +406,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
   margin-bottom: 4px;
 }
 
 .trail-upcoming-meta {
+  min-width: 0;
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -406,6 +421,8 @@
 
 .trail-upcoming-title {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: break-word;
   font-family: var(--font-display);
   font-size: 17px;
   font-weight: 600;
@@ -414,8 +431,50 @@
 
 .trail-upcoming-hint {
   margin: 3px 0 0;
+  min-width: 0;
+  overflow-wrap: break-word;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+/* Wrapped Schedule / Warning Pills inside Plan Cards (never overflow 360px cards) */
+.plan-schedule-note-wrap {
+  margin-top: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.plan-warning-pill,
+.trail-item__card-wrap .gk-badge--amber,
+.trail-item__card-wrap .gk-badge--coral,
+.plan-table-scroll .gk-badge--amber,
+.plan-table-scroll .gk-badge--coral {
+  height: auto;
+  min-height: 24px;
+  max-width: 100%;
+  box-sizing: border-box;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.35;
+  border-radius: 12px;
+  padding: 6px 10px;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.plan-warning-pill > span,
+.trail-item__card-wrap .gk-badge--amber > span,
+.trail-item__card-wrap .gk-badge--coral > span {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.plan-warning-pill > svg,
+.trail-item__card-wrap .gk-badge--coral > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 /* Full-Bleed Background Photo Cards (Identical Dimensions to Non-Photo Cards) */
@@ -727,7 +786,14 @@
   padding: 12px 14px;
   border-bottom: 1px solid var(--hairline);
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   text-align: left;
+}
+
+.plan-table-row > * {
+  min-width: 0;
 }
 
 .plan-table-row:last-child {
