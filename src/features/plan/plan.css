@@ -24,7 +24,7 @@
   flex-direction: column;
   gap: 11px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(74, 116, 104, 0.09);
+  border-bottom: 1px solid rgba(74, 116, 104, 0.12);
 }
 
 .plan-header {
@@ -126,27 +126,12 @@
   color: #FFFFFF;
 }
 
-/* --- 03a Frozen Dotted Circular C-Arc Stage + Silky Mobile Viewport --- */
+/* --- 03a Frozen Dotted Circular C-Arc Stage + True Compositor-Thread Viewport --- */
 .trail-stage {
   position: relative;
   flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
-  /* Pure alpha-mask dissolves scrolling content cleanly at the frozen header with zero white overlay */
-  -webkit-mask-image: linear-gradient(
-    180deg,
-    transparent 0px,
-    #000 18px,
-    #000 calc(100% - 14px),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    180deg,
-    transparent 0px,
-    #000 18px,
-    #000 calc(100% - 14px),
-    transparent 100%
-  );
 }
 
 /* 100% Frozen Dotted Circular Rail — stays pinned while cards & dots glide along it */
@@ -166,7 +151,7 @@
   overflow: visible;
 }
 
-/* Dedicated Vertical Scroll Container with Natural Momentum + Gentle Proximity Snap */
+/* Frictionless Vertical Scroll Container (Zero scroll-snap braking, zero mask-image GPU surface) */
 .trail-scroll-viewport {
   position: relative;
   z-index: 2;
@@ -174,7 +159,6 @@
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior-y: contain;
-  scroll-snap-type: y proximity;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   padding-right: 2px;
@@ -195,11 +179,10 @@
 .trail-item {
   position: relative;
   z-index: 1;
-  scroll-snap-align: center;
   contain: layout style;
 }
 
-/* Dot vertically centered on the card so snapping center places dot directly at arc apex u=0 */
+/* Dot vertically centered on the card so passing viewport center places dot directly at arc apex u=0 */
 .trail-item__dot {
   position: absolute;
   left: 0;
@@ -231,11 +214,112 @@
   backface-visibility: hidden;
 }
 
-/* Mobile-GPU-friendly glass surface inside high-frequency scrolling trail */
+/* True 60–120fps Compositor-Thread Circular Arc via CSS Scroll-Driven Animations
+   Sampled directly from arcMath.ts (ARC_BASE_X=12, ARC_MAX_X=40, DOT_HALF_SIZE=14)
+   so dots hug the dotted SVG circle with zero JS scroll-event desync on Android Chrome. */
+@keyframes trail-dot-arc-motion {
+  0%,
+  100% {
+    transform: translate3d(-2px, 0, 0) scale(0.86);
+  }
+  10%,
+  90% {
+    transform: translate3d(8.2px, 0, 0) scale(0.89);
+  }
+  20%,
+  80% {
+    transform: translate3d(16px, 0, 0) scale(0.93);
+  }
+  30%,
+  70% {
+    transform: translate3d(21.6px, 0, 0) scale(0.98);
+  }
+  40%,
+  60% {
+    transform: translate3d(24.9px, 0, 0) scale(1.04);
+  }
+  50% {
+    transform: translate3d(26px, 0, 0) scale(1.1);
+  }
+}
+
+@keyframes trail-arc-motion {
+  0%,
+  100% {
+    transform: translate3d(-28px, 0, 0) scale(0.88);
+    opacity: 0.52;
+  }
+  10%,
+  90% {
+    transform: translate3d(-17.8px, 0, 0) scale(0.895);
+    opacity: 0.58;
+  }
+  20%,
+  80% {
+    transform: translate3d(-10px, 0, 0) scale(0.915);
+    opacity: 0.66;
+  }
+  30%,
+  70% {
+    transform: translate3d(-4.4px, 0, 0) scale(0.94);
+    opacity: 0.76;
+  }
+  40%,
+  60% {
+    transform: translate3d(-1.1px, 0, 0) scale(0.97);
+    opacity: 0.88;
+  }
+  50% {
+    transform: translate3d(0px, 0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+@supports (animation-timeline: view()) {
+  .trail-item__dot {
+    animation: trail-dot-arc-motion linear both;
+    animation-timeline: view(block);
+    animation-range: entry 0% exit 100%;
+  }
+
+  .trail-item__card-wrap {
+    animation: trail-arc-motion linear both;
+    animation-timeline: view(block);
+    animation-range: entry 0% exit 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trail-item__dot {
+    animation: none !important;
+    transform: translate3d(26px, 0, 0);
+  }
+
+  .trail-item__card-wrap {
+    animation: none !important;
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* Zero backdrop-filter on moving cards inside scroll viewport so mobile GPUs never stall */
 .trail-scroll-viewport .gk-glass:not(.card-has-photo):not(.plan-content-card--photo) {
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.trail-scroll-viewport .card-photo-route-btn,
+.trail-scroll-viewport .card-has-photo .gk-badge--matcha,
+.trail-scroll-viewport .card-has-photo .gk-badge--mint,
+.trail-scroll-viewport .plan-content-card--photo .plan-content-watch {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.trail-scroll-viewport .card-photo-route-btn,
+.trail-scroll-viewport .plan-content-card--photo .plan-content-watch {
+  background: rgba(24, 36, 32, 0.56) !important;
 }
 
 .trail-item--centered {
@@ -243,7 +327,7 @@
 }
 
 .trail-item--centered .gk-glass {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.95);
   border-color: var(--glass-spotlight-border);
   box-shadow:
     0 18px 38px -14px rgba(31, 45, 39, 0.2),
@@ -258,10 +342,8 @@
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 14px 0 24px;
+  padding: 12px 0 24px;
   scrollbar-width: none;
-  -webkit-mask-image: linear-gradient(180deg, transparent 0px, #000 14px, #000 100%);
-  mask-image: linear-gradient(180deg, transparent 0px, #000 14px, #000 100%);
 }
 
 .plan-table-scroll::-webkit-scrollbar {

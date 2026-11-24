@@ -46,6 +46,16 @@ import './plan.css';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DOT_HALF_SIZE = 14; // .trail-item__dot is 28x28 -> center offset = 14px
 
+/**
+ * Detects native CSS Scroll-Driven Animations (`animation-timeline: view()`).
+ * When supported (Android Chrome, Chrome Desktop, Edge), 100% of Circular Trail motion
+ * runs on the GPU Compositor Thread with ZERO JS scroll listeners or inline style writes.
+ */
+const SUPPORTS_CSS_SCROLL_ARC =
+  typeof CSS !== 'undefined' &&
+  typeof CSS.supports === 'function' &&
+  CSS.supports('animation-timeline', 'view()');
+
 function formatEstimate(cost?: number): string {
   if (cost === undefined) return '—';
   if (cost === 0) return 'Free';
@@ -283,8 +293,10 @@ export function PlanScreen({
     return () => window.removeEventListener('resize', updateSize);
   }, [viewMode, activeEditingItem]);
 
-  // Attach silky rAF scroll listener + ResizeObserver for cached metrics on the trail viewport
+  // Fallback JS rAF scroll listener ONLY on browsers without CSS `animation-timeline: view()`
+  // (Android Chrome & modern browsers run 100% off-main-thread on the GPU Compositor Thread!)
   useEffect(() => {
+    if (SUPPORTS_CSS_SCROLL_ARC) return;
     if (viewMode !== 'trail' || activeEditingItem || timelineEntries.length === 0) return;
     const scroller = scrollRef.current;
     const listInner = listInnerRef.current;
@@ -367,8 +379,10 @@ export function PlanScreen({
           rowEl.offsetTop - scroller.clientHeight / 2 + rowEl.offsetHeight / 2;
         scroller.scrollTop = Math.max(0, targetTop);
       }
-      measureArcMetrics();
-      syncArcPositions();
+      if (!SUPPORTS_CSS_SCROLL_ARC) {
+        measureArcMetrics();
+        syncArcPositions();
+      }
     });
 
     return () => window.cancelAnimationFrame(raf);
