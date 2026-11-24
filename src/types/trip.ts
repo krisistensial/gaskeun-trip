@@ -97,14 +97,28 @@ export interface TrainCarLayout {
   facingRows: boolean;
 }
 
+/**
+ * Indonesian Right-Hand Drive (RHD) Car Cabin Seating:
+ * - Front row: max 1 person per seat (`frontLeft` Co-Pilot, `frontRight` Driver)
+ * - Middle & Back rows: unlimited passenger arrays
+ */
+export interface CarSeats {
+  frontLeft?: string;
+  frontRight?: string;
+  middle: string[];
+  back: string[];
+}
+
 export interface TransportPod {
   id: string;
   mode: TransportMode;
   label: string;
-  vehicleModel?: string; // e.g. "Vario 125", "Scoopy", "Beat"
+  vehicleModel?: string; // e.g. "Vario 125", "Scoopy", "Innova Zenix"
+  plateNumber?: string;  // Optional vehicle license plate (e.g. "B 1234 XYZ")
   roleNote?: string;     // e.g. "Lead", "Sweep"
   meta?: string;         // legacy display fallback
   trainLayout?: TrainCarLayout;
+  carSeats?: CarSeats;
   slots: TransportSlot[];
 }
 

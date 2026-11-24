@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { StayRoom, TransportPod } from '../types/trip';
+import type { CarSeats, StayRoom, TransportPod } from '../types/trip';
 import {
+  assignCarFrontSeat,
+  assignCarFrontSeatInPods,
   assignMotorbikeMember,
   findMemberBikeAssignment,
+  findMemberCarAssignment,
+  toggleCarRowMember,
+  toggleCarRowMemberInPods,
   toggleStayRoomMember,
 } from './crewSwap';
 
@@ -94,5 +99,118 @@ describe('Crew Motorbike Auto-Swap & Anti-Duplicate Stay Rooms (crewSwap)', () =
     // Tap Kris again in Room 2 -> removed cleanly
     const removed = toggleStayRoomMember(moved, 'r2', 'm-kris');
     expect(removed[1].memberIds).toEqual(['m-rani']);
+  });
+});
+
+describe('Indonesian RHD Car Cabin Seating (assignCarFrontSeat & toggleCarRowMember)', () => {
+  it('assigns and auto-swaps frontRight (Driver) <-> frontLeft without duplicates', () => {
+    const initial: CarSeats = {
+      frontLeft: 'm-anggi',
+      frontRight: 'm-kris',
+      middle: ['m-rani', 'm-dora'],
+      back: ['m-elano'],
+    };
+
+    // Assign Anggi (frontLeft) to frontRight (Driver) -> auto-swaps Kris into frontLeft
+    const swapped = assignCarFrontSeat(initial, 'frontRight', 'm-anggi');
+    expect(swapped.frontRight).toBe('m-anggi');
+    expect(swapped.frontLeft).toBe('m-kris');
+    expect(swapped.middle).toEqual(['m-rani', 'm-dora']);
+    expect(swapped.back).toEqual(['m-elano']);
+
+    // Clear frontLeft cleanly
+    const cleared = assignCarFrontSeat(swapped, 'frontLeft', null);
+    expect(cleared.frontLeft).toBeUndefined();
+    expect(cleared.frontRight).toBe('m-anggi');
+  });
+
+  it('moves a member from middle or back row to frontRight (Driver) without duplicates', () => {
+    const initial: CarSeats = {
+      frontLeft: 'm-anggi',
+      frontRight: 'm-kris',
+      middle: ['m-rani', 'm-dora'],
+      back: ['m-elano', 'm-louis'],
+    };
+
+    // Move Rani from middle -> frontRight (Driver); Kris shifts neatly into middle
+    const fromMiddle = assignCarFrontSeat(initial, 'frontRight', 'm-rani');
+    expect(fromMiddle.frontRight).toBe('m-rani');
+    expect(fromMiddle.middle).toEqual(['m-dora', 'm-kris']);
+    expect(fromMiddle.middle).not.toContain('m-rani');
+
+    // Move Louis from back -> frontRight (Driver); Rani shifts neatly into back
+    const fromBack = assignCarFrontSeat(fromMiddle, 'frontRight', 'm-louis');
+    expect(fromBack.frontRight).toBe('m-louis');
+    expect(fromBack.back).toEqual(['m-elano', 'm-rani']);
+    expect(fromBack.back).not.toContain('m-louis');
+
+    // Assert zero duplicates across the entire cabin
+    const allIds = [
+      fromBack.frontLeft,
+      fromBack.frontRight,
+      ...fromBack.middle,
+      ...fromBack.back,
+    ].filter(Boolean);
+    expect(new Set(allIds).size).toBe(allIds.length);
+  });
+
+  it('supports unlimited passengers in middle and back rows and prevents cross-row/cross-car duplicates', () => {
+    let car: CarSeats = {
+      frontLeft: 'm-anggi',
+      frontRight: 'm-kris',
+      middle: [],
+      back: [],
+    };
+
+    // Add 5 passengers to middle row without any cap
+    for (const id of ['m-rani', 'm-dora', 'm-chika', 'm-mayang', 'm-jason']) {
+      car = toggleCarRowMember(car, 'middle', id);
+    }
+    expect(car.middle).toEqual(['m-rani', 'm-dora', 'm-chika', 'm-mayang', 'm-jason']);
+
+    // Add 4 passengers to back row (including moving Kris out of Driver & Jason out of middle!)
+    for (const id of ['m-elano', 'm-louis', 'm-valen', 'm-kris', 'm-jason']) {
+      car = toggleCarRowMember(car, 'back', id);
+    }
+    expect(car.back).toEqual(['m-elano', 'm-louis', 'm-valen', 'm-kris', 'm-jason']);
+    expect(car.frontRight).toBeUndefined(); // Kris automatically vacated Driver
+    expect(car.middle).not.toContain('m-jason'); // Jason automatically vacated middle
+
+    // Toggling an existing back-row member removes them cleanly
+    car = toggleCarRowMember(car, 'back', 'm-valen');
+    expect(car.back).toEqual(['m-elano', 'm-louis', 'm-kris', 'm-jason']);
+
+    // Cross-car uniqueness across 2 cars
+    const cars: TransportPod[] = [
+      {
+        id: 'car-1',
+        mode: 'car',
+        label: 'Innova 1',
+        carSeats: { frontRight: 'm-kris', frontLeft: 'm-anggi', middle: ['m-rani'], back: [] },
+        slots: [],
+      },
+      {
+        id: 'car-2',
+        mode: 'car',
+        label: 'Innova 2',
+        carSeats: { frontRight: 'm-elano', middle: [], back: [] },
+        slots: [],
+      },
+    ];
+
+    // Move Rani from Car 1 middle -> Car 2 back
+    const movedRow = toggleCarRowMemberInPods(cars, 'car-2', 'back', 'm-rani');
+    expect(movedRow.action).toBe('added');
+    expect(movedRow.movedFromCarLabel).toBe('Innova 1');
+    expect(movedRow.pods[0].carSeats?.middle).toEqual([]);
+    expect(movedRow.pods[1].carSeats?.back).toEqual(['m-rani']);
+    expect(findMemberCarAssignment(movedRow.pods, 'm-rani')?.carLabel).toBe('Innova 2');
+
+    // Swap Car 1 Driver (Kris) into Car 2 Driver (Elano) -> cross-car front swap!
+    const crossSwap = assignCarFrontSeatInPods(movedRow.pods, 'car-2', 'frontRight', 'm-kris');
+    expect(crossSwap.changed).toBe(true);
+    expect(crossSwap.swappedWithId).toBe('m-elano');
+    expect(crossSwap.pods[1].carSeats?.frontRight).toBe('m-kris');
+    expect(crossSwap.pods[0].carSeats?.frontRight).toBe('m-elano');
   });
 });

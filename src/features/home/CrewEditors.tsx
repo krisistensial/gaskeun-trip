@@ -3,6 +3,7 @@ import {
   AlertCircle,
   BedDouble,
   Bike,
+  Car,
   Check,
   ImagePlus,
   Plus,
@@ -19,7 +20,7 @@ import {
   LiquidBottomSheet,
 } from '../../components/atoms';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
-import { toggleStayRoomMember } from '../../services/crewSwap';
+import { normalizeCarSeats, toggleStayRoomMember } from '../../services/crewSwap';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import type {
@@ -595,8 +596,8 @@ export function PodEditorSheet({
   const [vehicleModel, setVehicleModel] = useState(
     initial?.vehicleModel ?? (initial?.mode === 'bike' ? initial?.meta ?? '' : ''),
   );
+  const [plateNumber, setPlateNumber] = useState(initial?.plateNumber ?? '');
   const [roleNote, setRoleNote] = useState(initial?.roleNote ?? '');
-  const [seatCount, setSeatCount] = useState(String(initial?.slots.length ?? 6));
 
   // KAI Train Car Layout Fields
   const [trainFormat, setTrainFormat] = useState<'3-2' | '2-2'>(
@@ -656,25 +657,23 @@ export function PodEditorSheet({
       return;
     }
 
-    // Car pod
-    const count = Math.max(1, Math.min(12, Number(seatCount) || 6));
-    const slots = Array.from({ length: count }, (_, idx) => {
-      const prev = initial?.slots[idx];
-      return (
-        prev ?? {
-          role: idx === 0 ? 'Driver' : `Seat ${idx + 1}`,
-          memberId: null,
-        }
-      );
-    });
+    // Car pod (Indonesian RHD Cabin: Front Left + Driver + Unlimited Middle & Back Rows)
+    const modelClean = vehicleModel.trim();
+    const plateClean = plateNumber.trim().toUpperCase();
+    const roleClean = roleNote.trim();
+    const carSeats = initial
+      ? normalizeCarSeats(initial)
+      : { middle: [], back: [] };
     const pod: TransportPod = {
       id: initial?.id ?? `pod-car-${Date.now().toString(36)}`,
       mode: 'car',
       label: label.trim() || `Car ${existingCount + 1}`,
-      vehicleModel: vehicleModel.trim() || undefined,
-      roleNote: roleNote.trim() || undefined,
-      meta: [roleNote.trim(), vehicleModel.trim()].filter(Boolean).join(' · ') || undefined,
-      slots,
+      vehicleModel: modelClean || undefined,
+      plateNumber: plateClean || undefined,
+      roleNote: roleClean || undefined,
+      meta: [modelClean, plateClean, roleClean].filter(Boolean).join(' · ') || undefined,
+      carSeats,
+      slots: [],
     };
     onSave(pod, isNew);
     onClose();
@@ -795,11 +794,11 @@ export function PodEditorSheet({
 
             {mode === 'car' && (
               <Input
-                id="pod-seats"
-                label="Total Seats"
-                inputMode="numeric"
-                value={seatCount}
-                onChange={(e) => setSeatCount(e.target.value.replace(/\D/g, ''))}
+                id="pod-plate"
+                label="Plate Number (Optional)"
+                placeholder="B 1234 XYZ"
+                value={plateNumber}
+                onChange={(e) => setPlateNumber(e.target.value)}
               />
             )}
           </>
@@ -821,9 +820,9 @@ export function PodEditorSheet({
             variant="matcha"
             size="lg"
             fullWidth
-            leftIcon={<Bike size={16} strokeWidth={2} />}
+            leftIcon={mode === 'car' ? <Car size={16} strokeWidth={2} /> : <Bike size={16} strokeWidth={2} />}
           >
-            {initial ? 'Save Changes' : 'Add Transport Pod'}
+            {initial ? 'Save Changes' : mode === 'car' ? 'Add Car' : 'Add Transport Pod'}
           </Button>
         </div>
       </form>

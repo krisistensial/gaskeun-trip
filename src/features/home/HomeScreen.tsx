@@ -7,6 +7,7 @@ import {
   Bike,
   Camera,
   Car,
+  Check,
   ChevronDown,
   Crown,
   Images,
@@ -27,7 +28,17 @@ import {
 } from '../../components/atoms';
 import type { HomePhase } from '../../components/organisms/TripMenuSheet';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
-import { assignMotorbikeMember, findMemberBikeAssignment } from '../../services/crewSwap';
+import {
+  assignCarFrontSeatInPods,
+  assignMotorbikeMember,
+  findMemberBikeAssignment,
+  findMemberCarAssignment,
+  normalizeCarSeats,
+  removeMemberFromCarSeats,
+  toggleCarRowMemberInPods,
+  type CarBenchRow,
+  type CarFrontSlot,
+} from '../../services/crewSwap';
 import { calculateLedger, formatCompactIDR } from '../../services/ledger';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import { resolvePlanLiveState } from '../../services/planSchedule';
@@ -41,6 +52,7 @@ import type {
   TransportPod,
   TripMember,
 } from '../../types/trip';
+import { CarCabinCard } from './CarCabinCard';
 import {
   CrewMembersSheet,
   PodEditorSheet,
@@ -135,6 +147,14 @@ export function HomeScreen({
     podId: string;
     slotIndex: number;
     label: string;
+  } | null>(null);
+  const [carFrontPicker, setCarFrontPicker] = useState<{
+    podId: string;
+    slot: CarFrontSlot;
+  } | null>(null);
+  const [carRowPicker, setCarRowPicker] = useState<{
+    podId: string;
+    row: CarBenchRow;
   } | null>(null);
   const [showCrewJump, setShowCrewJump] = useState(true);
   const [heroCropFile, setHeroCropFile] = useState<File | null>(null);
@@ -281,6 +301,9 @@ export function HomeScreen({
         members: prev.members.filter((m) => m.id !== memberId),
         transportPods: prev.transportPods.map((pod) => ({
           ...pod,
+          carSeats: pod.mode === 'car'
+            ? removeMemberFromCarSeats(normalizeCarSeats(pod), memberId)
+            : pod.carSeats,
           slots: pod.slots.map((s) => (s.memberId === memberId ? { ...s, memberId: null } : s)),
         })),
         stays: prev.stays.map((st) => ({
@@ -292,6 +315,65 @@ export function HomeScreen({
         })),
       }),
       'Member removed from crew',
+    );
+  };
+
+  const handleAssignCarFrontSeat = (
+    podId: string,
+    slot: CarFrontSlot,
+    memberId: string | null,
+  ) => {
+    const preview = assignCarFrontSeatInPods(trip.transportPods, podId, slot, memberId);
+    if (!preview.changed) return;
+
+    const newName = memberId ? memberById.get(memberId)?.name ?? 'Rider' : '';
+    const prevName = preview.swappedWithId
+      ? memberById.get(preview.swappedWithId)?.name ?? 'Rider'
+      : '';
+    const seatTitle = slot === 'frontRight' ? 'Driver' : 'Front Left';
+
+    let toastMsg = `${seatTitle} updated`;
+    if (!memberId) {
+      toastMsg = `${seatTitle} cleared`;
+    } else if (preview.swappedWithId && prevName) {
+      toastMsg = `Swapped ${newName} ↔ ${prevName}`;
+    } else if (preview.movedFromCarLabel) {
+      toastMsg = `Moved ${newName} from ${preview.movedFromCarLabel}`;
+    } else {
+      toastMsg = `Assigned ${newName} to ${seatTitle}`;
+    }
+
+    onUpdateTrip(
+      (prev) => ({
+        ...prev,
+        transportPods: assignCarFrontSeatInPods(prev.transportPods, podId, slot, memberId).pods,
+      }),
+      toastMsg,
+    );
+  };
+
+  const handleToggleCarBenchMember = (
+    podId: string,
+    row: CarBenchRow,
+    memberId: string,
+  ) => {
+    const preview = toggleCarRowMemberInPods(trip.transportPods, podId, row, memberId);
+    const name = memberById.get(memberId)?.name ?? 'Rider';
+    const rowTitle = row === 'middle' ? 'Middle Row' : 'Back Row';
+
+    const toastMsg =
+      preview.action === 'removed'
+        ? `Removed ${name} from ${rowTitle}`
+        : preview.movedFromCarLabel
+          ? `Moved ${name} from ${preview.movedFromCarLabel} to ${rowTitle}`
+          : `Added ${name} to ${rowTitle}`;
+
+    onUpdateTrip(
+      (prev) => ({
+        ...prev,
+        transportPods: toggleCarRowMemberInPods(prev.transportPods, podId, row, memberId).pods,
+      }),
+      toastMsg,
     );
   };
 
@@ -935,18 +1017,16 @@ export function HomeScreen({
             <TrainFront size={15} strokeWidth={1.8} />
             <span>Train Seats</span>
           </button>
-          {carPods.length > 0 && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={transportFilter === 'car'}
-              className={`mode-chip tactile ${transportFilter === 'car' ? 'mode-chip--active' : ''}`}
-              onClick={() => setTransportFilter('car')}
-            >
-              <Car size={15} strokeWidth={1.8} />
-              <span>Cars ({carPods.length})</span>
-            </button>
-          )}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={transportFilter === 'car'}
+            className={`mode-chip tactile ${transportFilter === 'car' ? 'mode-chip--active' : ''}`}
+            onClick={() => setTransportFilter('car')}
+          >
+            <Car size={15} strokeWidth={1.8} />
+            <span>{carPods.length > 0 ? `Cars (${carPods.length})` : 'Cars'}</span>
+          </button>
         </div>
 
         {/* Bikes List (with Pod Detail Pencil Edit in Edit Mode) */}
@@ -1069,81 +1149,54 @@ export function HomeScreen({
           </div>
         )}
 
-        {/* Car Pods */}
+        {/* Top-Down RHD Car Cabin Seating Cards */}
         {transportFilter === 'car' && (
           <div className="bike-pod-list">
-            {carPods.map((pod) => (
-              <GlassCard key={pod.id} variant="clear" padding="md">
+            {carPods.length === 0 && (
+              <GlassCard variant="clear" padding="md">
                 <div
                   style={{
                     display: 'flex',
-                    alignItems: 'flex-start',
+                    alignItems: 'center',
                     justifyContent: 'space-between',
-                    marginBottom: 10,
+                    gap: 12,
                   }}
                 >
-                  <div>
-                    <div
-                      style={{
-                        fontFamily: 'var(--font-display)',
-                        fontSize: 16,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {pod.label}
-                    </div>
-                    {pod.meta && (
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{pod.meta}</div>
-                    )}
+                  <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                    No cars added yet. Set up a right-hand drive cabin with unlimited middle &amp;
+                    back rows.
                   </div>
-                  {editingCrew && (
+                  {canEdit && (
                     <Button
-                      variant="glass"
+                      variant="matcha"
                       size="sm"
-                      leftIcon={<Pencil size={12} strokeWidth={2} />}
-                      onClick={() => setPodEditor({ open: true, pod })}
+                      leftIcon={<Plus size={14} strokeWidth={2.2} />}
+                      onClick={() => setPodEditor({ open: true, pod: null })}
                     >
-                      Edit
+                      Add Car
                     </Button>
                   )}
                 </div>
-                <div className="train-seat-grid">
-                  {pod.slots.map((slot, idx) => {
-                    const m = slot.memberId ? memberById.get(slot.memberId) : undefined;
-                    return (
-                      <button
-                        key={`${pod.id}-${idx}`}
-                        type="button"
-                        className="train-seat-cell tactile"
-                        onClick={() => {
-                          if (!editingCrew) return;
-                          setSlotPicker({
-                            podId: pod.id,
-                            slotIndex: idx,
-                            label: `${pod.label} · ${slot.role}`,
-                          });
-                        }}
-                      >
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                          <Avatar
-                            initials={m?.initials ?? '?'}
-                            name={m?.name}
-                            src={m?.avatarDataUrl}
-                            size="sm"
-                            bg={m?.avatarBg ?? '#EAEFED'}
-                            color={m?.avatarColor ?? '#546860'}
-                            variant={m?.status === 'tentative' ? 'tentative' : 'solid'}
-                          />
-                          <span style={{ fontSize: 12.5, fontWeight: 600 }}>
-                            {m ? (m.status === 'tentative' ? `${m.name}?` : m.name) : 'Open'}
-                          </span>
-                        </span>
-                        <Badge tone="neutral">{slot.role}</Badge>
-                      </button>
-                    );
-                  })}
-                </div>
               </GlassCard>
+            )}
+            {carPods.map((pod) => (
+              <CarCabinCard
+                key={pod.id}
+                pod={pod}
+                memberById={memberById}
+                canEdit={canEdit}
+                editingCrew={editingCrew}
+                onTapFrontSeat={(slot) =>
+                  requireEdit(() => setCarFrontPicker({ podId: pod.id, slot }))
+                }
+                onTapBenchRow={(row) =>
+                  requireEdit(() => setCarRowPicker({ podId: pod.id, row }))
+                }
+                onRemoveFromBench={(row, memberId) =>
+                  requireEdit(() => handleToggleCarBenchMember(pod.id, row, memberId))
+                }
+                onEditCar={() => requireEdit(() => setPodEditor({ open: true, pod }))}
+              />
             ))}
           </div>
         )}
@@ -1533,6 +1586,184 @@ export function HomeScreen({
                 >
                   <span style={{ color: 'var(--text-muted)' }}>Clear slot</span>
                 </button>
+              </div>
+            );
+          })()}
+      </LiquidBottomSheet>
+
+      {/* Car Front Seat Single-Select Picker (RHD Driver & Front Left, Auto-Swap, Portal) */}
+      <LiquidBottomSheet
+        open={Boolean(carFrontPicker)}
+        title={carFrontPicker?.slot === 'frontRight' ? 'Assign Driver' : 'Assign Front Left'}
+        subtitle={
+          carFrontPicker
+            ? `${trip.transportPods.find((p) => p.id === carFrontPicker.podId)?.label ?? 'Car'} · ${
+                carFrontPicker.slot === 'frontRight' ? 'Front Right (Driver)' : 'Front Left'
+              }`
+            : undefined
+        }
+        onClose={() => setCarFrontPicker(null)}
+      >
+        {carFrontPicker &&
+          (() => {
+            const targetPod = trip.transportPods.find((p) => p.id === carFrontPicker.podId);
+            const targetSeats = normalizeCarSeats(targetPod);
+            const currentOccupantId = targetSeats[carFrontPicker.slot];
+            const currentOccupant = currentOccupantId
+              ? memberById.get(currentOccupantId)
+              : undefined;
+
+            return (
+              <div className="slot-picker-grid slot-picker-grid--train">
+                {trip.members.map((m) => {
+                  const isCurrent = m.id === currentOccupantId;
+                  const existing = findMemberCarAssignment(trip.transportPods, m.id);
+                  const existingText = existing
+                    ? existing.carId === carFrontPicker.podId
+                      ? existing.locationLabel
+                      : `${existing.carLabel} · ${existing.locationLabel}`
+                    : null;
+
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className={`slot-picker-option tactile ${isCurrent ? 'slot-picker-option--current' : ''}`}
+                      onClick={() => {
+                        handleAssignCarFrontSeat(carFrontPicker.podId, carFrontPicker.slot, m.id);
+                        setCarFrontPicker(null);
+                      }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                        <Avatar
+                          initials={m.initials}
+                          name={m.name}
+                          src={m.avatarDataUrl}
+                          size="sm"
+                          bg={m.avatarBg}
+                          color={m.avatarColor}
+                          variant={m.status === 'tentative' ? 'tentative' : 'solid'}
+                        />
+                        <span>{m.status === 'tentative' ? `${m.name}?` : m.name}</span>
+                      </span>
+
+                      <span>
+                        {isCurrent ? (
+                          <Badge tone="matcha">Current</Badge>
+                        ) : existingText && currentOccupant ? (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: 'var(--brand-matcha)',
+                            }}
+                          >
+                            <ArrowLeftRight size={12} strokeWidth={2} />
+                            <span>
+                              {existingText} · Swap with {currentOccupant.name}
+                            </span>
+                          </span>
+                        ) : existingText ? (
+                          <Badge tone="neutral">{existingText}</Badge>
+                        ) : currentOccupant ? (
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                            Replace {currentOccupant.name}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            Unassigned
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  className="slot-picker-option tactile"
+                  onClick={() => {
+                    handleAssignCarFrontSeat(carFrontPicker.podId, carFrontPicker.slot, null);
+                    setCarFrontPicker(null);
+                  }}
+                >
+                  <span style={{ color: 'var(--text-muted)' }}>Clear seat</span>
+                </button>
+              </div>
+            );
+          })()}
+      </LiquidBottomSheet>
+
+      {/* Car Bench Row Multi-Select Picker (Unlimited Middle & Back Rows, Portal) */}
+      <LiquidBottomSheet
+        open={Boolean(carRowPicker)}
+        title={carRowPicker?.row === 'middle' ? 'Middle Row Riders' : 'Back Row Riders'}
+        subtitle={
+          carRowPicker
+            ? `${trip.transportPods.find((p) => p.id === carRowPicker.podId)?.label ?? 'Car'} · Tap crew to add or remove (unlimited)`
+            : undefined
+        }
+        onClose={() => setCarRowPicker(null)}
+      >
+        {carRowPicker &&
+          (() => {
+            const targetPod = trip.transportPods.find((p) => p.id === carRowPicker.podId);
+            const targetSeats = normalizeCarSeats(targetPod);
+            const seatedInRow = new Set(targetSeats[carRowPicker.row]);
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="slot-picker-grid slot-picker-grid--train">
+                  {trip.members.map((m) => {
+                    const inThisRow = seatedInRow.has(m.id);
+                    const existing = findMemberCarAssignment(trip.transportPods, m.id);
+                    const elsewhereLabel =
+                      existing && !inThisRow
+                        ? existing.carId === carRowPicker.podId
+                          ? existing.locationLabel
+                          : `${existing.carLabel} · ${existing.locationLabel}`
+                        : null;
+
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        aria-pressed={inThisRow}
+                        className={`slot-picker-option tactile ${inThisRow ? 'slot-picker-option--current' : ''}`}
+                        onClick={() =>
+                          handleToggleCarBenchMember(carRowPicker.podId, carRowPicker.row, m.id)
+                        }
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                          <Avatar
+                            initials={m.initials}
+                            name={m.name}
+                            src={m.avatarDataUrl}
+                            size="sm"
+                            bg={m.avatarBg}
+                            color={m.avatarColor}
+                            variant={m.status === 'tentative' ? 'tentative' : 'solid'}
+                          />
+                          <span>{m.status === 'tentative' ? `${m.name}?` : m.name}</span>
+                        </span>
+
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          {elsewhereLabel && <Badge tone="neutral">{elsewhereLabel}</Badge>}
+                          <span className={`car-picker-check ${inThisRow ? 'car-picker-check--on' : ''}`}>
+                            {inThisRow && <Check size={13} strokeWidth={2.6} />}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <Button variant="matcha" size="lg" fullWidth onClick={() => setCarRowPicker(null)}>
+                  Done ({seatedInRow.size} seated)
+                </Button>
               </div>
             );
           })()}
