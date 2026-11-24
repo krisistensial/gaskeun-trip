@@ -272,6 +272,21 @@ export function PlanScreen({
     }
   }, [timelineEntries.length, measureArcMetrics]);
 
+  // Ensure window scroll starts cleanly at top when Plan or Detail opens so frozen header never clips
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      } catch {
+        window.scrollTo(0, 0);
+      }
+    }
+    if (typeof document !== 'undefined') {
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
+  }, [activeEditingItem]);
+
   // Measure frozen trail stage height so dotted SVG path stays 100% circular (zero stretching)
   useEffect(() => {
     if (viewMode !== 'trail' || activeEditingItem) return;

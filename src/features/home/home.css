@@ -24,9 +24,17 @@
 }
 
 .home-hero--fullscreen {
+  min-height: 100svh;
   min-height: 100dvh;
   max-height: none;
-  padding-bottom: calc(var(--safe-bottom) + 22px);
+  padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  transition: padding-bottom 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Once Floating Glass Dock is revealed for the session, smoothly lift Trip Title + Subtitle
+   cleanly above the dock so they never overlap or crowd each other */
+.home-hero--dock-visible {
+  padding-bottom: calc(102px + env(safe-area-inset-bottom, 0px));
 }
 
 @media (min-width: 520px) {

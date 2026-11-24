@@ -84,7 +84,8 @@ export interface HomeScreenProps {
   onOpenTripSettings: () => void;
   onSwitchTrip: () => void;
   onNavigateTab: (tab: DockTabId) => void;
-  onHeroDockHiddenChange?: (hidden: boolean) => void;
+  isDockVisible?: boolean;
+  onRevealDock?: () => void;
   onUploadCover: (cropped: CroppedImageResult) => void;
   onRequestUnlockPin: () => void;
   onNotify?: (msg: string, tone?: 'success' | 'info' | 'error') => void;
@@ -104,7 +105,8 @@ export function HomeScreen({
   onOpenTripSettings,
   onSwitchTrip,
   onNavigateTab,
-  onHeroDockHiddenChange,
+  isDockVisible = true,
+  onRevealDock,
   onUploadCover,
   onRequestUnlockPin,
   onNotify,
@@ -135,7 +137,6 @@ export function HomeScreen({
     label: string;
   } | null>(null);
   const [showCrewJump, setShowCrewJump] = useState(true);
-  const [heroDockHidden, setHeroDockHidden] = useState<boolean>(() => phase === 'pre-trip');
   const [heroCropFile, setHeroCropFile] = useState<File | null>(null);
   const [spotlightPhotoErrorUrl, setSpotlightPhotoErrorUrl] = useState<string>('');
   const [failedPhotoUrls, setFailedPhotoUrls] = useState<Record<string, boolean>>({});
@@ -148,45 +149,23 @@ export function HomeScreen({
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const heroRef = useRef<HTMLElement | null>(null);
   const crewSectionRef = useRef<HTMLElement | null>(null);
-  const heroDockHiddenRef = useRef<boolean>(phase === 'pre-trip');
 
+  // One-time surprise dock reveal on first scroll past 32px in Pre-Trip Home (persistent per session)
   useEffect(() => {
-    const syncDockState = (nextHidden: boolean) => {
-      heroDockHiddenRef.current = nextHidden;
-      setHeroDockHidden(nextHidden);
-      onHeroDockHiddenChange?.(nextHidden);
+    if (isDockVisible || phase !== 'pre-trip') return;
+
+    const checkScrollReveal = () => {
+      if (window.scrollY >= 32) {
+        onRevealDock?.();
+      }
     };
 
-    if (phase !== 'pre-trip') {
-      syncDockState(false);
-      return;
-    }
-
-    const initialHidden = (typeof window !== 'undefined' ? window.scrollY : 0) < 64;
-    syncDockState(initialHidden);
-
-    let rafId = 0;
-    const handleScroll = () => {
-      if (rafId) return;
-      rafId = window.requestAnimationFrame(() => {
-        rafId = 0;
-        const y = window.scrollY;
-        const currentlyHidden = heroDockHiddenRef.current;
-        if (currentlyHidden && y >= 64) {
-          syncDockState(false);
-        } else if (!currentlyHidden && y <= 24) {
-          syncDockState(true);
-        }
-      });
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
+    checkScrollReveal();
+    window.addEventListener('scroll', checkScrollReveal, { passive: true });
     return () => {
-      if (rafId) window.cancelAnimationFrame(rafId);
-      window.removeEventListener('scroll', handleScroll);
-      onHeroDockHiddenChange?.(false);
+      window.removeEventListener('scroll', checkScrollReveal);
     };
-  }, [phase, onHeroDockHiddenChange]);
+  }, [isDockVisible, phase, onRevealDock]);
 
   useEffect(() => {
     setCountdown(getCountdownParts(trip.departureAt));
@@ -449,6 +428,7 @@ export function HomeScreen({
         className={[
           'home-hero',
           phase === 'on-trip' ? 'home-hero--compact' : 'home-hero--fullscreen',
+          phase === 'pre-trip' && isDockVisible ? 'home-hero--dock-visible' : '',
           resolvedHasCoverPhoto ? 'home-hero--photo' : '',
         ]
           .filter(Boolean)
@@ -538,13 +518,12 @@ export function HomeScreen({
             <p className="home-subtitle">{trip.subtitle}</p>
           </div>
 
-          {phase === 'pre-trip' && (
+          {phase === 'pre-trip' && !isDockVisible && (
             <button
               type="button"
-              className={`home-scroll-cue tactile ${!heroDockHidden ? 'home-scroll-cue--hidden' : ''}`}
-              tabIndex={heroDockHidden ? 0 : -1}
-              aria-hidden={!heroDockHidden}
+              className="home-scroll-cue tactile"
               onClick={() => {
+                onRevealDock?.();
                 const heroHeight = heroRef.current?.offsetHeight ?? window.innerHeight * 0.85;
                 window.scrollTo({
                   top: Math.max(240, heroHeight - 56),
@@ -1283,8 +1262,8 @@ export function HomeScreen({
         })}
       </section>
 
-      {/* Floating Jump Pill (Crew ↓) above Dock — stays hidden during full-screen countdown */}
-      {showCrewJump && !heroDockHidden && (
+      {/* Floating Jump Pill (Crew ↓) above Dock — stays hidden during initial full-screen countdown */}
+      {showCrewJump && isDockVisible && (
         <button
           type="button"
           className="floating-crew-jump"

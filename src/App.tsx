@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import seedData from './data/seed-solo-jogja-2027.json';
 import { ConfirmDialog, Toast, type ToastTone } from './components/atoms';
 import { ExpandingGlassDock } from './components/organisms/ExpandingGlassDock';
@@ -100,7 +100,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<DockTabId>('home');
   const [phase, setPhase] = useState<HomePhase>('pre-trip');
-  const [homeHeroDockHidden, setHomeHeroDockHidden] = useState<boolean>(true);
+  const [hasRevealedDock, setHasRevealedDock] = useState<boolean>(false);
   const [pinUnlockedCodes, setPinUnlockedCodes] = useState<string[]>(
     () => loadSavedSession()?.pinUnlockedCodes ?? [],
   );
@@ -120,6 +120,33 @@ export default function App() {
   const activeTripRef = useRef<SharedTrip>(activeTrip);
   activeTripRef.current = activeTrip;
   const lastAutoPullMsRef = useRef<number>(0);
+  const shellRef = useRef<HTMLElement | null>(null);
+
+  // Permanently keep the Floating Glass Dock visible for the session once user leaves Home or enters Live Trail View
+  useEffect(() => {
+    if (activeTab !== 'home' || phase === 'on-trip') {
+      setHasRevealedDock(true);
+    }
+  }, [activeTab, phase]);
+
+  // Reset window & root scroll position synchronously on every tab/route change so scrolled Home offsets
+  // never carry over and clip the top header of Plan, Wallet, Album, or Prep.
+  useLayoutEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      } catch {
+        window.scrollTo(0, 0);
+      }
+    }
+    if (typeof document !== 'undefined') {
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
+    if (shellRef.current) {
+      shellRef.current.scrollTop = 0;
+    }
+  }, [activeTab, route, activeRouteTarget]);
 
   const showToast = useCallback((message: string, tone: ToastTone = 'success') => {
     setToast({ open: true, message, tone });
@@ -679,12 +706,13 @@ export default function App() {
   };
 
   const showDock = route === 'hub' && !activeRouteTarget;
+  const isDockVisible = hasRevealedDock || phase === 'on-trip' || activeTab !== 'home';
   const dockHiddenForHero =
     route === 'hub' &&
     !activeRouteTarget &&
     activeTab === 'home' &&
     phase === 'pre-trip' &&
-    homeHeroDockHidden;
+    !isDockVisible;
 
   return (
     <OverlayProvider>
@@ -696,6 +724,7 @@ export default function App() {
         </div>
 
         <main
+          ref={shellRef}
           className="app-shell"
           style={!showDock ? { paddingBottom: 'calc(var(--safe-bottom) + 20px)' } : undefined}
         >
@@ -768,7 +797,8 @@ export default function App() {
               onOpenTripSettings={openTripSettingsGated}
               onSwitchTrip={handleLeaveTrip}
               onNavigateTab={setActiveTab}
-              onHeroDockHiddenChange={setHomeHeroDockHidden}
+              isDockVisible={isDockVisible}
+              onRevealDock={() => setHasRevealedDock(true)}
               onUploadCover={(cropped) => void handleUploadCover(cropped)}
               onRequestUnlockPin={() => requestUnlockPin()}
               onNotify={showToast}
