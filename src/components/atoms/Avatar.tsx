@@ -33,7 +33,13 @@ export function Avatar({
       aria-label={name ?? initials}
     >
       {src ? (
-        <img src={src} alt={name ?? initials} className="gk-avatar__img" />
+        <img
+          src={src}
+          alt={name ?? initials}
+          className="gk-avatar__img"
+          loading="lazy"
+          decoding="async"
+        />
       ) : (
         initials
       )}

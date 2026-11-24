@@ -8,6 +8,30 @@ const base = nodeEnv.VITE_BASE_PATH || (nodeEnv.VERCEL ? '/' : '/gaskeun-trip/')
 
 export default defineConfig({
   base,
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('@supabase')) return 'vendor-supabase';
+          if (id.includes('leaflet')) return 'vendor-leaflet';
+          if (id.includes('xlsx')) return 'vendor-xlsx';
+          if (id.includes('lucide-react')) return 'vendor-icons';
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules\\react\\') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules\\react-dom\\') ||
+            id.includes('node_modules/scheduler/') ||
+            id.includes('node_modules\\scheduler\\')
+          ) {
+            return 'vendor-react';
+          }
+          return undefined;
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({

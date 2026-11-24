@@ -1,4 +1,5 @@
-import * as XLSX from 'xlsx';
+import type * as XlsxType from 'xlsx';
+import { normalizeCarSeats } from './crewSwap';
 import { calculateLedger } from './ledger';
 import type { RichNoteBlock, SharedTrip } from '../types/trip';
 
@@ -36,13 +37,14 @@ export function notesToPlainText(notes: RichNoteBlock[]): string {
 }
 
 /**
- * Pure SheetJS workbook builder (100% client-side & offline).
+ * Pure SheetJS workbook builder (100% client-side & offline, loaded lazily via dynamic import).
  * Produces 3 structured sheets:
  *   1. Itinerary
  *   2. Wallet
  *   3. Crew & Stay
  */
-export function buildTripWorkbook(trip: SharedTrip): XLSX.WorkBook {
+export async function buildTripWorkbook(trip: SharedTrip): Promise<XlsxType.WorkBook> {
+  const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
   const dayById = new Map(trip.days.map((d) => [d.id, d]));
   const memberById = new Map(trip.members.map((m) => [m.id, m]));
@@ -157,14 +159,22 @@ export function buildTripWorkbook(trip: SharedTrip): XLSX.WorkBook {
     [],
     ['TRANSPORT PODS', '', '', ''],
     ['Mode', 'Pod', 'Meta', 'Assigned Riders'],
-    ...trip.transportPods.map((pod) => [
-      pod.mode.toUpperCase(),
-      pod.label,
-      pod.meta || '',
-      pod.slots
+    ...trip.transportPods.map((pod) => {
+      let assigned = pod.slots
         .map((s) => `${s.role}: ${s.memberId ? memberById.get(s.memberId)?.name ?? 'Open' : 'Open'}`)
-        .join(' | '),
-    ]),
+        .join(' | ');
+      if (pod.mode === 'car') {
+        const seats = normalizeCarSeats(pod);
+        const nameOf = (id?: string) => (id ? memberById.get(id)?.name ?? id : 'Open');
+        assigned = [
+          `Driver: ${nameOf(seats.frontRight)}`,
+          `Front Left: ${nameOf(seats.frontLeft)}`,
+          `Middle: ${seats.middle.length > 0 ? seats.middle.map((id) => nameOf(id)).join(', ') : 'Empty'}`,
+          `Back: ${seats.back.length > 0 ? seats.back.map((id) => nameOf(id)).join(', ') : 'Empty'}`,
+        ].join(' | ');
+      }
+      return [pod.mode.toUpperCase(), pod.label, pod.meta || '', assigned];
+    }),
     [],
     ['HOMESTAYS & ROOMS', '', '', ''],
     ['Stay', 'Schedule', 'Room', 'Guests'],
@@ -185,8 +195,8 @@ export function buildTripWorkbook(trip: SharedTrip): XLSX.WorkBook {
   return wb;
 }
 
-export function exportTripToExcel(trip: SharedTrip): void {
-  const wb = buildTripWorkbook(trip);
+export async function exportTripToExcel(trip: SharedTrip): Promise<void> {
+  const [XLSX, wb] = await Promise.all([import('xlsx'), buildTripWorkbook(trip)]);
   const safeCode = trip.code.toLowerCase().replace(/[^a-z0-9-]/g, '') || 'trip';
   XLSX.writeFile(wb, `gaskeun-${safeCode}.xlsx`);
 }

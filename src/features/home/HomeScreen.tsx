@@ -40,6 +40,7 @@ import {
   type CarFrontSlot,
 } from '../../services/crewSwap';
 import { calculateLedger, formatCompactIDR } from '../../services/ledger';
+import { toDriveThumbnailWidth } from '../../services/gdriveAlbum';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import { resolvePlanLiveState } from '../../services/planSchedule';
 import type {
@@ -516,7 +517,13 @@ export function HomeScreen({
           .filter(Boolean)
           .join(' ')}
       >
-        <img src={resolvedCoverUrl} alt="" className="home-hero__bg" />
+        <img
+          src={resolvedCoverUrl}
+          alt=""
+          className="home-hero__bg"
+          fetchPriority="high"
+          decoding="async"
+        />
         <div className="home-hero__fade" aria-hidden="true" />
 
         <div className="home-hero__corners">
@@ -640,6 +647,7 @@ export function HomeScreen({
                     aria-hidden="true"
                     className="card-bg-photo"
                     loading="lazy"
+                    decoding="async"
                     onError={() => setSpotlightPhotoErrorUrl(activeStop.coverUrl ?? '')}
                   />
                   <div className="card-bg-scrim" aria-hidden="true" />
@@ -749,6 +757,8 @@ export function HomeScreen({
                     alt=""
                     aria-hidden="true"
                     className="bento-photo-bg bento-photo-bg--train"
+                    loading="lazy"
+                    decoding="async"
                     onError={() => markPhotoFailed(trainPhotoUrl)}
                   />
                   <div className="bento-photo-scrim bento-photo-scrim--train" aria-hidden="true" />
@@ -804,9 +814,10 @@ export function HomeScreen({
                     {collagePhotos.map((photo) => (
                       <img
                         key={photo.id}
-                        src={photo.url}
+                        src={toDriveThumbnailWidth(photo.url, 400)}
                         alt=""
                         loading="lazy"
+                        decoding="async"
                         className="album-collage__img"
                         onError={() => markPhotoFailed(photo.url)}
                       />
@@ -1213,6 +1224,8 @@ export function HomeScreen({
                     alt=""
                     aria-hidden="true"
                     className="stay-card__bg"
+                    loading="lazy"
+                    decoding="async"
                     onError={() => markPhotoFailed(stay.photoDataUrl)}
                   />
                   <div className="stay-card__scrim" aria-hidden="true" />
@@ -1401,6 +1414,8 @@ export function HomeScreen({
                       alt=""
                       aria-hidden="true"
                       className="bento-photo-bg bento-photo-bg--train"
+                      loading="lazy"
+                      decoding="async"
                       onError={() => markPhotoFailed(trip.trainPass?.trainPhotoDataUrl)}
                     />
                     <div className="bento-photo-scrim bento-photo-scrim--train" aria-hidden="true" />

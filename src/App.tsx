@@ -1,20 +1,22 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import seedData from './data/seed-solo-jogja-2027.json';
 import { ConfirmDialog, Toast, type ToastTone } from './components/atoms';
 import { ExpandingGlassDock } from './components/organisms/ExpandingGlassDock';
 import { PinUnlockSheet } from './components/organisms/PinUnlockSheet';
 import { TripMenuSheet, type HomePhase } from './components/organisms/TripMenuSheet';
-import { TripSettingsSheet } from './components/organisms/TripSettingsSheet';
 import { OverlayProvider } from './context/OverlayContext';
-import { AlbumScreen } from './features/album/AlbumScreen';
-import { CreateTripScreen } from './features/gate/CreateTripScreen';
 import { LandingGateScreen } from './features/gate/LandingGateScreen';
 import { WhoAreYouScreen } from './features/gate/WhoAreYouScreen';
 import { HomeScreen } from './features/home/HomeScreen';
-import { PlanScreen } from './features/plan/PlanScreen';
-import { RouteMapView } from './features/plan/RouteMapView';
-import { PrepScreen } from './features/prep/PrepScreen';
-import { WalletScreen } from './features/wallet/WalletScreen';
 import {
   ensureSeedTrip,
   getLocalPersonal,
@@ -27,7 +29,6 @@ import {
   setActiveMemberLocal,
   upsertPersonalTransaction,
 } from './services/db';
-import { exportTripToExcel } from './services/excelExporter';
 import { fetchDriveAlbumWithStatus, isAssetFileName } from './services/gdriveAlbum';
 import { uploadSharedImage } from './services/mediaUploader';
 import {
@@ -59,6 +60,31 @@ import type {
   Transaction,
 } from './types/trip';
 import './App.css';
+
+// Route & Heavy Sheet Code-Splitting (keeps initial Home bundle lean & fast on mobile)
+const PlanScreen = lazy(() =>
+  import('./features/plan/PlanScreen').then((m) => ({ default: m.PlanScreen })),
+);
+const RouteMapView = lazy(() =>
+  import('./features/plan/RouteMapView').then((m) => ({ default: m.RouteMapView })),
+);
+const WalletScreen = lazy(() =>
+  import('./features/wallet/WalletScreen').then((m) => ({ default: m.WalletScreen })),
+);
+const AlbumScreen = lazy(() =>
+  import('./features/album/AlbumScreen').then((m) => ({ default: m.AlbumScreen })),
+);
+const PrepScreen = lazy(() =>
+  import('./features/prep/PrepScreen').then((m) => ({ default: m.PrepScreen })),
+);
+const CreateTripScreen = lazy(() =>
+  import('./features/gate/CreateTripScreen').then((m) => ({ default: m.CreateTripScreen })),
+);
+const TripSettingsSheet = lazy(() =>
+  import('./components/organisms/TripSettingsSheet').then((m) => ({
+    default: m.TripSettingsSheet,
+  })),
+);
 
 type AppRoute = 'landing' | 'who' | 'create' | 'hub';
 
@@ -370,15 +396,47 @@ export default function App() {
 
     let alive = true;
     const folderUrl = activeTrip.gdriveFolderUrl || activeTrip.albumUrl;
-    void fetchDriveAlbumWithStatus(scriptUrl, activeTrip.id, folderUrl).then((res) => {
-      if (!alive || !res.ok) return;
-      setDriveAlbumPhotos(res.photos);
-      saveCachedDrivePhotos(activeTrip.id, res.photos);
-    });
+    const runFetch = () => {
+      if (!alive) return;
+      void fetchDriveAlbumWithStatus(scriptUrl, activeTrip.id, folderUrl).then((res) => {
+        if (!alive || !res.ok) return;
+        setDriveAlbumPhotos(res.photos);
+        saveCachedDrivePhotos(activeTrip.id, res.photos);
+      });
+    };
+
+    // On Album tab fetch immediately; on initial Home load defer until idle so Hero LCP wins bandwidth
+    if (activeTab === 'album') {
+      runFetch();
+      return () => {
+        alive = false;
+      };
+    }
+
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof win.requestIdleCallback === 'function') {
+      const idleId = win.requestIdleCallback(runFetch, { timeout: 3500 });
+      return () => {
+        alive = false;
+        win.cancelIdleCallback?.(idleId);
+      };
+    }
+    const timerId = window.setTimeout(runFetch, 2000);
     return () => {
       alive = false;
+      window.clearTimeout(timerId);
     };
-  }, [route, activeTrip.id, activeTrip.gdriveScriptUrl, activeTrip.gdriveFolderUrl, activeTrip.albumUrl]);
+  }, [
+    route,
+    activeTab,
+    activeTrip.id,
+    activeTrip.gdriveScriptUrl,
+    activeTrip.gdriveFolderUrl,
+    activeTrip.albumUrl,
+  ]);
 
   const handleDrivePhotosSync = useCallback(
     (photos: AlbumPhoto[]) => {
@@ -664,9 +722,14 @@ export default function App() {
     if (toastMsg) showToast(toastMsg, 'success');
   };
 
-  const handleExportExcel = () => {
-    exportTripToExcel(activeTrip);
-    showToast(`Exported gaskeun-${activeTrip.code.toLowerCase()}.xlsx`, 'success');
+  const handleExportExcel = async () => {
+    try {
+      const { exportTripToExcel } = await import('./services/excelExporter');
+      await exportTripToExcel(activeTrip);
+      showToast(`Exported gaskeun-${activeTrip.code.toLowerCase()}.xlsx`, 'success');
+    } catch {
+      showToast('Could not export Excel workbook', 'error');
+    }
   };
 
   const handleExportJson = () => {
@@ -748,41 +811,106 @@ export default function App() {
             />
           )}
 
-          {route === 'create' && (
-            <CreateTripScreen
-              onCreated={handleTripCreated}
-              onOpenTrip={(trip) => {
-                setActiveTrip(trip);
-                setActiveTab('home');
-                setRoute('hub');
-              }}
-              onCopyInvite={(url) => handleCopyInvite(url)}
-              onBack={() => setRoute('landing')}
-            />
-          )}
+          <Suspense
+            fallback={
+              <div className="route-suspense-shell" aria-busy="true" aria-label="Loading view">
+                <div className="route-suspense-pill" />
+              </div>
+            }
+          >
+            {route === 'create' && (
+              <CreateTripScreen
+                onCreated={handleTripCreated}
+                onOpenTrip={(trip) => {
+                  setActiveTrip(trip);
+                  setActiveTab('home');
+                  setRoute('hub');
+                }}
+                onCopyInvite={(url) => handleCopyInvite(url)}
+                onBack={() => setRoute('landing')}
+              />
+            )}
 
-          {route === 'hub' && activeRouteTarget && (
-            <RouteMapView
-              target={activeRouteTarget}
-              onBack={() => setActiveRouteTarget(null)}
-              onSelectPlanItem={(stop) => {
-                setActiveRouteTarget((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        title: stop.title,
-                        subtitle: stop.locationHint,
-                        address: stop.address,
-                        parkingNote: stop.parkingNote,
-                        mapsUrl: stop.mapsUrl,
-                        coords: stop.coords,
-                        focusedItemId: stop.id,
-                      }
-                    : null,
-                );
-              }}
-            />
-          )}
+            {route === 'hub' && activeRouteTarget && (
+              <RouteMapView
+                target={activeRouteTarget}
+                onBack={() => setActiveRouteTarget(null)}
+                onSelectPlanItem={(stop) => {
+                  setActiveRouteTarget((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          title: stop.title,
+                          subtitle: stop.locationHint,
+                          address: stop.address,
+                          parkingNote: stop.parkingNote,
+                          mapsUrl: stop.mapsUrl,
+                          coords: stop.coords,
+                          focusedItemId: stop.id,
+                        }
+                      : null,
+                  );
+                }}
+              />
+            )}
+
+            {route === 'hub' && !activeRouteTarget && activeTab === 'plan' && (
+              <PlanScreen
+                trip={activeTrip}
+                homePhase={phase}
+                activeMemberId={activeMemberId}
+                activeMemberName={activeMemberName}
+                canEdit={canEdit}
+                onRequestUnlockPin={() => requestUnlockPin()}
+                onOpenRoute={(target) => setActiveRouteTarget(target)}
+                onUpdateTrip={handleUpdateTrip}
+                onNotify={showToast}
+              />
+            )}
+
+            {route === 'hub' && !activeRouteTarget && activeTab === 'wallet' && (
+              <WalletScreen
+                trip={activeTrip}
+                personalTransactions={localData?.personalTransactions ?? []}
+                canEdit={canEdit}
+                onOpenMenu={() => setMenuOpen(true)}
+                onRequestUnlockPin={() => requestUnlockPin()}
+                onUpdateTrip={handleUpdateTrip}
+                onUpsertPersonalTx={(tx, isNew) => void handleUpsertPersonalTx(tx, isNew)}
+                onDeletePersonalTx={(id) => void handleDeletePersonalTx(id)}
+              />
+            )}
+
+            {route === 'hub' && !activeRouteTarget && activeTab === 'album' && (
+              <AlbumScreen
+                trip={activeTrip}
+                localPhotos={localData?.localAlbumPhotos ?? []}
+                cachedDrivePhotos={driveAlbumPhotos}
+                activeMemberId={activeMemberId}
+                activeMemberName={activeMemberName}
+                canEdit={canEdit}
+                onDrivePhotosSync={handleDrivePhotosSync}
+                onSaveLocalPhotos={(photos, msg) => void handleSaveLocalAlbumPhotos(photos, msg)}
+                onUpdateTrip={handleUpdateTrip}
+                onOpenSettings={openTripSettingsGated}
+                onNotify={showToast}
+              />
+            )}
+
+            {route === 'hub' && !activeRouteTarget && activeTab === 'prep' && (
+              <PrepScreen
+                trip={activeTrip}
+                personalPrep={localData?.personalPrep ?? []}
+                canEdit={canEdit}
+                onOpenMenu={() => setMenuOpen(true)}
+                onRequestUnlockPin={() => requestUnlockPin()}
+                onUpdatePersonalPrep={(tasks, msg) => void handleUpdatePersonalPrep(tasks, msg)}
+                onUpdateGroupPrep={(tasks, msg) =>
+                  handleUpdateTrip((prev) => ({ ...prev, groupPrep: tasks }), msg)
+                }
+              />
+            )}
+          </Suspense>
 
           {route === 'hub' && !activeRouteTarget && activeTab === 'home' && (
             <HomeScreen
@@ -804,63 +932,6 @@ export default function App() {
               onNotify={showToast}
               onOpenRoute={(target) => setActiveRouteTarget(target)}
               onUpdateTrip={handleUpdateTrip}
-            />
-          )}
-
-          {route === 'hub' && !activeRouteTarget && activeTab === 'plan' && (
-            <PlanScreen
-              trip={activeTrip}
-              homePhase={phase}
-              activeMemberId={activeMemberId}
-              activeMemberName={activeMemberName}
-              canEdit={canEdit}
-              onRequestUnlockPin={() => requestUnlockPin()}
-              onOpenRoute={(target) => setActiveRouteTarget(target)}
-              onUpdateTrip={handleUpdateTrip}
-              onNotify={showToast}
-            />
-          )}
-
-          {route === 'hub' && !activeRouteTarget && activeTab === 'wallet' && (
-            <WalletScreen
-              trip={activeTrip}
-              personalTransactions={localData?.personalTransactions ?? []}
-              canEdit={canEdit}
-              onOpenMenu={() => setMenuOpen(true)}
-              onRequestUnlockPin={() => requestUnlockPin()}
-              onUpdateTrip={handleUpdateTrip}
-              onUpsertPersonalTx={(tx, isNew) => void handleUpsertPersonalTx(tx, isNew)}
-              onDeletePersonalTx={(id) => void handleDeletePersonalTx(id)}
-            />
-          )}
-
-          {route === 'hub' && !activeRouteTarget && activeTab === 'album' && (
-            <AlbumScreen
-              trip={activeTrip}
-              localPhotos={localData?.localAlbumPhotos ?? []}
-              cachedDrivePhotos={driveAlbumPhotos}
-              activeMemberId={activeMemberId}
-              activeMemberName={activeMemberName}
-              canEdit={canEdit}
-              onDrivePhotosSync={handleDrivePhotosSync}
-              onSaveLocalPhotos={(photos, msg) => void handleSaveLocalAlbumPhotos(photos, msg)}
-              onUpdateTrip={handleUpdateTrip}
-              onOpenSettings={openTripSettingsGated}
-              onNotify={showToast}
-            />
-          )}
-
-          {route === 'hub' && !activeRouteTarget && activeTab === 'prep' && (
-            <PrepScreen
-              trip={activeTrip}
-              personalPrep={localData?.personalPrep ?? []}
-              canEdit={canEdit}
-              onOpenMenu={() => setMenuOpen(true)}
-              onRequestUnlockPin={() => requestUnlockPin()}
-              onUpdatePersonalPrep={(tasks, msg) => void handleUpdatePersonalPrep(tasks, msg)}
-              onUpdateGroupPrep={(tasks, msg) =>
-                handleUpdateTrip((prev) => ({ ...prev, groupPrep: tasks }), msg)
-              }
             />
           )}
         </main>
@@ -921,39 +992,43 @@ export default function App() {
           onCopyInvite={() => handleCopyInvite()}
           onSwitchProfile={() => setRoute('who')}
           onLeaveTrip={handleLeaveTrip}
-          onExportExcel={handleExportExcel}
+          onExportExcel={() => void handleExportExcel()}
           onExportJson={handleExportJson}
           onImportJson={handleImportJsonFile}
           onClose={() => setMenuOpen(false)}
         />
 
-        <TripSettingsSheet
-          key={`ts-${settingsOpen ? activeTrip.id : 'closed'}`}
-          open={settingsOpen}
-          trip={activeTrip}
-          onSave={(patch) => {
-            handleUpdateTrip(
-              (prev) => ({
-                ...prev,
-                title: patch.title,
-                subtitle: patch.subtitle,
-                departureAt: patch.departureAt,
-                albumUrl: patch.gdriveFolderUrl || prev.albumUrl,
-                gdriveFolderUrl: patch.gdriveFolderUrl,
-                gdriveScriptUrl: patch.gdriveScriptUrl,
-                financeConfig: {
-                  ...prev.financeConfig,
-                  poolTargetPerPerson: patch.poolTargetPerPerson,
-                  fundraiseTarget: patch.fundraiseTarget,
-                  minimumDpPerPerson: patch.minimumDpPerPerson,
-                },
-              }),
-              'Trip settings updated',
-            );
-          }}
-          onCopyText={handleCopyText}
-          onClose={() => setSettingsOpen(false)}
-        />
+        {settingsOpen && (
+          <Suspense fallback={null}>
+            <TripSettingsSheet
+              key={`ts-${activeTrip.id}`}
+              open={settingsOpen}
+              trip={activeTrip}
+              onSave={(patch) => {
+                handleUpdateTrip(
+                  (prev) => ({
+                    ...prev,
+                    title: patch.title,
+                    subtitle: patch.subtitle,
+                    departureAt: patch.departureAt,
+                    albumUrl: patch.gdriveFolderUrl || prev.albumUrl,
+                    gdriveFolderUrl: patch.gdriveFolderUrl,
+                    gdriveScriptUrl: patch.gdriveScriptUrl,
+                    financeConfig: {
+                      ...prev.financeConfig,
+                      poolTargetPerPerson: patch.poolTargetPerPerson,
+                      fundraiseTarget: patch.fundraiseTarget,
+                      minimumDpPerPerson: patch.minimumDpPerPerson,
+                    },
+                  }),
+                  'Trip settings updated',
+                );
+              }}
+              onCopyText={handleCopyText}
+              onClose={() => setSettingsOpen(false)}
+            />
+          </Suspense>
+        )}
 
         <PinUnlockSheet
           open={pinSheetOpen}

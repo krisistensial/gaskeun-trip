@@ -90,6 +90,20 @@ export function normalizeDriveImageUrl(url: string, width = 1200): string {
 }
 
 /**
+ * Rewrites any Google Drive image URL (including existing `thumbnail?id=...&sz=w1200`)
+ * to a specific thumbnail width (e.g. `w400` for the compact Home ALBUM collage)
+ * while leaving non-Drive URLs (data URLs, Supabase Storage) untouched.
+ */
+export function toDriveThumbnailWidth(url: string, width = 400): string {
+  if (!url) return '';
+  const fileId = extractDriveFileId(url);
+  if (fileId) {
+    return buildDriveThumbnailUrl(fileId, width);
+  }
+  return url;
+}
+
+/**
  * Parses a raw Apps Script HTTP response body into a structured diagnostic result.
  * Detects Google HTML login redirects (un-authorized Web App) vs valid JSON.
  */

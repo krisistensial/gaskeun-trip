@@ -8,6 +8,7 @@ import {
   normalizeDriveImageUrl,
   parseDriveScriptJson,
   resolveDrivePhotoUrls,
+  toDriveThumbnailWidth,
 } from './gdriveAlbum';
 
 describe('Google Drive Album Bridge helpers & diagnostics', () => {
@@ -35,6 +36,14 @@ describe('Google Drive Album Bridge helpers & diagnostics', () => {
     expect(
       normalizeDriveImageUrl('https://drive.google.com/thumbnail?id=abc123XYZ999&sz=w2000', 2000),
     ).toBe('https://drive.google.com/thumbnail?id=abc123XYZ999&sz=w2000');
+
+    expect(
+      toDriveThumbnailWidth('https://drive.google.com/thumbnail?id=abc123XYZ999&sz=w1200', 400),
+    ).toBe('https://drive.google.com/thumbnail?id=abc123XYZ999&sz=w400');
+
+    expect(toDriveThumbnailWidth('data:image/jpeg;base64,abc', 400)).toBe(
+      'data:image/jpeg;base64,abc',
+    );
   });
 
   it('upgrades Drive photo URLs to sharp w4096 Lightbox + direct original downloadUrl on frontend', () => {

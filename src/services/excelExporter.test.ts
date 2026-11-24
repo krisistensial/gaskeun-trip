@@ -22,8 +22,8 @@ describe('Excel Exporter (.xlsx) — 3 Sheets & HTML Stripping', () => {
     expect(text).toBe('Checklist\n[x] Top up 5 bikes\n[ ] Order Soto Triwindu\n- Bring rain poncho');
   });
 
-  it('builds a valid 3-sheet workbook (Itinerary, Wallet, Crew & Stay) offline', () => {
-    const wb = buildTripWorkbook(pilotTrip);
+  it('builds a valid 3-sheet workbook (Itinerary, Wallet, Crew & Stay) offline', async () => {
+    const wb = await buildTripWorkbook(pilotTrip);
     expect(wb.SheetNames).toEqual(['Itinerary', 'Wallet', 'Crew & Stay']);
 
     const itineraryRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets['Itinerary']);

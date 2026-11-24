@@ -39,7 +39,7 @@ const TEXT_COLORS = [
   { label: 'Matcha', hex: '#4A7468' },
   { label: 'Amber', hex: '#D99136' },
   { label: 'Coral', hex: '#CF4D5E' },
-  { label: 'Muted', hex: '#889B93' },
+  { label: 'Muted', hex: '#52665E' },
 ];
 
 function escapeHtml(text: string): string {

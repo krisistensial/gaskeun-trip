@@ -1165,7 +1165,7 @@ export function PlanScreen({
                 size="sm"
                 leftIcon={<FileSpreadsheet size={14} strokeWidth={1.8} />}
                 rightIcon={<ArrowUpRight size={13} strokeWidth={2} />}
-                onClick={() => exportTripToExcel(trip)}
+                onClick={() => void exportTripToExcel(trip)}
               >
                 Export .xlsx
               </Button>

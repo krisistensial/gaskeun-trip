@@ -186,3 +186,20 @@
   font-weight: 600;
   color: var(--text-secondary);
 }
+
+/* Lightweight Ambient-Mesh Suspense Fallback for Lazy Tab Transitions */
+.route-suspense-shell {
+  min-height: 46vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.route-suspense-pill {
+  width: 44px;
+  height: 10px;
+  border-radius: 9999px;
+  background: rgba(74, 116, 104, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+}
