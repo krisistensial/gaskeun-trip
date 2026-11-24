@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowLeftRight,
@@ -169,6 +169,8 @@ export function HomeScreen({
 
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const heroRef = useRef<HTMLElement | null>(null);
+  const titleBottomRef = useRef<HTMLDivElement | null>(null);
+  const prevDockVisibleRef = useRef<boolean>(isDockVisible);
   const crewSectionRef = useRef<HTMLElement | null>(null);
 
   // One-time surprise dock reveal on first scroll past 32px in Pre-Trip Home (persistent per session)
@@ -187,6 +189,64 @@ export function HomeScreen({
       window.removeEventListener('scroll', checkScrollReveal);
     };
   }, [isDockVisible, phase, onRevealDock]);
+
+  // Dynamic GPU scroll-linked clearance keeping Trip Title cleanly above Floating Glass Dock
+  // without static padding-bottom gaps when scrolling deeper into Home (Batch 8.18)
+  useLayoutEffect(() => {
+    const DOCK_CLEARANCE = 88;
+    const el = titleBottomRef.current;
+    if (!el) return;
+
+    if (!isDockVisible || phase !== 'pre-trip') {
+      el.classList.remove('home-hero__bottom--lifting');
+      el.style.setProperty('--title-dock-lift', '0px');
+      prevDockVisibleRef.current = isDockVisible;
+      return;
+    }
+
+    const justRevealed = !prevDockVisibleRef.current;
+    prevDockVisibleRef.current = true;
+
+    let liftTimerId: number | null = null;
+    let rafId = 0;
+
+    const applyLift = () => {
+      rafId = 0;
+      const lift = Math.max(0, DOCK_CLEARANCE - window.scrollY);
+      el.style.setProperty('--title-dock-lift', `${lift}px`);
+    };
+
+    if (justRevealed) {
+      el.classList.add('home-hero__bottom--lifting');
+      liftTimerId = window.setTimeout(() => {
+        el.classList.remove('home-hero__bottom--lifting');
+        liftTimerId = null;
+      }, 300);
+    } else {
+      el.classList.remove('home-hero__bottom--lifting');
+    }
+
+    applyLift();
+
+    const onScroll = () => {
+      if (liftTimerId !== null) {
+        window.clearTimeout(liftTimerId);
+        liftTimerId = null;
+      }
+      el.classList.remove('home-hero__bottom--lifting');
+
+      if (!rafId) {
+        rafId = window.requestAnimationFrame(applyLift);
+      }
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (rafId) window.cancelAnimationFrame(rafId);
+      if (liftTimerId !== null) window.clearTimeout(liftTimerId);
+    };
+  }, [isDockVisible, phase]);
 
   useEffect(() => {
     setCountdown(getCountdownParts(trip.departureAt));
@@ -511,7 +571,6 @@ export function HomeScreen({
         className={[
           'home-hero',
           phase === 'on-trip' ? 'home-hero--compact' : 'home-hero--fullscreen',
-          phase === 'pre-trip' && isDockVisible ? 'home-hero--dock-visible' : '',
           resolvedHasCoverPhoto ? 'home-hero--photo' : '',
         ]
           .filter(Boolean)
@@ -594,7 +653,7 @@ export function HomeScreen({
           <div className="home-hero__spacer" aria-hidden="true" />
         )}
 
-        <div className="home-hero__bottom">
+        <div ref={titleBottomRef} className="home-hero__bottom">
           <div>
             <button
               type="button"
