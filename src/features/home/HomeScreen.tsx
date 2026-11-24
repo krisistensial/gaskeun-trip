@@ -40,6 +40,7 @@ import {
   type CarFrontSlot,
 } from '../../services/crewSwap';
 import { calculateLedger, formatCompactIDR } from '../../services/ledger';
+import { triggerFeedback } from '../../services/feedback';
 import { toDriveThumbnailWidth } from '../../services/gdriveAlbum';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import { resolvePlanLiveState } from '../../services/planSchedule';
@@ -91,8 +92,10 @@ export interface HomeScreenProps {
   coverUrl: string;
   hasCoverPhoto: boolean;
   albumPhotos?: AlbumPhoto[];
+  activeMember?: TripMember;
   activeMemberName: string;
   canEdit: boolean;
+  viewOnlyMode?: boolean;
   onOpenMenu: () => void;
   onOpenTripSettings: () => void;
   onSwitchTrip: () => void;
@@ -112,8 +115,10 @@ export function HomeScreen({
   coverUrl,
   hasCoverPhoto,
   albumPhotos = [],
+  activeMember,
   activeMemberName,
   canEdit,
+  viewOnlyMode = false,
   onOpenMenu,
   onOpenTripSettings,
   onSwitchTrip,
@@ -122,7 +127,6 @@ export function HomeScreen({
   onRevealDock,
   onUploadCover,
   onRequestUnlockPin,
-  onNotify,
   onOpenRoute,
   onUpdateTrip,
 }: HomeScreenProps) {
@@ -257,7 +261,16 @@ export function HomeScreen({
   }, [trip.departureAt]);
 
   useEffect(() => {
-    if (!canEdit) setEditingCrew(false);
+    if (!canEdit) {
+      setEditingCrew(false);
+      setSlotPicker(null);
+      setCarFrontPicker(null);
+      setCarRowPicker(null);
+      setPodEditor({ open: false, pod: null });
+      setStayEditor({ open: false, stay: null });
+      setTrainEditorOpen(false);
+      setCrewManagerOpen(false);
+    }
   }, [canEdit]);
 
   useEffect(() => {
@@ -356,6 +369,7 @@ export function HomeScreen({
   };
 
   const handleDeleteMember = (memberId: string) => {
+    triggerFeedback('warning');
     onUpdateTrip(
       (prev) => ({
         ...prev,
@@ -404,6 +418,7 @@ export function HomeScreen({
       toastMsg = `Assigned ${newName} to ${seatTitle}`;
     }
 
+    triggerFeedback('success');
     onUpdateTrip(
       (prev) => ({
         ...prev,
@@ -429,6 +444,7 @@ export function HomeScreen({
           ? `Moved ${name} from ${preview.movedFromCarLabel} to ${rowTitle}`
           : `Added ${name} to ${rowTitle}`;
 
+    triggerFeedback(preview.action === 'removed' ? 'warning' : 'success');
     onUpdateTrip(
       (prev) => ({
         ...prev,
@@ -443,6 +459,7 @@ export function HomeScreen({
     slotIndex: number,
     memberId: string | null,
   ) => {
+    triggerFeedback('success');
     const targetPod = trip.transportPods.find((p) => p.id === podId);
 
     // Motorbike Auto-Swap: never allow one crew member on two bikes simultaneously
@@ -586,20 +603,40 @@ export function HomeScreen({
         <div className="home-hero__fade" aria-hidden="true" />
 
         <div className="home-hero__corners">
-          <CornerOrb
-            kind="custom"
-            ariaLabel={canEdit ? 'Change shared cover photo' : 'Unlock to change cover photo'}
-            icon={<Camera size={18} strokeWidth={1.8} />}
+          {canEdit ? (
+            <CornerOrb
+              kind="custom"
+              ariaLabel="Change shared cover photo"
+              icon={<Camera size={18} strokeWidth={1.8} />}
+              onClick={() => {
+                triggerFeedback('tap');
+                coverInputRef.current?.click();
+              }}
+            />
+          ) : (
+            <span className="home-hero__corner-spacer" aria-hidden="true" />
+          )}
+          <button
+            type="button"
+            className="home-profile-orb tactile"
+            aria-label="Open profile and settings"
+            title="Profile & Settings"
             onClick={() => {
-              if (!canEdit) {
-                onNotify?.('Unlock with Crew PIN to change the cover photo', 'info');
-                onRequestUnlockPin();
-                return;
-              }
-              coverInputRef.current?.click();
+              triggerFeedback('tap');
+              onOpenMenu();
             }}
-          />
-          <CornerOrb kind="menu" ariaLabel="Trip menu" onClick={onOpenMenu} />
+          >
+            <Avatar
+              initials={activeMember?.initials ?? 'G'}
+              name={activeMemberName}
+              src={activeMember?.avatarDataUrl}
+              size="md"
+              bg={activeMember?.avatarBg ?? '#E3EDE6'}
+              color={activeMember?.avatarColor ?? '#2D4A42'}
+              variant="solid"
+            />
+            {viewOnlyMode && <span className="home-profile-orb__dot" aria-hidden="true" />}
+          </button>
         </div>
 
         <input
@@ -1029,7 +1066,12 @@ export function HomeScreen({
               variant={editingCrew ? 'matcha' : 'glass'}
               size="sm"
               leftIcon={<Pencil size={13} strokeWidth={2} />}
-              onClick={() => requireEdit(() => setEditingCrew((prev) => !prev))}
+              onClick={() =>
+                requireEdit(() => {
+                  triggerFeedback('toggle');
+                  setEditingCrew((prev) => !prev);
+                })
+              }
             >
               {editingCrew ? 'Done' : 'Edit'}
             </Button>
@@ -1072,7 +1114,10 @@ export function HomeScreen({
             role="tab"
             aria-selected={transportFilter === 'bike'}
             className={`mode-chip tactile ${transportFilter === 'bike' ? 'mode-chip--active' : ''}`}
-            onClick={() => setTransportFilter('bike')}
+            onClick={() => {
+              triggerFeedback('tap');
+              setTransportFilter('bike');
+            }}
           >
             <Bike size={15} strokeWidth={1.8} />
             <span>Bikes ({bikePods.length})</span>
@@ -1082,7 +1127,10 @@ export function HomeScreen({
             role="tab"
             aria-selected={transportFilter === 'train'}
             className={`mode-chip tactile ${transportFilter === 'train' ? 'mode-chip--active' : ''}`}
-            onClick={() => setTransportFilter('train')}
+            onClick={() => {
+              triggerFeedback('tap');
+              setTransportFilter('train');
+            }}
           >
             <TrainFront size={15} strokeWidth={1.8} />
             <span>Train Seats</span>
@@ -1092,7 +1140,10 @@ export function HomeScreen({
             role="tab"
             aria-selected={transportFilter === 'car'}
             className={`mode-chip tactile ${transportFilter === 'car' ? 'mode-chip--active' : ''}`}
-            onClick={() => setTransportFilter('car')}
+            onClick={() => {
+              triggerFeedback('tap');
+              setTransportFilter('car');
+            }}
           >
             <Car size={15} strokeWidth={1.8} />
             <span>{carPods.length > 0 ? `Cars (${carPods.length})` : 'Cars'}</span>
@@ -1233,15 +1284,21 @@ export function HomeScreen({
                   }}
                 >
                   <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                    No cars added yet. Set up a right-hand drive cabin with unlimited middle &amp;
-                    back rows.
+                    {canEdit
+                      ? editingCrew
+                        ? 'No cars added yet. Tap Add Car to set up a right-hand drive cabin.'
+                        : 'No cars added yet. Tap Edit above to add a car.'
+                      : 'No cars configured yet.'}
                   </div>
-                  {canEdit && (
+                  {canEdit && editingCrew && (
                     <Button
                       variant="matcha"
                       size="sm"
                       leftIcon={<Plus size={14} strokeWidth={2.2} />}
-                      onClick={() => setPodEditor({ open: true, pod: null })}
+                      onClick={() => {
+                        triggerFeedback('tap');
+                        setPodEditor({ open: true, pod: null });
+                      }}
                     >
                       Add Car
                     </Button>
@@ -1256,16 +1313,25 @@ export function HomeScreen({
                 memberById={memberById}
                 canEdit={canEdit}
                 editingCrew={editingCrew}
-                onTapFrontSeat={(slot) =>
-                  requireEdit(() => setCarFrontPicker({ podId: pod.id, slot }))
-                }
-                onTapBenchRow={(row) =>
-                  requireEdit(() => setCarRowPicker({ podId: pod.id, row }))
-                }
-                onRemoveFromBench={(row, memberId) =>
-                  requireEdit(() => handleToggleCarBenchMember(pod.id, row, memberId))
-                }
-                onEditCar={() => requireEdit(() => setPodEditor({ open: true, pod }))}
+                onTapFrontSeat={(slot) => {
+                  if (!editingCrew) return;
+                  triggerFeedback('tap');
+                  requireEdit(() => setCarFrontPicker({ podId: pod.id, slot }));
+                }}
+                onTapBenchRow={(row) => {
+                  if (!editingCrew) return;
+                  triggerFeedback('tap');
+                  requireEdit(() => setCarRowPicker({ podId: pod.id, row }));
+                }}
+                onRemoveFromBench={(row, memberId) => {
+                  if (!editingCrew) return;
+                  requireEdit(() => handleToggleCarBenchMember(pod.id, row, memberId));
+                }}
+                onEditCar={() => {
+                  if (!editingCrew) return;
+                  triggerFeedback('tap');
+                  requireEdit(() => setPodEditor({ open: true, pod }));
+                }}
               />
             ))}
           </div>

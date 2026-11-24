@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Eye, EyeOff, KeyRound, Lock, UserRound } from 'lucide-react';
 import { Avatar, Button, CornerOrb, LiquidBottomSheet } from '../../components/atoms';
+import { triggerFeedback } from '../../services/feedback';
 import {
   isValidPasscode,
   memberHasPasscode,
@@ -72,16 +73,19 @@ export function WhoAreYouScreen({
     if (pendingMember) {
       if (pendingRequiresPin) {
         if (!isValidPasscode(pinInput)) {
+          triggerFeedback('warning');
           triggerPinError('Enter your 4-digit passcode');
           return;
         }
         if (!verifyMemberPasscode(pendingMember, pinInput)) {
+          triggerFeedback('warning');
           triggerPinError('Incorrect passcode. Ask your host to reset it.');
           setPinInput('');
           return;
         }
       } else if (showOptionalSetup && pinInput.length > 0) {
         if (!isValidPasscode(pinInput)) {
+          triggerFeedback('warning');
           triggerPinError('Enter all 4 digits, or clear to continue without a passcode');
           return;
         }
@@ -89,6 +93,7 @@ export function WhoAreYouScreen({
       }
     }
 
+    triggerFeedback('success');
     const chosen = pendingPickId;
     closeProfileSheet();
     onSelectProfile(chosen);

@@ -21,6 +21,7 @@ import {
   LiquidBottomSheet,
 } from '../../components/atoms';
 import { useRegisterOverlay } from '../../context/OverlayContext';
+import { triggerFeedback } from '../../services/feedback';
 import type { PrepTask, SharedTrip, TripMember } from '../../types/trip';
 import {
   advanceDeleteVerify,
@@ -50,6 +51,7 @@ export interface PrepScreenProps {
   trip: SharedTrip;
   personalPrep: PrepTask[];
   canEdit: boolean;
+  viewOnlyMode?: boolean;
   onOpenMenu: () => void;
   onRequestUnlockPin: () => void;
   onUpdatePersonalPrep: (tasks: PrepTask[], toastMsg?: string) => void;
@@ -67,6 +69,7 @@ export function PrepScreen({
   trip,
   personalPrep,
   canEdit,
+  viewOnlyMode = false,
   onOpenMenu,
   onRequestUnlockPin,
   onUpdatePersonalPrep,
@@ -99,17 +102,18 @@ export function PrepScreen({
 
   useRegisterOverlay(deleteState.stage !== 'idle');
 
-  const canEditActiveTab = tab === 'personal' || canEdit;
+  const canEditActiveTab = !viewOnlyMode && (tab === 'personal' || canEdit);
 
-  // Exit edit mode safely when switching to Group without editor permission
+  // Exit edit mode safely when switching to Group without editor permission or enabling View-Only Mode
   useEffect(() => {
-    if (tab === 'group' && !canEdit) {
+    if (!canEditActiveTab) {
       setIsEditMode(false);
       setAddSheetOpen(false);
+      setPicPickerTaskId(null);
       setDeleteState(cancelDeleteVerify());
       setEditState(cancelEditVerify());
     }
-  }, [tab, canEdit]);
+  }, [canEditActiveTab]);
 
   // 5-second auto-dismiss timer for floating Undo toast
   useEffect(() => {
@@ -151,6 +155,7 @@ export function PrepScreen({
   const handleUndo = (targetScope: PrepScope = tab) => {
     const { entry, nextStacks } = popUndoSnapshot(undoStacks, targetScope);
     if (!entry) return;
+    triggerFeedback('success');
     setUndoStacks(nextStacks);
     setUndoToast((prev) => ({ ...prev, open: false }));
     if (targetScope === 'personal') {
@@ -174,6 +179,7 @@ export function PrepScreen({
 
   const handleSwitchTab = (nextTab: PrepScope) => {
     if (nextTab === tab) return;
+    triggerFeedback('tap');
     setTab(nextTab);
     setIsEditMode(false);
     setAddSheetOpen(false);
@@ -185,6 +191,7 @@ export function PrepScreen({
 
   const handleToggle = (task: PrepTask) => {
     guardGroupEdit(() => {
+      triggerFeedback('toggle');
       const next = activeTasks.map((t) => (t.id === task.id ? { ...t, done: !t.done } : t));
       const actionMsg = task.done ? `Unchecked "${task.title}"` : `Checked "${task.title}"`;
       commitChangeWithUndo(tab, next, actionMsg);
@@ -193,6 +200,7 @@ export function PrepScreen({
 
   const handleAssignPic = (taskId: string, assigneeId: string | undefined) => {
     guardGroupEdit(() => {
+      triggerFeedback('success');
       const target = trip.groupPrep.find((t) => t.id === taskId);
       const next = trip.groupPrep.map((t) => (t.id === taskId ? { ...t, assigneeId } : t));
       const assigneeName = assigneeId ? memberById.get(assigneeId)?.name ?? 'Crew' : 'Unassigned';
@@ -211,6 +219,7 @@ export function PrepScreen({
     if (!clean) return;
 
     guardGroupEdit(() => {
+      triggerFeedback('success');
       const created: PrepTask = {
         id: `${tab === 'personal' ? 'pp' : 'gp'}-${Date.now().toString(36)}`,
         title: clean,
@@ -228,6 +237,7 @@ export function PrepScreen({
     if (!canExecuteDelete(deleteState) || deleteState.stage !== 'step2') return;
     const victim = deleteState.task;
     guardGroupEdit(() => {
+      triggerFeedback('warning');
       const next = activeTasks.filter((t) => t.id !== victim.id);
       commitChangeWithUndo(tab, next, `Removed "${victim.title}"`);
       setDeleteState(cancelDeleteVerify());
@@ -238,9 +248,11 @@ export function PrepScreen({
     e.preventDefault();
     const res = advanceEditToConfirm(editState);
     if (res.error) {
+      triggerFeedback('warning');
       setEditError(res.error);
       return;
     }
+    triggerFeedback('tap');
     setEditError('');
     setEditState(res.next);
   };
@@ -250,6 +262,7 @@ export function PrepScreen({
     const { task, draftTitle, draftAssigneeId } = editState;
     const cleanTitle = draftTitle.trim();
     guardGroupEdit(() => {
+      triggerFeedback('success');
       const next = activeTasks.map((t) =>
         t.id === task.id
           ? {

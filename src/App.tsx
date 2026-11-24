@@ -30,6 +30,7 @@ import {
   upsertPersonalTransaction,
 } from './services/db';
 import { fetchDriveAlbumWithStatus, isAssetFileName } from './services/gdriveAlbum';
+import { triggerFeedback } from './services/feedback';
 import { uploadSharedImage } from './services/mediaUploader';
 import {
   canEditTrip,
@@ -92,6 +93,15 @@ const pilotSeed = seedData as unknown as SharedTrip;
 const defaultCoverPath = `${import.meta.env.BASE_URL}assets/default-cover.svg`;
 
 const DRIVE_ALBUM_CACHE_PREFIX = 'gaskeun_drive_album_v1_';
+const VIEW_ONLY_STORAGE_KEY = 'gaskeun_view_only_mode';
+
+function loadViewOnlyMode(): boolean {
+  try {
+    return localStorage.getItem(VIEW_ONLY_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
 
 function loadCachedDrivePhotos(tripId: string): AlbumPhoto[] {
   try {
@@ -127,6 +137,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<DockTabId>('home');
   const [phase, setPhase] = useState<HomePhase>('pre-trip');
   const [hasRevealedDock, setHasRevealedDock] = useState<boolean>(false);
+  const [viewOnlyMode, setViewOnlyMode] = useState<boolean>(() => loadViewOnlyMode());
   const [pinUnlockedCodes, setPinUnlockedCodes] = useState<string[]>(
     () => loadSavedSession()?.pinUnlockedCodes ?? [],
   );
@@ -476,8 +487,24 @@ export default function App() {
 
   const pinUnlocked = pinUnlockedCodes.includes(activeTrip.code.toUpperCase());
   const isHost = isHostMember(activeTrip, activeMemberId);
-  const canEdit = canEditTrip(activeTrip, activeMemberId, pinUnlocked);
+  const rawCanEdit = canEditTrip(activeTrip, activeMemberId, pinUnlocked);
+  const isViewOnlyActive = rawCanEdit && viewOnlyMode;
+  const canEdit = rawCanEdit && !isViewOnlyActive;
   const roleLabel = getMemberRoleLabel(activeTrip, activeMemberId, pinUnlocked);
+
+  const handleToggleViewOnlyMode = (next: boolean) => {
+    triggerFeedback('toggle');
+    setViewOnlyMode(next);
+    try {
+      localStorage.setItem(VIEW_ONLY_STORAGE_KEY, String(next));
+    } catch {
+      // ignore storage quota errors
+    }
+    showToast(
+      next ? 'View-Only Mode enabled — edit controls hidden' : 'Edit controls restored',
+      'info',
+    );
+  };
 
   const persistSession = (tripCode: string, memberId: string, unlockedList: string[]) => {
     saveActiveSession({
@@ -873,6 +900,7 @@ export default function App() {
                 trip={activeTrip}
                 personalTransactions={localData?.personalTransactions ?? []}
                 canEdit={canEdit}
+                viewOnlyMode={isViewOnlyActive}
                 onOpenMenu={() => setMenuOpen(true)}
                 onRequestUnlockPin={() => requestUnlockPin()}
                 onUpdateTrip={handleUpdateTrip}
@@ -889,6 +917,7 @@ export default function App() {
                 activeMemberId={activeMemberId}
                 activeMemberName={activeMemberName}
                 canEdit={canEdit}
+                viewOnlyMode={isViewOnlyActive}
                 onDrivePhotosSync={handleDrivePhotosSync}
                 onSaveLocalPhotos={(photos, msg) => void handleSaveLocalAlbumPhotos(photos, msg)}
                 onUpdateTrip={handleUpdateTrip}
@@ -902,6 +931,7 @@ export default function App() {
                 trip={activeTrip}
                 personalPrep={localData?.personalPrep ?? []}
                 canEdit={canEdit}
+                viewOnlyMode={isViewOnlyActive}
                 onOpenMenu={() => setMenuOpen(true)}
                 onRequestUnlockPin={() => requestUnlockPin()}
                 onUpdatePersonalPrep={(tasks, msg) => void handleUpdatePersonalPrep(tasks, msg)}
@@ -919,8 +949,10 @@ export default function App() {
               coverUrl={effectiveCoverUrl}
               hasCoverPhoto={hasCustomCoverPhoto}
               albumPhotos={homeAlbumPhotos}
+              activeMember={activeMember}
               activeMemberName={activeMemberName}
               canEdit={canEdit}
+              viewOnlyMode={isViewOnlyActive}
               onOpenMenu={() => setMenuOpen(true)}
               onOpenTripSettings={openTripSettingsGated}
               onSwitchTrip={handleLeaveTrip}
@@ -949,6 +981,8 @@ export default function App() {
           trip={activeTrip}
           phase={phase}
           canEdit={canEdit}
+          hasEditRights={rawCanEdit}
+          viewOnlyMode={isViewOnlyActive}
           isHost={isHost}
           pinUnlocked={pinUnlocked}
           roleLabel={roleLabel}
@@ -963,7 +997,9 @@ export default function App() {
               notify: true,
             })
           }
+          onToggleViewOnlyMode={handleToggleViewOnlyMode}
           onPhaseChange={(next) => {
+            triggerFeedback('tap');
             setPhase(next);
             showToast(
               next === 'pre-trip' ? 'Switched to Countdown View' : 'Switched to Live Trail View',

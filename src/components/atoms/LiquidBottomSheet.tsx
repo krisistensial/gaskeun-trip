@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useRegisterOverlay } from '../../context/OverlayContext';
+import { triggerFeedback } from '../../services/feedback';
 import { CornerOrb } from './CornerOrb';
 import '../organisms/sheets.css';
 
@@ -26,10 +27,23 @@ export function LiquidBottomSheet({
 }: LiquidBottomSheetProps) {
   useRegisterOverlay(open);
 
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      triggerFeedback('tap');
+    }
+    wasOpenRef.current = open;
+  }, [open]);
+
   if (!open || typeof document === 'undefined') return null;
 
+  const handleClose = () => {
+    triggerFeedback('tap');
+    onClose();
+  };
+
   return createPortal(
-    <div className="gk-sheet-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="gk-sheet-backdrop" role="dialog" aria-modal="true" onClick={handleClose}>
       <div className="gk-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="gk-sheet__handle" />
         {(title || subtitle) && (
@@ -38,7 +52,7 @@ export function LiquidBottomSheet({
               {title && <h3 className="gk-sheet__title">{title}</h3>}
               {subtitle && <p className="gk-sheet__sub">{subtitle}</p>}
             </div>
-            <CornerOrb kind="close" ariaLabel="Close sheet" onClick={onClose} />
+            <CornerOrb kind="close" ariaLabel="Close sheet" onClick={handleClose} />
           </div>
         )}
         {children}

@@ -7,7 +7,7 @@
   position: relative;
   border-radius: var(--radius-xl);
   transition:
-    transform var(--dur-fast) var(--ease-spring),
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow var(--dur-normal) var(--ease-spring),
     background var(--dur-fast) ease;
 }
@@ -55,7 +55,7 @@
 }
 
 .gk-glass--interactive:active {
-  transform: scale(0.98);
+  transform: scale(0.965);
 }
 
 /* --- Button --- */
@@ -70,14 +70,14 @@
   white-space: nowrap;
   user-select: none;
   transition:
-    transform var(--dur-fast) var(--ease-spring),
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
     background-color var(--dur-fast) var(--ease-spring),
     box-shadow var(--dur-fast) var(--ease-spring),
     opacity var(--dur-fast) ease;
 }
 
 .gk-btn:active:not(:disabled) {
-  transform: scale(0.97);
+  transform: scale(0.965);
 }
 
 .gk-btn:disabled {

@@ -167,6 +167,41 @@
   color: var(--text-secondary);
 }
 
+/* Light Liquid Glass Toggle Switch (View-Only, Haptics, UI Sounds) */
+.menu-toggle-switch {
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+  padding: 3px;
+  background: rgba(84, 104, 96, 0.24);
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: background-color 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.menu-toggle-switch--on {
+  background: var(--brand-matcha);
+}
+
+.menu-toggle-switch--amber {
+  background: var(--accent-amber);
+}
+
+.menu-toggle-switch__knob {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 2px 6px rgba(24, 36, 32, 0.22);
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.menu-toggle-switch--on .menu-toggle-switch__knob,
+.menu-toggle-switch--amber .menu-toggle-switch__knob {
+  transform: translateX(18px);
+}
+
 /* Segmented Switch inside Sheet */
 .gk-seg-pill {
   display: grid;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Lock } from 'lucide-react';
 import { Button, LiquidBottomSheet } from '../atoms';
+import { triggerFeedback } from '../../services/feedback';
 import { verifyCrewEditPin } from '../../services/permissions';
 import type { SharedTrip } from '../../types/trip';
 import './sheets.css';
@@ -41,8 +42,10 @@ export function PinUnlockSheet({
     const ok = await verifyCrewEditPin(trip, pinStr);
     setChecking(false);
     if (ok) {
+      triggerFeedback('success');
       onUnlocked();
     } else {
+      triggerFeedback('warning');
       setError('Incorrect 4-digit PIN. Please try again.');
       setDigits(['', '', '', '']);
       inputRefs.current[0]?.focus();

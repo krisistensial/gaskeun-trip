@@ -27,6 +27,7 @@ import {
   type PlanFilterCategory,
 } from '../../services/contentIdeas';
 import { exportTripToExcel } from '../../services/excelExporter';
+import { triggerFeedback } from '../../services/feedback';
 import { formatCompactIDR } from '../../services/ledger';
 import { toggleStopDoneStatus } from '../../services/permissions';
 import {
@@ -160,6 +161,13 @@ export function PlanScreen({
   useEffect(() => {
     setSelectedDayId(resolvePlanLiveState(trip.days, trip.itinerary).defaultDayId);
   }, [trip.id]);
+
+  // Exit draft stop creation cleanly if edit rights are hidden (e.g., View-Only Mode enabled)
+  useEffect(() => {
+    if (!canEdit) {
+      setDraftNewStop(null);
+    }
+  }, [canEdit]);
 
   const liveState = useMemo(
     () =>
@@ -426,6 +434,7 @@ export function PlanScreen({
       city: last?.city || 'Trip',
     };
 
+    triggerFeedback('success');
     onUpdateTrip((prev) => {
       const ideasIdx = prev.days.findIndex((d) => d.isIdeas);
       const nextDays = [...prev.days];
@@ -459,6 +468,7 @@ export function PlanScreen({
 
   const handleToggleStopDone = (stop: PlanItem) => {
     if (!canEdit) return;
+    triggerFeedback('toggle');
     const nextStatus = toggleStopDoneStatus(stop.status);
     onUpdateTrip(
       (prev) => ({
@@ -492,6 +502,7 @@ export function PlanScreen({
   };
 
   const handleSaveStop = (updated: PlanItem) => {
+    triggerFeedback('success');
     setFailedPhotoIds((prev) => {
       if (!prev[updated.id]) return prev;
       const next = { ...prev };
@@ -513,6 +524,7 @@ export function PlanScreen({
   };
 
   const handleDeleteStop = (itemId: string) => {
+    triggerFeedback('warning');
     onUpdateTrip(
       (prev) => ({ ...prev, itinerary: prev.itinerary.filter((i) => i.id !== itemId) }),
       'Stop deleted',
@@ -522,6 +534,7 @@ export function PlanScreen({
   };
 
   const handleToggleIdeaShot = (idea: ContentIdea) => {
+    triggerFeedback('toggle');
     const nextStatus: ContentIdeaStatus = idea.status === 'shot' ? 'to-shoot' : 'shot';
     onUpdateTrip(
       (prev) => ({
@@ -535,6 +548,7 @@ export function PlanScreen({
   };
 
   const handleSaveIdea = (saved: ContentIdea, isNew: boolean) => {
+    triggerFeedback('success');
     onUpdateTrip(
       (prev) => {
         const list = prev.contentIdeas ?? [];
@@ -549,6 +563,7 @@ export function PlanScreen({
   };
 
   const handleDeleteIdea = (ideaId: string) => {
+    triggerFeedback('warning');
     onUpdateTrip(
       (prev) => ({
         ...prev,
@@ -627,7 +642,10 @@ export function PlanScreen({
               className="plan-map-btn tactile"
               aria-label="Open offline route map"
               title="Offline route map"
-              onClick={openDayOfflineRouteMap}
+              onClick={() => {
+                triggerFeedback('tap');
+                openDayOfflineRouteMap();
+              }}
             >
               <MapIcon size={18} strokeWidth={1.9} />
             </button>
@@ -637,7 +655,10 @@ export function PlanScreen({
                 role="tab"
                 aria-selected={viewMode === 'trail'}
                 className={`plan-view-btn ${viewMode === 'trail' ? 'plan-view-btn--active' : ''}`}
-                onClick={() => setViewMode('trail')}
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setViewMode('trail');
+                }}
               >
                 Trail
               </button>
@@ -646,7 +667,10 @@ export function PlanScreen({
                 role="tab"
                 aria-selected={viewMode === 'table'}
                 className={`plan-view-btn ${viewMode === 'table' ? 'plan-view-btn--active' : ''}`}
-                onClick={() => setViewMode('table')}
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setViewMode('table');
+                }}
               >
                 Table
               </button>
@@ -669,7 +693,10 @@ export function PlanScreen({
               dayLabel={day.dayLabel}
               dateNum={day.dateNum}
               active={selectedDay?.id === day.id}
-              onClick={() => setSelectedDayId(day.id)}
+              onClick={() => {
+                triggerFeedback('tap');
+                setSelectedDayId(day.id);
+              }}
             />
           ))}
           {canEdit && <DayPill variant="add" onClick={handleAddDay} />}
@@ -702,7 +729,10 @@ export function PlanScreen({
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                onClick={() => setSelectedFilters((prev) => togglePlanFilter(prev, f))}
+                onClick={() => {
+                  triggerFeedback('toggle');
+                  setSelectedFilters((prev) => togglePlanFilter(prev, f));
+                }}
               >
                 {f === 'all' ? 'All' : f === 'content' ? 'Content' : formatStopType(f)}
               </button>

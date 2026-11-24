@@ -53,6 +53,7 @@ export function CarCabinCard({
 }: CarCabinCardProps) {
   const seats = normalizeCarSeats(pod);
   const totalSeated = countCarSeated(seats);
+  const isEditable = canEdit && editingCrew;
 
   const frontLeftMember = seats.frontLeft ? memberById.get(seats.frontLeft) : undefined;
   const frontRightMember = seats.frontRight ? memberById.get(seats.frontRight) : undefined;
@@ -67,14 +68,14 @@ export function CarCabinCard({
 
     return (
       <div
-        className={`car-bench-box ${canEdit ? 'car-bench-box--interactive' : ''}`}
-        role={canEdit ? 'button' : undefined}
-        tabIndex={canEdit ? 0 : undefined}
+        className={`car-bench-box ${isEditable ? 'car-bench-box--interactive' : ''}`}
+        role={isEditable ? 'button' : undefined}
+        tabIndex={isEditable ? 0 : undefined}
         onClick={() => {
-          if (canEdit) onTapBenchRow(row);
+          if (isEditable) onTapBenchRow(row);
         }}
         onKeyDown={(e) => {
-          if (!canEdit) return;
+          if (!isEditable) return;
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             onTapBenchRow(row);
@@ -86,7 +87,7 @@ export function CarCabinCard({
             <span className="car-bench-title">{title}</span>
             <span className="car-bench-count">{seatedMembers.length} seated</span>
           </div>
-          {canEdit && (
+          {isEditable && (
             <button
               type="button"
               className="car-bench-add-btn tactile"
@@ -124,7 +125,7 @@ export function CarCabinCard({
                   <span className="car-rider-chip__name">
                     {isTentative ? `${m.name}?` : m.name}
                   </span>
-                  {canEdit && (
+                  {isEditable && (
                     <button
                       type="button"
                       className="car-rider-chip__remove tactile"
@@ -143,7 +144,7 @@ export function CarCabinCard({
           </div>
         ) : (
           <div className="car-bench-empty">
-            {canEdit ? 'Tap + Add to seat riders (unlimited)' : 'No riders assigned'}
+            {isEditable ? 'Tap + Add to seat riders (unlimited)' : 'No riders assigned'}
           </div>
         )}
       </div>
@@ -161,7 +162,7 @@ export function CarCabinCard({
           </div>
           {subtitle && <div className="car-pod-sub">{subtitle}</div>}
         </div>
-        {(editingCrew || canEdit) && (
+        {isEditable && (
           <Button
             variant="glass"
             size="sm"
@@ -200,15 +201,15 @@ export function CarCabinCard({
         <div className="car-front-row">
           <button
             type="button"
-            disabled={!canEdit}
+            disabled={!isEditable}
             className={[
               'car-front-seat',
               frontLeftMember ? 'car-front-seat--occupied' : 'car-front-seat--open',
-              canEdit ? 'tactile' : '',
+              isEditable ? 'tactile' : '',
             ]
               .filter(Boolean)
               .join(' ')}
-            onClick={() => canEdit && onTapFrontSeat('frontLeft')}
+            onClick={() => isEditable && onTapFrontSeat('frontLeft')}
           >
             <div className="car-front-seat__top">
               <span className="car-front-seat__role">
@@ -235,23 +236,23 @@ export function CarCabinCard({
               </div>
             ) : (
               <div className="car-front-seat__empty">
-                {canEdit ? 'Tap to assign' : 'Open'}
+                {isEditable ? 'Tap to assign' : 'Open'}
               </div>
             )}
           </button>
 
           <button
             type="button"
-            disabled={!canEdit}
+            disabled={!isEditable}
             className={[
               'car-front-seat',
               'car-front-seat--driver',
               frontRightMember ? 'car-front-seat--occupied' : 'car-front-seat--open',
-              canEdit ? 'tactile' : '',
+              isEditable ? 'tactile' : '',
             ]
               .filter(Boolean)
               .join(' ')}
-            onClick={() => canEdit && onTapFrontSeat('frontRight')}
+            onClick={() => isEditable && onTapFrontSeat('frontRight')}
           >
             <div className="car-front-seat__top">
               <span className="car-driver-pill">
@@ -278,7 +279,7 @@ export function CarCabinCard({
               </div>
             ) : (
               <div className="car-front-seat__empty">
-                {canEdit ? 'Assign driver' : 'Open'}
+                {isEditable ? 'Assign driver' : 'Open'}
               </div>
             )}
           </button>

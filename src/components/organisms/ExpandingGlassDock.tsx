@@ -1,5 +1,6 @@
 import { Calendar, Home, Images, ListChecks, Wallet, type LucideIcon } from 'lucide-react';
 import { useHasActiveOverlay } from '../../context/OverlayContext';
+import { triggerFeedback } from '../../services/feedback';
 import type { DockTabId } from '../../types/trip';
 import './ExpandingGlassDock.css';
 
@@ -42,7 +43,10 @@ export function ExpandingGlassDock({
               type="button"
               tabIndex={isHidden ? -1 : 0}
               className={`gk-dock__item ${isActive ? 'gk-dock__item--active' : ''}`}
-              onClick={() => onChange(id)}
+              onClick={() => {
+                if (!isActive) triggerFeedback('tap');
+                onChange(id);
+              }}
               aria-current={isActive ? 'page' : undefined}
               aria-label={label}
             >

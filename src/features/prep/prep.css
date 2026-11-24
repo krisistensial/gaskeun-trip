@@ -145,8 +145,21 @@
   transform: scale(0.88);
 }
 
+@keyframes prep-check-pop {
+  0% {
+    transform: scale(0.82);
+  }
+  55% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 .prep-check--done {
   background: var(--brand-matcha);
+  animation: prep-check-pop 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Read-only clean text (zero accidental keyboard popups on scroll) */

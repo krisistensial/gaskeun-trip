@@ -16,11 +16,19 @@ import {
   RotateCcw,
   Settings2,
   ShieldCheck,
+  Smartphone,
   Upload,
   Users,
+  Volume2,
 } from 'lucide-react';
 import { Avatar, Badge, Button, ConfirmDialog, LiquidBottomSheet } from '../atoms';
 import { PhotoCropperSheet } from './PhotoCropperSheet';
+import {
+  getFeedbackPreferences,
+  setHapticsEnabled,
+  setSoundEnabled,
+  triggerFeedback,
+} from '../../services/feedback';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import {
   changeOwnPasscode,
@@ -42,6 +50,8 @@ export interface TripMenuSheetProps {
   trip: SharedTrip;
   phase: HomePhase;
   canEdit: boolean;
+  hasEditRights?: boolean;
+  viewOnlyMode?: boolean;
   isHost: boolean;
   pinUnlocked: boolean;
   roleLabel: TripAccessRole;
@@ -51,6 +61,7 @@ export interface TripMenuSheetProps {
   lastSyncError?: string | null;
   isSyncingCloud?: boolean;
   onForceSync?: () => void;
+  onToggleViewOnlyMode?: (next: boolean) => void;
   onPhaseChange: (phase: HomePhase) => void;
   onUpdateActiveAvatar: (avatarDataUrl: string) => void;
   onSetMemberPasscode: (memberId: string, passcode: string | undefined, toastMsg?: string) => void;
@@ -73,6 +84,8 @@ export function TripMenuSheet({
   trip,
   phase,
   canEdit,
+  hasEditRights = canEdit,
+  viewOnlyMode = false,
   isHost,
   pinUnlocked,
   roleLabel,
@@ -82,6 +95,7 @@ export function TripMenuSheet({
   lastSyncError,
   isSyncingCloud = false,
   onForceSync,
+  onToggleViewOnlyMode,
   onPhaseChange,
   onUpdateActiveAvatar,
   onSetMemberPasscode,
@@ -122,6 +136,9 @@ export function TripMenuSheet({
   const [crewEditPinInput, setCrewEditPinInput] = useState('');
   const [showCrewEditPinInput, setShowCrewEditPinInput] = useState(false);
 
+  // Local device multisensory preferences (Haptics + Web Audio)
+  const [feedbackPrefs, setFeedbackPrefs] = useState(() => getFeedbackPreferences());
+
   const resetLocalPanels = () => {
     setShowEditorsList(false);
     setShowMyPasscode(false);
@@ -156,10 +173,12 @@ export function TripMenuSheet({
     if (!activeMember) return;
     const res = changeOwnPasscode(trip, activeMember.id, currentPin, newPin);
     if (!res.ok) {
+      triggerFeedback('warning');
       setOwnPinError(res.error || 'Could not update passcode');
       setOwnShakeCount((c) => c + 1);
       return;
     }
+    triggerFeedback('success');
     onSetMemberPasscode(
       activeMember.id,
       newPin,
@@ -175,10 +194,12 @@ export function TripMenuSheet({
     if (!activeMember) return;
     const res = changeOwnPasscode(trip, activeMember.id, currentPin, undefined);
     if (!res.ok) {
+      triggerFeedback('warning');
       setOwnPinError(res.error || 'Current passcode is incorrect');
       setOwnShakeCount((c) => c + 1);
       return;
     }
+    triggerFeedback('warning');
     onSetMemberPasscode(activeMember.id, undefined, 'Passcode removed');
     setCurrentPin('');
     setNewPin('');
@@ -188,6 +209,7 @@ export function TripMenuSheet({
 
   const handleHostSavePin = (member: TripMember) => {
     if (!isValidPasscode(hostPinValue)) return;
+    triggerFeedback('success');
     onSetMemberPasscode(member.id, hostPinValue, `Passcode set for ${member.name}`);
     setHostPinTargetId(null);
     setHostPinValue('');
@@ -197,6 +219,7 @@ export function TripMenuSheet({
   const handleHostSaveCrewEditPin = (e: FormEvent) => {
     e.preventDefault();
     if (!isHost || !isValidPasscode(crewEditPinInput)) return;
+    triggerFeedback('success');
     onUpdateCrewEditPin(crewEditPinInput);
     setCrewEditPinInput('');
     setShowCrewEditPinInput(false);
@@ -283,8 +306,13 @@ export function TripMenuSheet({
             <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600 }}>
               {activeMemberName}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 3 }}>
               <Badge tone={roleLabel === 'Viewer' ? 'neutral' : 'mint'}>{roleLabel}</Badge>
+              {viewOnlyMode && hasEditRights && (
+                <Badge tone="amber" icon={<Eye size={10} strokeWidth={2.2} />}>
+                  View-Only
+                </Badge>
+              )}
               {activeMember && activeHasPasscode && (
                 <Badge tone="matcha" icon={<Lock size={10} strokeWidth={2.2} />}>
                   PIN On
@@ -341,6 +369,111 @@ export function TripMenuSheet({
       </div>
 
       <div className="gk-menu-list">
+        {/* Host & Editor Only: Clean Trip-Day View-Only Mode Toggle */}
+        {hasEditRights && onToggleViewOnlyMode && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={viewOnlyMode}
+            className="gk-menu-item"
+            onClick={() => onToggleViewOnlyMode(!viewOnlyMode)}
+          >
+            <span className="gk-menu-item__left">
+              <span
+                className="gk-menu-item__icon"
+                style={
+                  viewOnlyMode
+                    ? { background: 'var(--accent-amber-soft)', color: '#9A5F16' }
+                    : undefined
+                }
+              >
+                <Eye size={18} strokeWidth={1.8} />
+              </span>
+              <span>
+                <div className="gk-menu-item__title">View-Only Mode</div>
+                <div className="gk-menu-item__sub">
+                  Hide all edit controls for a clean trip-day view
+                </div>
+              </span>
+            </span>
+            <span
+              className={`menu-toggle-switch ${viewOnlyMode ? 'menu-toggle-switch--amber' : ''}`}
+              aria-hidden="true"
+            >
+              <span className="menu-toggle-switch__knob" />
+            </span>
+          </button>
+        )}
+
+        {/* Local Sensory Feedback Preferences (Haptics + Subtle Glassy UI Sounds) */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={feedbackPrefs.hapticsEnabled}
+          className="gk-menu-item"
+          onClick={() => {
+            const next = !feedbackPrefs.hapticsEnabled;
+            const updated = setHapticsEnabled(next);
+            setFeedbackPrefs(updated);
+            if (next) {
+              triggerFeedback('toggle', { forceHaptic: true });
+            }
+          }}
+        >
+          <span className="gk-menu-item__left">
+            <span className="gk-menu-item__icon">
+              <Smartphone size={18} strokeWidth={1.8} />
+            </span>
+            <span>
+              <div className="gk-menu-item__title">Haptic Feedback</div>
+              <div className="gk-menu-item__sub">
+                Gentle vibration on taps, toggles &amp; saves
+              </div>
+            </span>
+          </span>
+          <span
+            className={`menu-toggle-switch ${feedbackPrefs.hapticsEnabled ? 'menu-toggle-switch--on' : ''}`}
+            aria-hidden="true"
+          >
+            <span className="menu-toggle-switch__knob" />
+          </span>
+        </button>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={feedbackPrefs.soundEnabled}
+          className="gk-menu-item"
+          onClick={() => {
+            const next = !feedbackPrefs.soundEnabled;
+            const updated = setSoundEnabled(next);
+            setFeedbackPrefs(updated);
+            if (next) {
+              triggerFeedback('success', { forceSound: true });
+            } else {
+              triggerFeedback('tap');
+            }
+          }}
+        >
+          <span className="gk-menu-item__left">
+            <span className="gk-menu-item__icon">
+              <Volume2 size={18} strokeWidth={1.8} />
+            </span>
+            <span>
+              <div className="gk-menu-item__title">Subtle UI Sounds</div>
+              <div className="gk-menu-item__sub">
+                Soft glassy tones for actions &amp; alerts
+              </div>
+            </span>
+          </span>
+          <span
+            className={`menu-toggle-switch ${feedbackPrefs.soundEnabled ? 'menu-toggle-switch--on' : ''}`}
+            aria-hidden="true"
+          >
+            <span className="menu-toggle-switch__knob" />
+          </span>
+        </button>
+
         {/* Cloud Sync Status & Force Pull Row */}
         <div
           className="gk-menu-item"
@@ -772,7 +905,7 @@ export function TripMenuSheet({
         )}
 
         {/* Subtle Crew PIN Unlock for Viewers (or Lock if unlocked via PIN) */}
-        {(!canEdit || (pinUnlocked && !isHost)) && (
+        {(!hasEditRights || (pinUnlocked && !isHost && !viewOnlyMode)) && (
           <button
             type="button"
             className="gk-menu-item"

@@ -118,6 +118,51 @@
   pointer-events: auto;
 }
 
+.home-hero__corner-spacer {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* Profile Avatar Trigger (Replaces Top-Right ••• Menu Orb with Light Liquid Glass Ring) */
+.home-profile-orb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.72);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  box-shadow: 0 8px 20px -6px rgba(24, 36, 32, 0.26);
+  flex-shrink: 0;
+}
+
+.home-profile-orb .gk-avatar {
+  width: 100%;
+  height: 100%;
+  border: none;
+  box-shadow: none;
+}
+
+.home-profile-orb__dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-amber);
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 2px 6px rgba(24, 36, 32, 0.25);
+  pointer-events: none;
+}
+
 .home-hero__center {
   position: relative;
   z-index: 3;
@@ -241,23 +286,23 @@
 }
 
 .countdown-days-lbl {
-  font-size: clamp(28px, 8.2vw, 38px);
+  font-size: clamp(20px, 5.8vw, 26px);
   font-weight: 700;
   letter-spacing: 0.22em;
   padding-left: 0.22em;
   text-transform: uppercase;
   color: #1E3A32;
   opacity: 0.9;
-  margin-top: 6px;
+  margin-top: 4px;
   text-shadow: 0 2px 12px rgba(246, 248, 245, 0.88);
 }
 
 .countdown-sub-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(14px, 5vw, 36px);
-  width: min(100%, 400px);
-  margin-top: 28px;
+  gap: clamp(14px, 5vw, 28px);
+  width: min(100%, 280px);
+  margin-top: 20px;
 }
 
 .countdown-sub-cell {
@@ -269,7 +314,7 @@
 
 .countdown-val {
   font-family: var(--font-serif);
-  font-size: clamp(51px, 15vw, 69px);
+  font-size: clamp(26px, 7.6vw, 36px);
   font-weight: 700;
   line-height: 1;
   color: #1E3A32;
@@ -278,14 +323,14 @@
 }
 
 .countdown-lbl {
-  font-size: clamp(15px, 4.4vw, 19px);
+  font-size: clamp(9.5px, 2.6vw, 11px);
   font-weight: 700;
   letter-spacing: 0.16em;
   padding-left: 0.16em;
   text-transform: uppercase;
   color: #1E3A32;
   opacity: 0.86;
-  margin-top: 8px;
+  margin-top: 5px;
   text-shadow: 0 1px 10px rgba(246, 248, 245, 0.88);
 }
 

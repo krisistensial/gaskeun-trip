@@ -17,6 +17,7 @@ import {
   markTransactionSettled,
   type MemberContributionSummary,
 } from '../../services/ledger';
+import { triggerFeedback } from '../../services/feedback';
 import type { SharedTrip, Transaction } from '../../types/trip';
 import { AddTransactionSheet, type TxComposerMode } from './AddTransactionSheet';
 import './wallet.css';
@@ -28,6 +29,7 @@ export interface WalletScreenProps {
   trip: SharedTrip;
   personalTransactions: Transaction[];
   canEdit: boolean;
+  viewOnlyMode?: boolean;
   onOpenMenu: () => void;
   onRequestUnlockPin: () => void;
   onUpdateTrip: (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => void;
@@ -39,6 +41,7 @@ export function WalletScreen({
   trip,
   personalTransactions,
   canEdit,
+  viewOnlyMode = false,
   onOpenMenu,
   onRequestUnlockPin,
   onUpdateTrip,
@@ -114,6 +117,7 @@ export function WalletScreen({
   };
 
   const handleSaveSharedTx = (tx: Transaction, isNew: boolean) => {
+    triggerFeedback('success');
     onUpdateTrip(
       (prev) => ({
         ...prev,
@@ -126,6 +130,7 @@ export function WalletScreen({
   };
 
   const handleDeleteSharedTx = (txId: string) => {
+    triggerFeedback('warning');
     onUpdateTrip(
       (prev) => ({
         ...prev,
@@ -137,6 +142,7 @@ export function WalletScreen({
 
   const handleMarkSettled = (txId: string) => {
     guardSharedEdit(() => {
+      triggerFeedback('success');
       onUpdateTrip(
         (prev) => ({
           ...prev,
@@ -383,7 +389,10 @@ export function WalletScreen({
                 key={f.id}
                 type="button"
                 className={`plan-chip tactile ${spentFilter === f.id ? 'plan-chip--active' : ''}`}
-                onClick={() => setSpentFilter(f.id)}
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setSpentFilter(f.id);
+                }}
               >
                 {f.label}
               </button>
@@ -482,13 +491,15 @@ export function WalletScreen({
                 title="No personal treats yet"
                 description="Log snacks, coffee, or souvenirs privately on this phone."
                 action={
-                  <Button
-                    variant="matcha"
-                    size="sm"
-                    onClick={() => setComposer({ open: true, mode: 'personal', editing: null })}
-                  >
-                    Add Personal Item
-                  </Button>
+                  !viewOnlyMode ? (
+                    <Button
+                      variant="matcha"
+                      size="sm"
+                      onClick={() => setComposer({ open: true, mode: 'personal', editing: null })}
+                    >
+                      Add Personal Item
+                    </Button>
+                  ) : undefined
                 }
               />
             ) : (
@@ -497,11 +508,12 @@ export function WalletScreen({
                   key={tx.id}
                   variant="clear"
                   padding="md"
-                  interactive
+                  interactive={!viewOnlyMode}
                   className="tx-card"
-                  onClick={() =>
-                    setComposer({ open: true, mode: 'personal', editing: tx })
-                  }
+                  onClick={() => {
+                    if (viewOnlyMode) return;
+                    setComposer({ open: true, mode: 'personal', editing: tx });
+                  }}
                 >
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{tx.title}</div>
@@ -518,8 +530,8 @@ export function WalletScreen({
         </>
       )}
 
-      {/* Floating Glass (+) Button — ALWAYS visible on Personal, Editor-only on shared tabs */}
-      {(subTab === 'personal' || canEdit) && (
+      {/* Floating Glass (+) Button — hidden in View-Only Mode, Editor-only on shared tabs */}
+      {!viewOnlyMode && (subTab === 'personal' || canEdit) && (
         <CornerOrb
           kind="add"
           size="lg"
@@ -606,9 +618,15 @@ export function WalletScreen({
         editingTx={composer.editing}
         defaultMemberId={composer.defaultMemberId}
         onSaveShared={handleSaveSharedTx}
-        onSavePersonal={onUpsertPersonalTx}
+        onSavePersonal={(tx, isNew) => {
+          triggerFeedback('success');
+          onUpsertPersonalTx(tx, isNew);
+        }}
         onDeleteShared={handleDeleteSharedTx}
-        onDeletePersonal={onDeletePersonalTx}
+        onDeletePersonal={(id) => {
+          triggerFeedback('warning');
+          onDeletePersonalTx(id);
+        }}
         onClose={() => setComposer((prev) => ({ ...prev, open: false }))}
       />
     </div>

@@ -33,6 +33,7 @@ import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet'
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import { useHorizontalScrollFade } from '../../hooks/useHorizontalScrollFade';
 import { formatPlatformLabel } from '../../services/contentIdeas';
+import { triggerFeedback } from '../../services/feedback';
 import {
   extractDriveFolderId,
   fetchDriveAlbumWithStatus,
@@ -56,6 +57,7 @@ export interface AlbumScreenProps {
   activeMemberId: string | null;
   activeMemberName: string;
   canEdit: boolean;
+  viewOnlyMode?: boolean;
   onDrivePhotosSync?: (photos: AlbumPhoto[]) => void;
   onSaveLocalPhotos: (photos: AlbumPhoto[], toastMsg?: string) => void;
   onUpdateTrip: (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => void;
@@ -87,6 +89,7 @@ export function AlbumScreen({
   activeMemberId,
   activeMemberName,
   canEdit,
+  viewOnlyMode = false,
   onDrivePhotosSync,
   onSaveLocalPhotos,
   onUpdateTrip,
@@ -462,7 +465,10 @@ export function AlbumScreen({
             role="tab"
             aria-selected={albumTab === 'photos'}
             className={`album-view-btn ${albumTab === 'photos' ? 'album-view-btn--active' : ''}`}
-            onClick={() => setAlbumTab('photos')}
+            onClick={() => {
+              triggerFeedback('tap');
+              setAlbumTab('photos');
+            }}
           >
             Photos
           </button>
@@ -471,7 +477,10 @@ export function AlbumScreen({
             role="tab"
             aria-selected={albumTab === 'ideas'}
             className={`album-view-btn ${albumTab === 'ideas' ? 'album-view-btn--active' : ''}`}
-            onClick={() => setAlbumTab('ideas')}
+            onClick={() => {
+              triggerFeedback('tap');
+              setAlbumTab('ideas');
+            }}
           >
             Ideas
           </button>
@@ -493,7 +502,10 @@ export function AlbumScreen({
               role="tab"
               aria-selected={dayFilter === 'all'}
               className={`plan-chip tactile ${dayFilter === 'all' ? 'plan-chip--active' : ''}`}
-              onClick={() => setDayFilter('all')}
+              onClick={() => {
+                triggerFeedback('tap');
+                setDayFilter('all');
+              }}
             >
               All
             </button>
@@ -504,7 +516,10 @@ export function AlbumScreen({
                 role="tab"
                 aria-selected={dayFilter === day.id}
                 className={`plan-chip tactile ${dayFilter === day.id ? 'plan-chip--active' : ''}`}
-                onClick={() => setDayFilter(day.id)}
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setDayFilter(day.id);
+                }}
               >
                 Day {idx + 1}
               </button>
@@ -616,7 +631,7 @@ export function AlbumScreen({
                       }
                     />
                   </button>
-                ) : (
+                ) : !viewOnlyMode ? (
                   <button
                     type="button"
                     aria-label="Drive sync settings"
@@ -625,21 +640,26 @@ export function AlbumScreen({
                   >
                     <Settings2 size={15} strokeWidth={2} />
                   </button>
-                )}
+                ) : null}
 
-                <Button
-                  variant="matcha"
-                  size="sm"
-                  leftIcon={<Upload size={14} strokeWidth={2} />}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Upload
-                </Button>
+                {!viewOnlyMode && (
+                  <Button
+                    variant="matcha"
+                    size="sm"
+                    leftIcon={<Upload size={14} strokeWidth={2} />}
+                    onClick={() => {
+                      triggerFeedback('tap');
+                      fileInputRef.current?.click();
+                    }}
+                  >
+                    Upload
+                  </Button>
+                )}
               </div>
             </div>
 
             {/* Slim secondary row when local pending photos are ready to push */}
-            {localPhotos.length > 0 && hasSyncScript && syncHealth.status === 'ok' && (
+            {!viewOnlyMode && localPhotos.length > 0 && hasSyncScript && syncHealth.status === 'ok' && (
               <div className="album-drive-capsule__pending">
                 <span className="album-drive-capsule__pending-text">
                   {localPhotos.length} local {localPhotos.length === 1 ? 'photo' : 'photos'} waiting
@@ -665,14 +685,19 @@ export function AlbumScreen({
               title="No trip photos yet"
               description="Upload highlights from your gallery — original quality is preserved for sharing."
               action={
-                <Button
-                  variant="matcha"
-                  size="sm"
-                  leftIcon={<ImagePlus size={15} strokeWidth={2} />}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Upload First Photo
-                </Button>
+                !viewOnlyMode ? (
+                  <Button
+                    variant="matcha"
+                    size="sm"
+                    leftIcon={<ImagePlus size={15} strokeWidth={2} />}
+                    onClick={() => {
+                      triggerFeedback('tap');
+                      fileInputRef.current?.click();
+                    }}
+                  >
+                    Upload First Photo
+                  </Button>
+                ) : undefined
               }
             />
           ) : (
@@ -722,23 +747,29 @@ export function AlbumScreen({
                   role="tab"
                   aria-selected={ideaFilter === f.id}
                   className={`plan-chip tactile ${ideaFilter === f.id ? 'plan-chip--active' : ''}`}
-                  onClick={() => setIdeaFilter(f.id)}
+                  onClick={() => {
+                    triggerFeedback('tap');
+                    setIdeaFilter(f.id);
+                  }}
                 >
                   {f.label}
                 </button>
               ))}
             </div>
-            <Button
-              variant="matcha"
-              size="sm"
-              leftIcon={<Plus size={14} strokeWidth={2.2} />}
-              onClick={() => {
-                setEditingIdea(null);
-                setIdeaSheetOpen(true);
-              }}
-            >
-              Idea
-            </Button>
+            {!viewOnlyMode && (
+              <Button
+                variant="matcha"
+                size="sm"
+                leftIcon={<Plus size={14} strokeWidth={2.2} />}
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setEditingIdea(null);
+                  setIdeaSheetOpen(true);
+                }}
+              >
+                Idea
+              </Button>
+            )}
           </div>
 
           {filteredIdeas.length === 0 ? (
@@ -747,17 +778,20 @@ export function AlbumScreen({
               title={ideaFilter === 'all' ? 'No content ideas yet' : 'No matching ideas'}
               description="Save IG Reels, TikTok transitions, or group pose inspiration so the crew never forgets a shot."
               action={
-                <Button
-                  variant="matcha"
-                  size="sm"
-                  leftIcon={<Plus size={14} strokeWidth={2.2} />}
-                  onClick={() => {
-                    setEditingIdea(null);
-                    setIdeaSheetOpen(true);
-                  }}
-                >
-                  Add First Idea
-                </Button>
+                !viewOnlyMode ? (
+                  <Button
+                    variant="matcha"
+                    size="sm"
+                    leftIcon={<Plus size={14} strokeWidth={2.2} />}
+                    onClick={() => {
+                      triggerFeedback('tap');
+                      setEditingIdea(null);
+                      setIdeaSheetOpen(true);
+                    }}
+                  >
+                    Add First Idea
+                  </Button>
+                ) : undefined
               }
             />
           ) : (
