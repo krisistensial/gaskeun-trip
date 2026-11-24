@@ -14,33 +14,44 @@
 .ambient-blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(78px);
-  will-change: transform;
+  pointer-events: none;
 }
 
 .ambient-blob--matcha {
-  width: 340px;
-  height: 340px;
-  top: -70px;
-  right: -80px;
-  background: var(--blob-matcha);
-  opacity: 0.72;
+  width: 540px;
+  height: 540px;
+  top: -170px;
+  right: -180px;
+  background: radial-gradient(
+    circle,
+    rgba(203, 224, 206, 0.72) 0%,
+    rgba(203, 224, 206, 0.34) 40%,
+    rgba(203, 224, 206, 0) 72%
+  );
 }
 
 .ambient-blob--sunlight {
-  width: 320px;
-  height: 320px;
-  top: 34%;
-  left: -95px;
-  background: var(--blob-sunlight);
-  opacity: 0.90;
+  width: 520px;
+  height: 520px;
+  top: 26%;
+  left: -195px;
+  background: radial-gradient(
+    circle,
+    rgba(245, 242, 228, 0.9) 0%,
+    rgba(245, 242, 228, 0.44) 42%,
+    rgba(245, 242, 228, 0) 72%
+  );
 }
 
 .ambient-blob--mint {
-  width: 300px;
-  height: 300px;
-  bottom: -60px;
-  right: -50px;
-  background: var(--blob-mint);
-  opacity: 0.80;
+  width: 500px;
+  height: 500px;
+  bottom: -160px;
+  right: -150px;
+  background: radial-gradient(
+    circle,
+    rgba(223, 236, 230, 0.8) 0%,
+    rgba(223, 236, 230, 0.38) 42%,
+    rgba(223, 236, 230, 0) 72%
+  );
 }

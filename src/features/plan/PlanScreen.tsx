@@ -1134,7 +1134,7 @@ export function PlanScreen({
         /* 03b_Plan_Table — Strictly 3 columns: TIME | AGENDA | EST. + Export .xlsx */
         <div className="plan-table-scroll">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <GlassCard variant="clear" padding="none">
+            <GlassCard variant="clear" padding="none" className="plan-table-card">
               <div
                 className="plan-table-row"
                 style={{
