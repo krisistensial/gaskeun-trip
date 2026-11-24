@@ -14,6 +14,7 @@ import { ExpandingGlassDock } from './components/organisms/ExpandingGlassDock';
 import { PinUnlockSheet } from './components/organisms/PinUnlockSheet';
 import { TripMenuSheet, type HomePhase } from './components/organisms/TripMenuSheet';
 import { OverlayProvider } from './context/OverlayContext';
+import { useKeyboardOffset } from './hooks/useVisualViewport';
 import { LandingGateScreen } from './features/gate/LandingGateScreen';
 import { WhoAreYouScreen } from './features/gate/WhoAreYouScreen';
 import { HomeScreen } from './features/home/HomeScreen';
@@ -40,7 +41,14 @@ import {
   setMemberPasscodeInTrip,
 } from './services/permissions';
 import type { CroppedImageResult } from './services/photoCrop';
-import { clearActiveSession, loadSavedSession, saveActiveSession } from './services/session';
+import {
+  clearActiveSession,
+  filterJoinedTrips,
+  loadJoinedTripCodes,
+  loadSavedSession,
+  recordJoinedTripCode,
+  saveActiveSession,
+} from './services/session';
 import {
   applyRemoteSharedTrip,
   fetchRemoteTripByCode,
@@ -123,8 +131,11 @@ function saveCachedDrivePhotos(tripId: string, photos: AlbumPhoto[]): void {
 }
 
 export default function App() {
+  useKeyboardOffset();
+
   const [route, setRoute] = useState<AppRoute>('landing');
   const [savedTrips, setSavedTrips] = useState<SharedTrip[]>([pilotSeed]);
+  const [joinedTripCodes, setJoinedTripCodes] = useState<string[]>(() => loadJoinedTripCodes());
   const [activeTrip, setActiveTrip] = useState<SharedTrip>(pilotSeed);
   const [localData, setLocalData] = useState<LocalPersonalData | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
@@ -252,6 +263,7 @@ export default function App() {
             const refreshed = await listSharedTrips();
             setSavedTrips(refreshed);
             const local = await getLocalPersonal(matched.id);
+            setJoinedTripCodes(recordJoinedTripCode(matched.code));
             setActiveTrip(matched);
             setLocalData(local);
             if (remoteMatched) setLastSyncedAt(new Date().toISOString());
@@ -283,6 +295,7 @@ export default function App() {
               local.activeMemberId === memberId
                 ? local
                 : await setActiveMemberLocal(restored.id, memberId);
+            setJoinedTripCodes(recordJoinedTripCode(restored.code));
             setActiveTrip(restored);
             setLocalData(syncedLocal);
             setPinUnlockedCodes(saved.pinUnlockedCodes);
@@ -567,6 +580,7 @@ export default function App() {
     }
 
     const local = await getLocalPersonal(found.id);
+    setJoinedTripCodes(recordJoinedTripCode(found.code));
     setActiveTrip(found);
     setLocalData(local);
     setActiveRouteTarget(null);
@@ -654,6 +668,7 @@ export default function App() {
     });
     const all = await listSharedTrips();
     setSavedTrips(all);
+    setJoinedTripCodes(recordJoinedTripCode(newTrip.code));
     const creatorId = newTrip.members[0]?.id ?? 'guest';
     const local = await setActiveMemberLocal(newTrip.id, creatorId);
     const nextUnlocked = Array.from(new Set([...pinUnlockedCodes, newTrip.code.toUpperCase()]));
@@ -795,6 +810,11 @@ export default function App() {
     showToast('Shared trip updated — personal data stayed untouched', 'success');
   };
 
+  const visibleSavedTrips = useMemo(
+    () => filterJoinedTrips(savedTrips, joinedTripCodes),
+    [savedTrips, joinedTripCodes],
+  );
+
   const showDock = route === 'hub' && !activeRouteTarget;
   const isDockVisible = hasRevealedDock || phase === 'on-trip' || activeTab !== 'home';
   const dockHiddenForHero =
@@ -820,7 +840,7 @@ export default function App() {
         >
           {route === 'landing' && (
             <LandingGateScreen
-              savedTrips={savedTrips}
+              savedTrips={visibleSavedTrips}
               onJoinCode={handleJoinCode}
               onOpenCreate={() => setRoute('create')}
             />

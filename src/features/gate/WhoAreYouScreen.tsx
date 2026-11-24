@@ -233,6 +233,12 @@ export function WhoAreYouScreen({
                         placeholder="••••"
                         value={pinInput}
                         className="who-pin-input"
+                        onFocus={(e) => {
+                          const target = e.currentTarget;
+                          window.setTimeout(() => {
+                            target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                          }, 120);
+                        }}
                         onChange={(e) => {
                           setPinError('');
                           setPinInput(normalizePasscode(e.target.value));
@@ -301,6 +307,12 @@ export function WhoAreYouScreen({
                             placeholder="••••"
                             value={pinInput}
                             className="who-pin-input"
+                            onFocus={(e) => {
+                              const target = e.currentTarget;
+                              window.setTimeout(() => {
+                                target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                              }, 120);
+                            }}
                             onChange={(e) => {
                               setPinError('');
                               setPinInput(normalizePasscode(e.target.value));

@@ -96,6 +96,12 @@ export function PinUnlockSheet({
             value={val}
             aria-label={`PIN digit ${i + 1}`}
             className="gk-pin-box"
+            onFocus={(e) => {
+              const target = e.currentTarget;
+              window.setTimeout(() => {
+                target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+              }, 120);
+            }}
             onChange={(e) => handleDigitChange(i, e.target.value)}
             onKeyDown={(e) => handleKeyDown(i, e.key)}
           />
