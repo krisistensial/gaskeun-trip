@@ -215,112 +215,112 @@ function scheduleTone(
 function renderSoundForKind(ctx: AudioContext, kind: FeedbackKind): void {
   switch (kind) {
     case 'tap':
-      // Clean glassy UI click audible on phone speakers
+      // Light, airy crystal-glass tap
       scheduleClickNoise(ctx, {
-        centerFreq: 2400,
-        q: 2.4,
-        gainPeak: 0.18,
-        durationSec: 0.012,
+        centerFreq: 3600,
+        q: 3.2,
+        gainPeak: 0.15,
+        durationSec: 0.009,
       });
       scheduleTone(ctx, {
         type: 'sine',
-        startFreq: 860,
-        endFreq: 560,
+        startFreq: 1568, // G6
+        endFreq: 1175, // D6
         gainPeak: 0.18,
-        durationSec: 0.032,
+        durationSec: 0.026,
       });
       break;
     case 'toggle':
-      // Crisp switch pop
+      // Bright, delicate upward dewdrop pop
       scheduleClickNoise(ctx, {
-        centerFreq: 2200,
-        q: 2.2,
-        gainPeak: 0.2,
-        durationSec: 0.012,
+        centerFreq: 3400,
+        q: 3.0,
+        gainPeak: 0.16,
+        durationSec: 0.009,
       });
       scheduleTone(ctx, {
-        type: 'triangle',
-        startFreq: 620,
-        endFreq: 960,
+        type: 'sine',
+        startFreq: 1046.5, // C6
+        endFreq: 1568, // G6
         gainPeak: 0.2,
-        durationSec: 0.038,
+        durationSec: 0.034,
       });
       break;
     case 'success':
-      // Soft two-note glassy chime (D5 -> A5)
+      // Sparkling two-note crystal chime (A5 -> E6)
       scheduleTone(ctx, {
         type: 'sine',
-        startFreq: 587.33,
-        endFreq: 620,
-        gainPeak: 0.2,
-        durationSec: 0.048,
+        startFreq: 880, // A5
+        endFreq: 932,
+        gainPeak: 0.19,
+        durationSec: 0.046,
         delaySec: 0,
       });
       scheduleTone(ctx, {
         type: 'sine',
-        startFreq: 880,
-        endFreq: 932,
-        gainPeak: 0.22,
+        startFreq: 1318.5, // E6
+        endFreq: 1397,
+        gainPeak: 0.21,
         durationSec: 0.068,
-        delaySec: 0.045,
+        delaySec: 0.044,
       });
       break;
     case 'warning':
-      // Gentle double low knock
+      // Soft descending bell pair (G5 -> D5), gentle & non-harsh
       scheduleTone(ctx, {
-        type: 'triangle',
-        startFreq: 310,
-        endFreq: 240,
-        gainPeak: 0.24,
-        durationSec: 0.045,
+        type: 'sine',
+        startFreq: 784, // G5
+        endFreq: 659, // E5
+        gainPeak: 0.2,
+        durationSec: 0.04,
         delaySec: 0,
       });
       scheduleTone(ctx, {
-        type: 'triangle',
-        startFreq: 245,
-        endFreq: 190,
-        gainPeak: 0.24,
-        durationSec: 0.055,
-        delaySec: 0.06,
+        type: 'sine',
+        startFreq: 587.3, // D5
+        endFreq: 493.9, // B4
+        gainPeak: 0.2,
+        durationSec: 0.052,
+        delaySec: 0.054,
       });
       break;
     case 'tick':
-      // Authentic rotary picker / mechanical wheel notch ("trr-trr-trr")
+      // Light, sparkling crystal-bead rotary notch ("ti-ti-ti-trrrrr")
       scheduleClickNoise(ctx, {
-        centerFreq: 2900,
-        q: 3.0,
-        gainPeak: 0.28,
-        durationSec: 0.011,
-      });
-      scheduleTone(ctx, {
-        type: 'triangle',
-        startFreq: 1650,
-        endFreq: 480,
-        gainPeak: 0.2,
-        durationSec: 0.015,
-      });
-      break;
-    case 'settle':
-      // Unmistakable resonant landing click ("TEK!") when scroll momentum locks onto a card
-      scheduleClickNoise(ctx, {
-        centerFreq: 1950,
-        q: 2.2,
-        gainPeak: 0.3,
-        durationSec: 0.014,
+        centerFreq: 4600,
+        q: 4.0,
+        gainPeak: 0.22,
+        durationSec: 0.008,
       });
       scheduleTone(ctx, {
         type: 'sine',
-        startFreq: 680,
-        endFreq: 210,
-        gainPeak: 0.28,
-        durationSec: 0.036,
+        startFreq: 2850,
+        endFreq: 1480,
+        gainPeak: 0.19,
+        durationSec: 0.012,
+      });
+      break;
+    case 'settle':
+      // Dainty porcelain/crystal landing lock ("ting-tek!") when scroll stops on a card
+      scheduleClickNoise(ctx, {
+        centerFreq: 3800,
+        q: 3.4,
+        gainPeak: 0.22,
+        durationSec: 0.01,
       });
       scheduleTone(ctx, {
-        type: 'triangle',
-        startFreq: 1420,
-        endFreq: 420,
-        gainPeak: 0.16,
-        durationSec: 0.014,
+        type: 'sine',
+        startFreq: 1318.5, // E6
+        endFreq: 987.8, // B5
+        gainPeak: 0.24,
+        durationSec: 0.034,
+      });
+      scheduleTone(ctx, {
+        type: 'sine',
+        startFreq: 2637, // E7 sparkle harmonic
+        endFreq: 1975.5, // B6
+        gainPeak: 0.12,
+        durationSec: 0.018,
       });
       break;
   }

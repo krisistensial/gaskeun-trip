@@ -159,7 +159,7 @@ describe('feedback multisensory engine', () => {
     expect(oscStop).toHaveBeenCalledTimes(5);
     expect(expRamp).toHaveBeenCalledTimes(5);
     for (const [peakGain] of linearRamp.mock.calls) {
-      expect(peakGain).toBeGreaterThanOrEqual(0.15);
+      expect(peakGain).toBeGreaterThanOrEqual(0.1);
       expect(peakGain).toBeLessThanOrEqual(0.35);
     }
   });
