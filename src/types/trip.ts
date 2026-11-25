@@ -231,6 +231,35 @@ export interface ContentIdea {
   createdAt: string;
 }
 
+export type EditLogCategory =
+  | 'plan'
+  | 'wallet'
+  | 'crew'
+  | 'prep'
+  | 'album'
+  | 'settings'
+  | 'general';
+
+export interface EditLogEntry {
+  id: string;
+  actorId: string;
+  actorName: string;
+  action: string;
+  category: EditLogCategory;
+  timestamp: string; // ISO
+}
+
+export interface OnlinePresenceUser {
+  memberId: string;
+  name: string;
+  initials: string;
+  avatarDataUrl?: string;
+  avatarBg: string;
+  avatarColor: string;
+  isGuest?: boolean;
+  joinedAt: string;
+}
+
 export interface SharedTrip {
   schemaVersion: number;
   /** Internal seed revision for non-destructive pilot demo upgrades */
@@ -266,6 +295,8 @@ export interface SharedTrip {
   groupPrep: PrepTask[];
   /** Shared trip content inspiration board (IG Reels, TikTok, Shorts, etc.) */
   contentIdeas?: ContentIdea[];
+  /** Recent shared edit audit trail (Layer 1, capped at 80 entries, Host-viewable) */
+  editLog?: EditLogEntry[];
   updatedAt: string;
 }
 

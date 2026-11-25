@@ -1,11 +1,15 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import {
+  extractOnlineMembers,
+  type PresenceTrackPayload,
+} from './activityLog';
+import {
   clearOfflineQueueItem,
   enqueueOfflineMutation,
   getOfflineQueue,
   saveSharedTrip,
 } from './db';
-import type { OfflineQueueItem, SharedTrip } from '../types/trip';
+import type { OfflineQueueItem, OnlinePresenceUser, SharedTrip, TripMember } from '../types/trip';
 
 let cachedClient: SupabaseClient | null | undefined;
 
@@ -395,6 +399,88 @@ export function subscribeToSharedTrip(
     .subscribe();
 
   return () => {
+    void client.removeChannel(channel);
+  };
+}
+
+/**
+ * Subscribes to live Supabase Realtime Presence for a trip code so crew members
+ * can see who else is currently active in the app right beside their Home profile avatar.
+ * Automatically untracks when the tab goes hidden/backgrounded and re-tracks on resume.
+ */
+export function subscribeToTripPresence(
+  code: string,
+  selfPayload: Omit<PresenceTrackPayload, 'joinedAt'>,
+  getTripMembers: () => TripMember[],
+  onPresenceChange: (onlineUsers: OnlinePresenceUser[]) => void,
+): () => void {
+  const client = getSupabaseClient();
+  const cleanCode = code.trim().toUpperCase();
+  if (!client || !cleanCode || !selfPayload.memberId) {
+    onPresenceChange([]);
+    return () => {};
+  }
+
+  const presenceKey = `${selfPayload.memberId}:${Math.random().toString(36).slice(2, 8)}`;
+  const joinedAt = new Date().toISOString();
+  const trackData: PresenceTrackPayload = {
+    ...selfPayload,
+    joinedAt,
+  };
+
+  let subscribed = false;
+
+  const channel = client.channel(`trip-presence-${cleanCode}`, {
+    config: {
+      presence: { key: presenceKey },
+    },
+  });
+
+  const emitSnapshot = () => {
+    try {
+      const state = channel.presenceState<Partial<PresenceTrackPayload>>();
+      onPresenceChange(extractOnlineMembers(state, getTripMembers()));
+    } catch {
+      // ignore presence parse errors
+    }
+  };
+
+  const trackSelf = () => {
+    if (!subscribed) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    void channel.track(trackData).catch(() => {});
+  };
+
+  const handleVisibility = () => {
+    if (!subscribed) return;
+    if (document.visibilityState === 'hidden') {
+      void channel.untrack().catch(() => {});
+    } else {
+      trackSelf();
+    }
+  };
+
+  channel
+    .on('presence', { event: 'sync' }, emitSnapshot)
+    .on('presence', { event: 'join' }, emitSnapshot)
+    .on('presence', { event: 'leave' }, emitSnapshot)
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        subscribed = true;
+        trackSelf();
+      }
+    });
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibility);
+  }
+
+  return () => {
+    subscribed = false;
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    }
+    void channel.untrack().catch(() => {});
     void client.removeChannel(channel);
   };
 }

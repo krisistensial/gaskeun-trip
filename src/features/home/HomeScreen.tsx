@@ -40,6 +40,7 @@ import {
   type CarFrontSlot,
 } from '../../services/crewSwap';
 import { calculateLedger, formatCompactIDR } from '../../services/ledger';
+import { getVisibleOtherOnlineMembers } from '../../services/activityLog';
 import { triggerFeedback } from '../../services/feedback';
 import { toDriveThumbnailWidth } from '../../services/gdriveAlbum';
 import type { CroppedImageResult } from '../../services/photoCrop';
@@ -47,6 +48,7 @@ import { resolvePlanLiveState } from '../../services/planSchedule';
 import type {
   AlbumPhoto,
   DockTabId,
+  OnlinePresenceUser,
   RouteTarget,
   SharedTrip,
   StayLodging,
@@ -92,8 +94,10 @@ export interface HomeScreenProps {
   coverUrl: string;
   hasCoverPhoto: boolean;
   albumPhotos?: AlbumPhoto[];
+  activeMemberId?: string | null;
   activeMember?: TripMember;
   activeMemberName: string;
+  onlineMembers?: OnlinePresenceUser[];
   canEdit: boolean;
   viewOnlyMode?: boolean;
   onOpenMenu: () => void;
@@ -115,8 +119,10 @@ export function HomeScreen({
   coverUrl,
   hasCoverPhoto,
   albumPhotos = [],
+  activeMemberId = null,
   activeMember,
   activeMemberName,
+  onlineMembers = [],
   canEdit,
   viewOnlyMode = false,
   onOpenMenu,
@@ -137,6 +143,7 @@ export function HomeScreen({
   const [editingCrew, setEditingCrew] = useState(false);
 
   const [titleSheetOpen, setTitleSheetOpen] = useState(false);
+  const [onlineSheetOpen, setOnlineSheetOpen] = useState(false);
   const [trainSheetOpen, setTrainSheetOpen] = useState(false);
   const [trainEditorOpen, setTrainEditorOpen] = useState(false);
   const [crewManagerOpen, setCrewManagerOpen] = useState(false);
@@ -575,6 +582,11 @@ export function HomeScreen({
     );
   };
 
+  const { others: onlineOthers, visibleStack: visibleOnlineStack } = useMemo(
+    () => getVisibleOtherOnlineMembers(onlineMembers, activeMemberId),
+    [onlineMembers, activeMemberId],
+  );
+
   const resolvedCoverUrl = trip.coverPhotoUrl || trip.heroCoverUrl || coverUrl;
   const resolvedHasCoverPhoto = Boolean(
     trip.coverPhotoUrl || trip.heroCoverUrl || hasCoverPhoto,
@@ -616,27 +628,62 @@ export function HomeScreen({
           ) : (
             <span className="home-hero__corner-spacer" aria-hidden="true" />
           )}
-          <button
-            type="button"
-            className="home-profile-orb tactile"
-            aria-label="Open profile and settings"
-            title="Profile & Settings"
-            onClick={() => {
-              triggerFeedback('tap');
-              onOpenMenu();
-            }}
-          >
-            <Avatar
-              initials={activeMember?.initials ?? 'G'}
-              name={activeMemberName}
-              src={activeMember?.avatarDataUrl}
-              size="md"
-              bg={activeMember?.avatarBg ?? '#E3EDE6'}
-              color={activeMember?.avatarColor ?? '#2D4A42'}
-              variant="solid"
-            />
-            {viewOnlyMode && <span className="home-profile-orb__dot" aria-hidden="true" />}
-          </button>
+          <div className="home-hero__right-cluster">
+            {visibleOnlineStack.length > 0 && (
+              <button
+                type="button"
+                className="home-presence-pill tactile"
+                aria-label={`${onlineOthers.length} other ${onlineOthers.length === 1 ? 'member' : 'members'} online now`}
+                title="See who is online now"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setOnlineSheetOpen(true);
+                }}
+              >
+                <span className="home-presence-stack">
+                  {visibleOnlineStack.map((u, idx) => (
+                    <span
+                      key={u.memberId}
+                      className="home-presence-avatar"
+                      style={{ zIndex: visibleOnlineStack.length - idx }}
+                    >
+                      <Avatar
+                        initials={u.initials}
+                        name={u.name}
+                        src={u.avatarDataUrl}
+                        size="sm"
+                        bg={u.avatarBg}
+                        color={u.avatarColor}
+                        variant="solid"
+                      />
+                    </span>
+                  ))}
+                </span>
+                <span className="home-presence-live-dot" aria-hidden="true" />
+              </button>
+            )}
+            <button
+              type="button"
+              className="home-profile-orb tactile"
+              aria-label="Open profile and settings"
+              title="Profile & Settings"
+              onClick={() => {
+                triggerFeedback('tap');
+                onOpenMenu();
+              }}
+            >
+              <Avatar
+                initials={activeMember?.initials ?? 'G'}
+                name={activeMemberName}
+                src={activeMember?.avatarDataUrl}
+                size="md"
+                bg={activeMember?.avatarBg ?? '#E3EDE6'}
+                color={activeMember?.avatarColor ?? '#2D4A42'}
+                variant="solid"
+              />
+              {viewOnlyMode && <span className="home-profile-orb__dot" aria-hidden="true" />}
+            </button>
+          </div>
         </div>
 
         <input
@@ -1464,6 +1511,46 @@ export function HomeScreen({
           <ArrowDown size={14} strokeWidth={2} />
         </button>
       )}
+
+      {/* Live Online Crew Sheet (opened from Home Hero Presence Avatar Stack) */}
+      <LiquidBottomSheet
+        open={onlineSheetOpen}
+        title="Online Now"
+        subtitle={`${onlineMembers.length} active in ${trip.title}`}
+        onClose={() => setOnlineSheetOpen(false)}
+      >
+        <div className="gk-menu-list">
+          {onlineMembers.map((u) => {
+            const isSelf = activeMemberId === u.memberId;
+            return (
+              <div key={u.memberId} className="gk-menu-item" style={{ cursor: 'default' }}>
+                <span className="gk-menu-item__left">
+                  <span style={{ position: 'relative', display: 'inline-flex' }}>
+                    <Avatar
+                      initials={u.initials}
+                      name={u.name}
+                      src={u.avatarDataUrl}
+                      size="sm"
+                      bg={u.avatarBg}
+                      color={u.avatarColor}
+                      variant="solid"
+                    />
+                    <span className="home-presence-sheet-dot" aria-hidden="true" />
+                  </span>
+                  <span>
+                    <div className="gk-menu-item__title">
+                      {u.name}
+                      {isSelf ? ' (You)' : ''}
+                    </div>
+                    <div className="gk-menu-item__sub">Active right now</div>
+                  </span>
+                </span>
+                <Badge tone="mint">Online</Badge>
+              </div>
+            );
+          })}
+        </div>
+      </LiquidBottomSheet>
 
       {/* Trip Title Quick Switcher / Edit Details Sheet */}
       <LiquidBottomSheet

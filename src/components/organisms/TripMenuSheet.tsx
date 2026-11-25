@@ -8,6 +8,7 @@ import {
   Eye,
   EyeOff,
   FileSpreadsheet,
+  History,
   KeyRound,
   Link2,
   Lock,
@@ -17,12 +18,17 @@ import {
   Settings2,
   ShieldCheck,
   Smartphone,
+  Trash2,
   Upload,
   Users,
   Volume2,
 } from 'lucide-react';
 import { Avatar, Badge, Button, ConfirmDialog, LiquidBottomSheet } from '../atoms';
 import { PhotoCropperSheet } from './PhotoCropperSheet';
+import {
+  formatEditLogCategoryLabel,
+  formatRelativeLogTime,
+} from '../../services/activityLog';
 import {
   getFeedbackPreferences,
   playRotarySoundDemo,
@@ -41,7 +47,7 @@ import {
 } from '../../services/permissions';
 import { isCloudSyncConfigured } from '../../services/supabaseSync';
 import type { CroppedImageResult } from '../../services/photoCrop';
-import type { SharedTrip, TripMember } from '../../types/trip';
+import type { EditLogCategory, SharedTrip, TripMember } from '../../types/trip';
 import './sheets.css';
 
 export type HomePhase = 'pre-trip' | 'on-trip';
@@ -68,6 +74,7 @@ export interface TripMenuSheetProps {
   onSetMemberPasscode: (memberId: string, passcode: string | undefined, toastMsg?: string) => void;
   onUpdateCrewEditPin: (newPin: string) => void;
   onToggleEditorMember: (memberId: string) => void;
+  onClearEditLog?: () => void;
   onRequestUnlock: () => void;
   onLockEditing: () => void;
   onOpenTripSettings: () => void;
@@ -102,6 +109,7 @@ export function TripMenuSheet({
   onSetMemberPasscode,
   onUpdateCrewEditPin,
   onToggleEditorMember,
+  onClearEditLog,
   onRequestUnlock,
   onLockEditing,
   onOpenTripSettings,
@@ -117,6 +125,9 @@ export function TripMenuSheet({
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [showEditorsList, setShowEditorsList] = useState(false);
   const [showMyPasscode, setShowMyPasscode] = useState(false);
+  const [activityLogOpen, setActivityLogOpen] = useState(false);
+  const [logFilter, setLogFilter] = useState<'all' | EditLogCategory>('all');
+  const [confirmClearLog, setConfirmClearLog] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
 
   // Self-service My Passcode form state
@@ -143,6 +154,9 @@ export function TripMenuSheet({
   const resetLocalPanels = () => {
     setShowEditorsList(false);
     setShowMyPasscode(false);
+    setActivityLogOpen(false);
+    setLogFilter('all');
+    setConfirmClearLog(false);
     setCurrentPin('');
     setNewPin('');
     setOwnPinError('');
@@ -878,6 +892,30 @@ export function TripMenuSheet({
                 })}
               </div>
             )}
+
+            {/* Host-Only: Shared Edit Activity Log */}
+            <button
+              type="button"
+              className="gk-menu-item"
+              onClick={() => {
+                triggerFeedback('tap');
+                setLogFilter('all');
+                setActivityLogOpen(true);
+              }}
+            >
+              <span className="gk-menu-item__left">
+                <span className="gk-menu-item__icon">
+                  <History size={18} strokeWidth={1.8} />
+                </span>
+                <span>
+                  <div className="gk-menu-item__title">Activity Log</div>
+                  <div className="gk-menu-item__sub">
+                    See who edited the trip and when
+                  </div>
+                </span>
+              </span>
+              <Badge tone="neutral">{(trip.editLog ?? []).length}</Badge>
+            </button>
           </>
         )}
 
@@ -1085,6 +1123,125 @@ export function TripMenuSheet({
         preset="avatar"
         onCancel={() => setCropFile(null)}
         onConfirm={(res) => void handleCroppedAvatar(res)}
+      />
+
+      {/* Host-Only Activity Log Bottom Sheet */}
+      {isHost && (
+        <LiquidBottomSheet
+          open={activityLogOpen}
+          title="Activity Log"
+          subtitle="Recent shared edits · Host only"
+          onClose={() => setActivityLogOpen(false)}
+        >
+          {(() => {
+            const allEntries = trip.editLog ?? [];
+            const filtered =
+              logFilter === 'all'
+                ? allEntries
+                : allEntries.filter((e) => e.category === logFilter);
+            const memberById = new Map(trip.members.map((m) => [m.id, m]));
+
+            return (
+              <div className="activity-log-wrap">
+                <div className="activity-log-filters" role="tablist" aria-label="Filter activity log">
+                  {(
+                    [
+                      { id: 'all', label: 'All' },
+                      { id: 'plan', label: 'Plan' },
+                      { id: 'wallet', label: 'Wallet' },
+                      { id: 'crew', label: 'Crew' },
+                      { id: 'prep', label: 'Prep' },
+                      { id: 'album', label: 'Album' },
+                      { id: 'settings', label: 'Settings' },
+                    ] as const
+                  ).map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={logFilter === f.id}
+                      className={`activity-log-chip tactile ${
+                        logFilter === f.id ? 'activity-log-chip--active' : ''
+                      }`}
+                      onClick={() => {
+                        triggerFeedback('tap');
+                        setLogFilter(f.id);
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                {filtered.length === 0 ? (
+                  <p className="activity-log-empty">
+                    {allEntries.length === 0
+                      ? 'No edits recorded yet. Shared changes by Host & Editors will appear here.'
+                      : 'No edits in this category yet.'}
+                  </p>
+                ) : (
+                  <div className="activity-log-list">
+                    {filtered.map((entry) => {
+                      const actor = memberById.get(entry.actorId);
+                      const initials =
+                        actor?.initials || entry.actorName.slice(0, 1).toUpperCase() || 'G';
+                      return (
+                        <div key={entry.id} className="activity-log-row">
+                          <Avatar
+                            initials={initials}
+                            name={entry.actorName}
+                            src={actor?.avatarDataUrl}
+                            size="sm"
+                            bg={actor?.avatarBg ?? '#EAEFED'}
+                            color={actor?.avatarColor ?? '#546860'}
+                          />
+                          <div className="activity-log-row__body">
+                            <div className="activity-log-row__head">
+                              <span className="activity-log-row__actor">{entry.actorName}</span>
+                              <span className="activity-log-row__cat">
+                                {formatEditLogCategoryLabel(entry.category)}
+                              </span>
+                            </div>
+                            <div className="activity-log-row__action">{entry.action}</div>
+                            <div className="activity-log-row__time">
+                              {formatRelativeLogTime(entry.timestamp)}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {allEntries.length > 0 && onClearEditLog && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 4 }}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      leftIcon={<Trash2 size={13.5} strokeWidth={2} />}
+                      onClick={() => setConfirmClearLog(true)}
+                    >
+                      Clear Log
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </LiquidBottomSheet>
+      )}
+
+      <ConfirmDialog
+        open={confirmClearLog}
+        title="Clear activity log?"
+        description="This removes the edit history list for this trip. Trip itinerary, wallet, and crew data stay untouched."
+        confirmLabel="Clear Log"
+        destructive
+        onCancel={() => setConfirmClearLog(false)}
+        onConfirm={() => {
+          setConfirmClearLog(false);
+          onClearEditLog?.();
+        }}
       />
 
       <ConfirmDialog

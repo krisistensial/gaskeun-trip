@@ -31,6 +31,7 @@ import {
   upsertPersonalTransaction,
 } from './services/db';
 import { fetchDriveAlbumWithStatus, isAssetFileName } from './services/gdriveAlbum';
+import { appendEditLog } from './services/activityLog';
 import { triggerFeedback } from './services/feedback';
 import { uploadSharedImage } from './services/mediaUploader';
 import {
@@ -58,12 +59,14 @@ import {
   pushOrQueueSharedTrip,
   shouldApplyRemoteTrip,
   subscribeToSharedTrip,
+  subscribeToTripPresence,
 } from './services/supabaseSync';
 import { buildInviteUrl } from './services/tripFactory';
 import type {
   AlbumPhoto,
   DockTabId,
   LocalPersonalData,
+  OnlinePresenceUser,
   PrepTask,
   RouteTarget,
   SharedTrip,
@@ -142,6 +145,7 @@ export default function App() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [onlineMembers, setOnlineMembers] = useState<OnlinePresenceUser[]>([]);
   const [driveAlbumPhotos, setDriveAlbumPhotos] = useState<AlbumPhoto[]>(() =>
     loadCachedDrivePhotos(pilotSeed.id),
   );
@@ -534,6 +538,40 @@ export default function App() {
   );
   const activeMemberName = activeMember?.name ?? 'Guest';
 
+  // Live Supabase Realtime Presence so crew see who else is currently active on Home
+  useEffect(() => {
+    if (route !== 'hub' || !activeTrip.code || !activeMemberId) {
+      setOnlineMembers([]);
+      return;
+    }
+
+    const memberSnapshot = activeTripRef.current.members.find((m) => m.id === activeMemberId);
+    const selfPayload = memberSnapshot
+      ? {
+          memberId: memberSnapshot.id,
+          name: memberSnapshot.name,
+          initials: memberSnapshot.initials,
+          avatarBg: memberSnapshot.avatarBg,
+          avatarColor: memberSnapshot.avatarColor,
+          isGuest: false,
+        }
+      : {
+          memberId: activeMemberId,
+          name: 'Guest',
+          initials: 'G',
+          avatarBg: '#EAEFED',
+          avatarColor: '#546860',
+          isGuest: true,
+        };
+
+    return subscribeToTripPresence(
+      activeTrip.code,
+      selfPayload,
+      () => activeTripRef.current.members,
+      setOnlineMembers,
+    );
+  }, [route, activeTrip.code, activeMemberId]);
+
   const pinUnlocked = pinUnlockedCodes.includes(activeTrip.code.toUpperCase());
   const isHost = isHostMember(activeTrip, activeMemberId);
   const rawCanEdit = canEditTrip(activeTrip, activeMemberId, pinUnlocked);
@@ -563,11 +601,24 @@ export default function App() {
     });
   };
 
-  const handleUpdateTrip = (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => {
+  const handleUpdateTrip = (
+    updater: (prev: SharedTrip) => SharedTrip,
+    toastMsg?: string,
+    options?: { skipLog?: boolean },
+  ) => {
+    const actor = {
+      id: activeMemberId ?? 'guest',
+      name: activeMemberName,
+    };
     setActiveTrip((prev) => {
+      const nowIso = new Date().toISOString();
+      const updatedBody = updater(prev);
       const next: SharedTrip = {
-        ...updater(prev),
-        updatedAt: new Date().toISOString(),
+        ...updatedBody,
+        editLog: options?.skipLog
+          ? updatedBody.editLog
+          : appendEditLog(prev, updatedBody, actor, toastMsg, nowIso),
+        updatedAt: nowIso,
       };
       void saveSharedTrip(next)
         .then(() => listSharedTrips().then(setSavedTrips))
@@ -585,6 +636,19 @@ export default function App() {
       return next;
     });
     if (toastMsg) showToast(toastMsg, 'success');
+  };
+
+  const handleClearEditLog = () => {
+    if (!isHost) return;
+    triggerFeedback('warning');
+    handleUpdateTrip(
+      (prev) => ({
+        ...prev,
+        editLog: [],
+      }),
+      'Activity log cleared',
+      { skipLog: true },
+    );
   };
 
   const requestUnlockPin = (onSuccess?: () => void) => {
@@ -1006,8 +1070,10 @@ export default function App() {
               coverUrl={effectiveCoverUrl}
               hasCoverPhoto={hasCustomCoverPhoto}
               albumPhotos={homeAlbumPhotos}
+              activeMemberId={activeMemberId}
               activeMember={activeMember}
               activeMemberName={activeMemberName}
+              onlineMembers={onlineMembers}
               canEdit={canEdit}
               viewOnlyMode={isViewOnlyActive}
               onOpenMenu={() => setMenuOpen(true)}
@@ -1071,6 +1137,7 @@ export default function App() {
           onSetMemberPasscode={handleSetMemberPasscode}
           onUpdateCrewEditPin={handleUpdateCrewEditPin}
           onToggleEditorMember={handleToggleEditorMember}
+          onClearEditLog={handleClearEditLog}
           onRequestUnlock={() => requestUnlockPin()}
           onLockEditing={() => {
             const codeUpper = activeTrip.code.toUpperCase();

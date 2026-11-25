@@ -125,6 +125,77 @@
   pointer-events: none;
 }
 
+.home-hero__right-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Live Online Crew Overlapping Presence Stack beside Home Profile Avatar */
+.home-presence-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 6px 3px 3px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.34);
+  border: 1.25px solid rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  box-shadow: 0 8px 20px -6px rgba(18, 30, 26, 0.24);
+  flex-shrink: 0;
+}
+
+.home-presence-stack {
+  display: inline-flex;
+  align-items: center;
+}
+
+.home-presence-avatar {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 8px rgba(18, 30, 26, 0.22);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #E3EDE6;
+}
+
+.home-presence-avatar + .home-presence-avatar {
+  margin-left: -10px;
+}
+
+.home-presence-avatar .gk-avatar {
+  width: 100%;
+  height: 100%;
+  font-size: 9.5px;
+  border: none;
+  box-shadow: none;
+}
+
+.home-presence-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34D399;
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
+  margin-left: 5px;
+  flex-shrink: 0;
+}
+
+.home-presence-sheet-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2B946B;
+  border: 2px solid #FFFFFF;
+}
+
 /* Profile Avatar Trigger (Replaces Top-Right ••• Menu Orb with Light Liquid Glass Ring) */
 .home-profile-orb {
   position: relative;
