@@ -268,6 +268,7 @@ export interface ChatReplyPreview {
   kind: ChatMessageKind;
   text: string;
   stickerId?: string;
+  stickerUrl?: string;
 }
 
 export interface ChatMessage {
@@ -278,6 +279,7 @@ export interface ChatMessage {
   kind: ChatMessageKind;
   text: string;
   stickerId?: string;
+  stickerUrl?: string;
   replyTo?: ChatReplyPreview;
   /** Map from emoji character to array of member IDs who reacted */
   reactions: Record<string, string[]>;

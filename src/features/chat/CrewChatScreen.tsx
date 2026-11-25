@@ -1,19 +1,30 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   ChevronDown,
+  Copy,
   MessageCircle,
   Reply,
+  Search,
   Send,
   Smile,
-  Sparkles,
+  Sticker,
   Trash2,
   X,
 } from 'lucide-react';
-import { Avatar, CornerOrb, LiquidBottomSheet } from '../../components/atoms';
+import { Avatar, CornerOrb, LiquidBottomSheet, type ToastTone } from '../../components/atoms';
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import {
   buildReplyPreview,
+  CHAT_EMOJI_CATEGORIES,
   CHAT_QUICK_REACTIONS,
   countTotalReactions,
   CREW_STICKER_PACK,
@@ -23,7 +34,13 @@ import {
   getStickerById,
   isGroupedWithPrevious,
   sanitizeChatText,
+  searchBuiltInStickers,
 } from '../../services/chat';
+import {
+  processPastedStickerBlob,
+  searchExternalTransparentStickers,
+  type ExternalStickerResult,
+} from '../../services/stickerSearch';
 import { primeFeedbackAudio, triggerFeedback } from '../../services/feedback';
 import { useBackHandler } from '../../services/pwaHistory';
 import type {
@@ -35,6 +52,12 @@ import type {
 } from '../../types/trip';
 import './chat.css';
 
+export interface StickerSendPayload {
+  stickerId?: string;
+  stickerUrl?: string;
+  stickerCaption?: string;
+}
+
 export interface CrewChatScreenProps {
   trip: SharedTrip;
   messages: ChatMessage[];
@@ -45,13 +68,75 @@ export interface CrewChatScreenProps {
   onlineMembers: OnlinePresenceUser[];
   typingUsers: Array<{ memberId: string; memberName: string }>;
   onSendText: (text: string, replyTo?: ChatReplyPreview) => void;
-  onSendSticker: (stickerId: string, replyTo?: ChatReplyPreview) => void;
+  onSendSticker: (payload: StickerSendPayload, replyTo?: ChatReplyPreview) => void;
   onToggleReaction: (messageId: string, emoji: string) => void;
   onUnsendMessage: (messageId: string) => void;
   onTypingChange: (isTyping: boolean) => void;
   onMarkRead: () => void;
+  onNotify?: (message: string, tone?: ToastTone) => void;
   onBack: () => void;
 }
+
+interface TransparentStickerGraphicProps {
+  src?: string;
+  fallbackSrc?: string;
+  emojiFallback?: string;
+  alt: string;
+  className: string;
+}
+
+function TransparentStickerGraphic({
+  src,
+  fallbackSrc,
+  emojiFallback = '✨',
+  alt,
+  className,
+}: TransparentStickerGraphicProps) {
+  const [stage, setStage] = useState<'primary' | 'fallback' | 'emoji'>(
+    src ? 'primary' : fallbackSrc ? 'fallback' : 'emoji',
+  );
+
+  useEffect(() => {
+    setStage(src ? 'primary' : fallbackSrc ? 'fallback' : 'emoji');
+  }, [src, fallbackSrc]);
+
+  if (stage === 'emoji') {
+    return (
+      <span className="crew-chat-sticker-emoji-fallback" aria-label={alt}>
+        {emojiFallback}
+      </span>
+    );
+  }
+
+  const activeSrc = stage === 'primary' ? src : fallbackSrc;
+  if (!activeSrc) {
+    return (
+      <span className="crew-chat-sticker-emoji-fallback" aria-label={alt}>
+        {emojiFallback}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={activeSrc}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      decoding="async"
+      draggable={false}
+      onError={() => {
+        if (stage === 'primary' && fallbackSrc && fallbackSrc !== src) {
+          setStage('fallback');
+        } else {
+          setStage('emoji');
+        }
+      }}
+    />
+  );
+}
+
+type DrawerMode = 'none' | 'emoji' | 'sticker';
 
 export function CrewChatScreen({
   trip,
@@ -67,38 +152,105 @@ export function CrewChatScreen({
   onUnsendMessage,
   onTypingChange,
   onMarkRead,
+  onNotify,
   onBack,
 }: CrewChatScreenProps) {
   const [draft, setDraft] = useState('');
-  const [showStickers, setShowStickers] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<DrawerMode>('none');
+  const [emojiCategory, setEmojiCategory] = useState(CHAT_EMOJI_CATEGORIES[0].id);
+  const [stickerQuery, setStickerQuery] = useState('');
+  const [externalStickers, setExternalStickers] = useState<ExternalStickerResult[]>([]);
+  const [searchingStickers, setSearchingStickers] = useState(false);
+
   const [replyTarget, setReplyTarget] = useState<ChatReplyPreview | null>(null);
-  const [menuMessage, setMenuMessage] = useState<ChatMessage | null>(null);
+  const [holdTarget, setHoldTarget] = useState<{
+    message: ChatMessage;
+    isOwn: boolean;
+  } | null>(null);
   const [onlineSheetOpen, setOnlineSheetOpen] = useState(false);
   const [heartPopId, setHeartPopId] = useState<string | null>(null);
   const [flashMessageId, setFlashMessageId] = useState<string | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
+  // Horizontal swipe-to-reply state (active only for the dragged row)
+  const [swipeUi, setSwipeUi] = useState<{
+    id: string | null;
+    offset: number;
+    snapping: boolean;
+  }>({ id: null, offset: 0, snapping: false });
+
+  const screenRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
-  const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
   const lastTapRef = useRef<{ id: string; at: number } | null>(null);
   const typingTimeoutRef = useRef<number | null>(null);
   const isNearBottomRef = useRef(true);
+  const gestureRef = useRef<{
+    msg: ChatMessage | null;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    swiping: boolean;
+    offset: number;
+    thresholdHit: boolean;
+  }>({
+    msg: null,
+    pointerId: -1,
+    startX: 0,
+    startY: 0,
+    swiping: false,
+    offset: 0,
+    thresholdHit: false,
+  });
 
-  useRegisterOverlay(Boolean(menuMessage));
+  useRegisterOverlay(Boolean(holdTarget));
   useBackHandler(
-    Boolean(menuMessage),
-    () => setMenuMessage(null),
+    Boolean(holdTarget),
+    () => setHoldTarget(null),
     'sheet',
     'crew-chat-msg-menu',
   );
   useBackHandler(
-    showStickers && !menuMessage && !onlineSheetOpen,
-    () => setShowStickers(false),
+    drawerMode !== 'none' && !holdTarget && !onlineSheetOpen,
+    () => setDrawerMode('none'),
     'sheet',
-    'crew-chat-stickers',
+    'crew-chat-drawer',
   );
+
+  // Disable pinch-zoom & double-tap zoom strictly while Crew Chat is mounted (restores cleanly on close)
+  useEffect(() => {
+    const viewportMeta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    const previousViewport = viewportMeta?.getAttribute('content') ?? null;
+    if (viewportMeta) {
+      viewportMeta.setAttribute(
+        'content',
+        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content',
+      );
+    }
+
+    const screenEl = screenRef.current;
+    const blockPinch = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+    const blockGesture = (e: Event) => {
+      e.preventDefault();
+    };
+    screenEl?.addEventListener('touchstart', blockPinch, { passive: false });
+    screenEl?.addEventListener('touchmove', blockPinch, { passive: false });
+    screenEl?.addEventListener('gesturestart', blockGesture, { passive: false });
+
+    return () => {
+      if (viewportMeta && previousViewport !== null) {
+        viewportMeta.setAttribute('content', previousViewport);
+      }
+      screenEl?.removeEventListener('touchstart', blockPinch);
+      screenEl?.removeEventListener('touchmove', blockPinch);
+      screenEl?.removeEventListener('gesturestart', blockGesture);
+    };
+  }, []);
 
   const memberById = useMemo(() => {
     const map = new Map<string, TripMember>();
@@ -117,26 +269,79 @@ export function CrewChatScreen({
   );
   const visibleOnlineStack = onlineOthers.slice(0, 3);
 
-  // Mark read on entry and whenever new incoming messages arrive while chat is open
+  const builtInFilteredStickers = useMemo(
+    () => searchBuiltInStickers(stickerQuery),
+    [stickerQuery],
+  );
+
+  // Live debounced search for external transparent PNG/WebP stickers (with built-in fallback)
+  useEffect(() => {
+    if (drawerMode !== 'sticker') return;
+    const q = stickerQuery.trim();
+    if (q.length < 2) {
+      setExternalStickers([]);
+      setSearchingStickers(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setSearchingStickers(true);
+    const timer = window.setTimeout(() => {
+      void searchExternalTransparentStickers(q, controller.signal)
+        .then((results) => {
+          if (!controller.signal.aborted) {
+            setExternalStickers(results);
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setSearchingStickers(false);
+          }
+        });
+    }, 320);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [drawerMode, stickerQuery]);
+
+  // Mark read on entry and whenever messages arrive while chat is open
   useEffect(() => {
     onMarkRead();
   }, [messages.length, onMarkRead]);
 
-  // Auto-scroll to bottom on initial mount or when user is already near bottom
+  // Keep stream anchored cleanly to the bottom as new messages / typing arrive
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     if (isNearBottomRef.current) {
-      el.scrollTop = el.scrollHeight;
+      requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      });
     }
   }, [messages.length, typingUsers.length]);
 
+  // Keep pinned to bottom when mobile keyboard opens/resizes or sticker drawer opens
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => {
+        if (isNearBottomRef.current && scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      });
+      observer.observe(el);
     }
+
     return () => {
+      observer?.disconnect();
       if (typingTimeoutRef.current) {
         window.clearTimeout(typingTimeoutRef.current);
       }
@@ -147,10 +352,13 @@ export function CrewChatScreen({
     };
   }, [onTypingChange]);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = (smooth = true) => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: smooth ? 'smooth' : 'auto',
+    });
     setShowScrollBottom(false);
     isNearBottomRef.current = true;
   };
@@ -160,7 +368,7 @@ export function CrewChatScreen({
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     isNearBottomRef.current = distanceFromBottom < 110;
-    setShowScrollBottom(distanceFromBottom > 180);
+    setShowScrollBottom(distanceFromBottom > 160);
   };
 
   const handleDraftChange = (val: string) => {
@@ -168,7 +376,7 @@ export function CrewChatScreen({
     const ta = textareaRef.current;
     if (ta) {
       ta.style.height = 'auto';
-      ta.style.height = `${Math.min(108, ta.scrollHeight)}px`;
+      ta.style.height = `${Math.min(102, ta.scrollHeight)}px`;
     }
 
     const hasContent = val.trim().length > 0;
@@ -181,6 +389,26 @@ export function CrewChatScreen({
         onTypingChange(false);
       }, 2600);
     }
+  };
+
+  const insertEmojiAtCursor = (emoji: string) => {
+    triggerFeedback('tap');
+    const ta = textareaRef.current;
+    if (!ta) {
+      handleDraftChange(draft + emoji);
+      return;
+    }
+    const start = ta.selectionStart ?? draft.length;
+    const end = ta.selectionEnd ?? draft.length;
+    const nextVal = draft.slice(0, start) + emoji + draft.slice(end);
+    handleDraftChange(nextVal);
+    requestAnimationFrame(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus({ preventScroll: true });
+        const pos = start + emoji.length;
+        textareaRef.current.setSelectionRange(pos, pos);
+      }
+    });
   };
 
   const handleSendText = () => {
@@ -197,19 +425,44 @@ export function CrewChatScreen({
     }
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
+      // Keep focus in input so mobile keyboard never collapses on Send
+      textareaRef.current.focus({ preventScroll: true });
     }
     isNearBottomRef.current = true;
-    requestAnimationFrame(() => scrollToBottom());
+    requestAnimationFrame(() => scrollToBottom(true));
   };
 
-  const handleSendSticker = (stickerId: string) => {
+  const handleSendSticker = (payload: StickerSendPayload) => {
     primeFeedbackAudio();
     triggerFeedback('tap');
-    onSendSticker(stickerId, replyTarget ?? undefined);
+    onSendSticker(payload, replyTarget ?? undefined);
     setReplyTarget(null);
-    setShowStickers(false);
+    setDrawerMode('none');
     isNearBottomRef.current = true;
-    requestAnimationFrame(() => scrollToBottom());
+    requestAnimationFrame(() => scrollToBottom(true));
+  };
+
+  // Support pasting keyboard stickers (Gboard / Samsung / iOS) without allowing photo uploads
+  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imageItem = items.find((item) => item.kind === 'file' && item.type.startsWith('image/'));
+    if (!imageItem) return;
+    const blob = imageItem.getAsFile();
+    if (!blob) return;
+
+    e.preventDefault();
+    void processPastedStickerBlob(blob).then((res) => {
+      if (res.ok) {
+        handleSendSticker({
+          stickerId: 'stk-keyboard',
+          stickerUrl: res.dataUrl,
+          stickerCaption: 'Sticker',
+        });
+      } else {
+        triggerFeedback('warning');
+        onNotify?.(res.reason, 'info');
+      }
+    });
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -235,39 +488,99 @@ export function CrewChatScreen({
     }, 660);
   };
 
-  const startLongPress = (msg: ChatMessage, clientX: number, clientY: number) => {
-    if (msg.deleted) return;
+  const clearLongPress = () => {
     if (longPressTimerRef.current) {
       window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
-    pressOriginRef.current = { x: clientX, y: clientY };
+  };
+
+  const handleRowPointerDown = (
+    msg: ChatMessage,
+    isOwn: boolean,
+    e: PointerEvent<HTMLDivElement>,
+  ) => {
+    if (msg.deleted || e.button > 0) return;
+    clearLongPress();
+
+    gestureRef.current = {
+      msg,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      swiping: false,
+      offset: 0,
+      thresholdHit: false,
+    };
+
     longPressTimerRef.current = window.setTimeout(() => {
       longPressTimerRef.current = null;
+      if (gestureRef.current.swiping) return;
       triggerFeedback('toggle');
-      setMenuMessage(msg);
-    }, 380);
+      setHoldTarget({ message: msg, isOwn });
+    }, 360);
   };
 
-  const moveLongPress = (clientX: number, clientY: number) => {
-    if (!longPressTimerRef.current || !pressOriginRef.current) return;
-    const dx = Math.abs(clientX - pressOriginRef.current.x);
-    const dy = Math.abs(clientY - pressOriginRef.current.y);
-    if (dx > 10 || dy > 10) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
+  const handleRowPointerMove = (msg: ChatMessage, e: PointerEvent<HTMLDivElement>) => {
+    const g = gestureRef.current;
+    if (g.msg?.id !== msg.id || g.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - g.startX;
+    const dy = e.clientY - g.startY;
+
+    if (!g.swiping) {
+      if (Math.abs(dy) > 10 || Math.abs(dx) > 10) {
+        clearLongPress();
+      }
+      // Lock horizontal right-swipe gesture once horizontal motion clearly dominates
+      if (dx > 12 && dx > Math.abs(dy) * 1.25) {
+        g.swiping = true;
+      } else {
+        return;
+      }
     }
+
+    const offset = Math.max(0, Math.min(72, dx * 0.62));
+    g.offset = offset;
+    if (offset >= 46 && !g.thresholdHit) {
+      g.thresholdHit = true;
+      triggerFeedback('tick');
+    } else if (offset < 42) {
+      g.thresholdHit = false;
+    }
+
+    setSwipeUi({ id: msg.id, offset, snapping: false });
   };
 
-  const cancelLongPress = () => {
-    if (longPressTimerRef.current) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
+  const handleRowPointerEnd = (msg: ChatMessage, e: PointerEvent<HTMLDivElement>) => {
+    clearLongPress();
+    const g = gestureRef.current;
+    if (g.msg?.id !== msg.id || g.pointerId !== e.pointerId) return;
+
+    const wasSwiping = g.swiping;
+    const hitReply = g.thresholdHit || g.offset >= 46;
+    gestureRef.current.msg = null;
+    gestureRef.current.pointerId = -1;
+
+    if (wasSwiping) {
+      setSwipeUi({ id: msg.id, offset: 0, snapping: true });
+      window.setTimeout(() => {
+        setSwipeUi((curr) =>
+          curr.id === msg.id ? { id: null, offset: 0, snapping: false } : curr,
+        );
+      }, 240);
+      if (hitReply && !msg.deleted) {
+        triggerFeedback('check');
+        setReplyTarget(buildReplyPreview(msg));
+        requestAnimationFrame(() =>
+          textareaRef.current?.focus({ preventScroll: true }),
+        );
+      }
     }
-    pressOriginRef.current = null;
   };
 
   const handleBubbleTap = (msg: ChatMessage) => {
-    if (msg.deleted) return;
+    if (msg.deleted || gestureRef.current.swiping) return;
     const now = Date.now();
     const prevTap = lastTapRef.current;
     if (prevTap && prevTap.id === msg.id && now - prevTap.at < 290) {
@@ -309,13 +622,119 @@ export function CrewChatScreen({
       : `${trip.code} · Text & stickers only`;
 
   const canSendText = sanitizeChatText(draft).length > 0;
-  const menuCanUnsend =
-    menuMessage &&
-    !menuMessage.deleted &&
-    (menuMessage.senderId === activeMemberId || isHost);
+  const activeEmojiList =
+    CHAT_EMOJI_CATEGORIES.find((c) => c.id === emojiCategory)?.emojis ??
+    CHAT_EMOJI_CATEGORIES[0].emojis;
+
+  const holdCanUnsend =
+    holdTarget &&
+    !holdTarget.message.deleted &&
+    (holdTarget.message.senderId === activeMemberId || isHost);
+
+  const renderStickerMessage = (msg: ChatMessage, inHoldOverlay = false) => {
+    const builtIn = getStickerById(msg.stickerId);
+    const primaryUrl = msg.stickerUrl ?? builtIn?.url;
+    const fallbackUrl = builtIn?.fallbackUrl ?? builtIn?.url;
+
+    return (
+      <div
+        className="crew-chat-sticker-pure"
+        onClick={inHoldOverlay ? undefined : () => handleBubbleTap(msg)}
+        onContextMenu={
+          inHoldOverlay
+            ? undefined
+            : (e) => {
+                e.preventDefault();
+                setHoldTarget({
+                  message: msg,
+                  isOwn: Boolean(activeMemberId && msg.senderId === activeMemberId),
+                });
+              }
+        }
+      >
+        {msg.replyTo && !inHoldOverlay && (
+          <button
+            type="button"
+            className="crew-chat-sticker-reply-pill"
+            onClick={(e) => {
+              e.stopPropagation();
+              jumpToQuotedMessage(msg.replyTo!.id);
+            }}
+          >
+            <span className="crew-chat-reply-quote__author">{msg.replyTo.senderName}</span>
+            <span className="crew-chat-reply-quote__text">{msg.replyTo.text}</span>
+          </button>
+        )}
+        <TransparentStickerGraphic
+          src={primaryUrl}
+          fallbackSrc={fallbackUrl}
+          emojiFallback={builtIn?.emoji ?? '✨'}
+          alt={msg.text || 'Sticker'}
+          className="crew-chat-sticker-img"
+        />
+        <span className="crew-chat-sticker-meta">{formatChatTime(msg.createdAt)}</span>
+        {!inHoldOverlay && heartPopId === msg.id && (
+          <span className="crew-chat-heart-pop" aria-hidden="true">
+            ❤️
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  const renderTextMessage = (
+    msg: ChatMessage,
+    isOwn: boolean,
+    inHoldOverlay = false,
+  ) => (
+    <div
+      className={`crew-chat-bubble ${
+        isOwn ? 'crew-chat-bubble--own' : 'crew-chat-bubble--other'
+      }`}
+      onClick={inHoldOverlay ? undefined : () => handleBubbleTap(msg)}
+      onContextMenu={
+        inHoldOverlay
+          ? undefined
+          : (e) => {
+              e.preventDefault();
+              setHoldTarget({ message: msg, isOwn });
+            }
+      }
+    >
+      {msg.replyTo && (
+        <button
+          type="button"
+          className="crew-chat-reply-quote"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!inHoldOverlay) {
+              jumpToQuotedMessage(msg.replyTo!.id);
+            }
+          }}
+        >
+          <span className="crew-chat-reply-quote__author">{msg.replyTo.senderName}</span>
+          <span className="crew-chat-reply-quote__text">{msg.replyTo.text}</span>
+        </button>
+      )}
+      <p className="crew-chat-text">{msg.text}</p>
+      <div className="crew-chat-meta">
+        <span>{formatChatTime(msg.createdAt)}</span>
+      </div>
+      {!inHoldOverlay && heartPopId === msg.id && (
+        <span className="crew-chat-heart-pop" aria-hidden="true">
+          ❤️
+        </span>
+      )}
+    </div>
+  );
 
   return (
-    <div className="crew-chat-screen" role="dialog" aria-label="Crew Chat">
+    <div
+      ref={screenRef}
+      className="crew-chat-screen"
+      role="dialog"
+      aria-label="Crew Chat"
+    >
       {/* Header (Text & Stickers Only — Zero Call/VC/Media Controls) */}
       <header className="crew-chat-header">
         <CornerOrb
@@ -369,7 +788,7 @@ export function CrewChatScreen({
         )}
       </header>
 
-      {/* Messages Stream */}
+      {/* Bottom-Anchored Message Stream */}
       <div className="crew-chat-scroll-wrap">
         <div
           ref={scrollRef}
@@ -379,235 +798,182 @@ export function CrewChatScreen({
           {messages.length === 0 ? (
             <div className="crew-chat-empty">
               <div className="crew-chat-empty__icon" aria-hidden="true">
-                <MessageCircle size={25} strokeWidth={1.85} />
+                <MessageCircle size={24} strokeWidth={1.85} />
               </div>
               <h2 className="crew-chat-empty__title">Start the Crew Chat</h2>
               <p className="crew-chat-empty__desc">
-                Coordinate meetups, quick check-ins, and hype stickers with your crew — text &amp; stickers only.
+                Coordinate meetups, quick check-ins, and transparent stickers with your crew — text &amp; stickers only.
               </p>
               <div className="crew-chat-empty__starters">
                 {CREW_STICKER_PACK.slice(0, 3).map((stk) => (
                   <button
                     key={stk.id}
                     type="button"
-                    className="crew-chat-starter-chip tactile"
-                    onClick={() => handleSendSticker(stk.id)}
+                    className="crew-chat-starter-sticker tactile"
+                    onClick={() => handleSendSticker({ stickerId: stk.id })}
                   >
-                    <span>{stk.emoji}</span>
-                    <span>{stk.caption}</span>
+                    <TransparentStickerGraphic
+                      src={stk.url}
+                      fallbackSrc={stk.fallbackUrl}
+                      emojiFallback={stk.emoji}
+                      alt={stk.caption}
+                      className="crew-chat-sticker-btn__img"
+                    />
+                    <span className="crew-chat-starter-sticker__label">{stk.caption}</span>
                   </button>
                 ))}
               </div>
             </div>
           ) : (
-            messages.map((msg, idx) => {
-              const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
-              const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : undefined;
-              const showDayDivider =
-                !prevMsg || getChatDateKey(prevMsg.createdAt) !== getChatDateKey(msg.createdAt);
-              const groupedWithPrev = isGroupedWithPrevious(prevMsg, msg);
-              const groupedWithNext = Boolean(nextMsg && isGroupedWithPrevious(msg, nextMsg));
-              const isOwn = Boolean(activeMemberId && msg.senderId === activeMemberId);
-              const senderMember = memberById.get(msg.senderId);
-              const sticker = msg.kind === 'sticker' ? getStickerById(msg.stickerId) : undefined;
-              const reactionEntries = countTotalReactions(msg.reactions);
+            <div className="crew-chat-stream-inner">
+              {messages.map((msg, idx) => {
+                const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
+                const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : undefined;
+                const showDayDivider =
+                  !prevMsg || getChatDateKey(prevMsg.createdAt) !== getChatDateKey(msg.createdAt);
+                const groupedWithPrev = isGroupedWithPrevious(prevMsg, msg);
+                const groupedWithNext = Boolean(nextMsg && isGroupedWithPrevious(msg, nextMsg));
+                const isOwn = Boolean(activeMemberId && msg.senderId === activeMemberId);
+                const senderMember = memberById.get(msg.senderId);
+                const reactionEntries = countTotalReactions(msg.reactions);
 
-              return (
-                <div key={msg.id} style={{ display: 'flex', flexDirection: 'column' }}>
-                  {showDayDivider && (
-                    <div className="crew-chat-day-divider">
-                      {formatChatDayDivider(msg.createdAt)}
-                    </div>
-                  )}
+                const isBeingSwiped = swipeUi.id === msg.id;
+                const offset = isBeingSwiped ? swipeUi.offset : 0;
+                const swipeProgress = Math.min(1, offset / 46);
+                const swipeReady = offset >= 46;
 
+                return (
                   <div
+                    key={msg.id}
                     data-chat-id={msg.id}
-                    className={[
-                      'crew-chat-row',
-                      isOwn ? 'crew-chat-row--own' : 'crew-chat-row--other',
-                      groupedWithPrev ? 'crew-chat-row--grouped' : '',
-                      flashMessageId === msg.id ? 'crew-chat-row--flash' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
+                    className={`crew-chat-swipe-stage ${
+                      groupedWithPrev && !showDayDivider ? 'crew-chat-swipe-stage--grouped' : ''
+                    }`}
                   >
-                    {!isOwn && (
-                      <div className="crew-chat-avatar-col">
-                        {!groupedWithNext && (
-                          <Avatar
-                            initials={senderMember?.initials ?? msg.senderName.slice(0, 2).toUpperCase()}
-                            name={senderMember?.name ?? msg.senderName}
-                            src={senderMember?.avatarDataUrl}
-                            size="sm"
-                            bg={senderMember?.avatarBg ?? '#E3EDE6'}
-                            color={senderMember?.avatarColor ?? '#2D4A42'}
-                            variant="solid"
-                          />
-                        )}
+                    {showDayDivider && (
+                      <div className="crew-chat-day-divider">
+                        {formatChatDayDivider(msg.createdAt)}
                       </div>
                     )}
 
-                    <div className="crew-chat-col">
-                      {!isOwn && !groupedWithPrev && (
-                        <div className="crew-chat-sender">
-                          {senderMember?.name ?? msg.senderName}
+                    {!msg.deleted && offset > 4 && (
+                      <div
+                        className={`crew-chat-swipe-indicator ${
+                          swipeReady ? 'crew-chat-swipe-indicator--ready' : ''
+                        }`}
+                        style={{
+                          opacity: swipeProgress,
+                          transform: `scale(${0.65 + swipeProgress * 0.4})`,
+                        }}
+                        aria-hidden="true"
+                      >
+                        <Reply size={15} strokeWidth={2.2} />
+                      </div>
+                    )}
+
+                    <div
+                      className={[
+                        'crew-chat-row',
+                        isOwn ? 'crew-chat-row--own' : 'crew-chat-row--other',
+                        isBeingSwiped && swipeUi.snapping ? 'crew-chat-row--snap' : '',
+                        flashMessageId === msg.id ? 'crew-chat-row--flash' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      style={
+                        offset > 0
+                          ? { transform: `translate3d(${offset}px, 0, 0)` }
+                          : undefined
+                      }
+                      onPointerDown={(e) => handleRowPointerDown(msg, isOwn, e)}
+                      onPointerMove={(e) => handleRowPointerMove(msg, e)}
+                      onPointerUp={(e) => handleRowPointerEnd(msg, e)}
+                      onPointerCancel={(e) => handleRowPointerEnd(msg, e)}
+                    >
+                      {!isOwn && (
+                        <div className="crew-chat-avatar-col">
+                          {!groupedWithNext && (
+                            <Avatar
+                              initials={
+                                senderMember?.initials ??
+                                msg.senderName.slice(0, 2).toUpperCase()
+                              }
+                              name={senderMember?.name ?? msg.senderName}
+                              src={senderMember?.avatarDataUrl}
+                              size="sm"
+                              bg={senderMember?.avatarBg ?? '#E3EDE6'}
+                              color={senderMember?.avatarColor ?? '#2D4A42'}
+                              variant="solid"
+                            />
+                          )}
                         </div>
                       )}
 
-                      <div className="crew-chat-bubble-shell">
+                      <div className="crew-chat-col">
+                        {!isOwn && (!groupedWithPrev || showDayDivider) && (
+                          <div className="crew-chat-sender">
+                            {senderMember?.name ?? msg.senderName}
+                          </div>
+                        )}
+
                         {msg.deleted ? (
                           <div className="crew-chat-bubble crew-chat-bubble--deleted">
                             Message unsent
                           </div>
-                        ) : sticker ? (
-                          <div
-                            className={`crew-chat-sticker-card crew-chat-sticker-card--${sticker.tone}`}
-                            onClick={() => handleBubbleTap(msg)}
-                            onPointerDown={(e) => startLongPress(msg, e.clientX, e.clientY)}
-                            onPointerMove={(e) => moveLongPress(e.clientX, e.clientY)}
-                            onPointerUp={cancelLongPress}
-                            onPointerCancel={cancelLongPress}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              setMenuMessage(msg);
-                            }}
-                          >
-                            {msg.replyTo && (
-                              <button
-                                type="button"
-                                className="crew-chat-reply-quote"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  jumpToQuotedMessage(msg.replyTo!.id);
-                                }}
-                              >
-                                <span className="crew-chat-reply-quote__author">
-                                  {msg.replyTo.senderName}
-                                </span>
-                                <span className="crew-chat-reply-quote__text">
-                                  {msg.replyTo.text}
-                                </span>
-                              </button>
-                            )}
-                            <span className="crew-chat-sticker-emoji" aria-label={sticker.caption}>
-                              {sticker.emoji}
-                            </span>
-                            <span className="crew-chat-sticker-caption">{sticker.caption}</span>
-                            <div className="crew-chat-meta">
-                              <span>{formatChatTime(msg.createdAt)}</span>
-                            </div>
-                            {heartPopId === msg.id && (
-                              <span className="crew-chat-heart-pop" aria-hidden="true">
-                                ❤️
-                              </span>
-                            )}
-                          </div>
+                        ) : msg.kind === 'sticker' ? (
+                          renderStickerMessage(msg, false)
                         ) : (
-                          <div
-                            className={`crew-chat-bubble ${
-                              isOwn ? 'crew-chat-bubble--own' : 'crew-chat-bubble--other'
-                            }`}
-                            onClick={() => handleBubbleTap(msg)}
-                            onPointerDown={(e) => startLongPress(msg, e.clientX, e.clientY)}
-                            onPointerMove={(e) => moveLongPress(e.clientX, e.clientY)}
-                            onPointerUp={cancelLongPress}
-                            onPointerCancel={cancelLongPress}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              setMenuMessage(msg);
-                            }}
-                          >
-                            {msg.replyTo && (
-                              <button
-                                type="button"
-                                className="crew-chat-reply-quote"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  jumpToQuotedMessage(msg.replyTo!.id);
-                                }}
-                              >
-                                <span className="crew-chat-reply-quote__author">
-                                  {msg.replyTo.senderName}
-                                </span>
-                                <span className="crew-chat-reply-quote__text">
-                                  {msg.replyTo.text}
-                                </span>
-                              </button>
-                            )}
-                            <p className="crew-chat-text">{msg.text}</p>
-                            <div className="crew-chat-meta">
-                              <span>{formatChatTime(msg.createdAt)}</span>
-                            </div>
-                            {heartPopId === msg.id && (
-                              <span className="crew-chat-heart-pop" aria-hidden="true">
-                                ❤️
-                              </span>
-                            )}
-                          </div>
+                          renderTextMessage(msg, isOwn, false)
                         )}
 
-                        {!msg.deleted && (
-                          <button
-                            type="button"
-                            className="crew-chat-more-btn"
-                            aria-label="React or reply to message"
-                            onClick={() => {
-                              triggerFeedback('tap');
-                              setMenuMessage(msg);
-                            }}
-                          >
-                            <Smile size={14} strokeWidth={1.9} />
-                          </button>
+                        {!msg.deleted && reactionEntries.length > 0 && (
+                          <div className="crew-chat-reactions">
+                            {reactionEntries.map(({ emoji, memberIds }) => {
+                              const mine = Boolean(
+                                activeMemberId && memberIds.includes(activeMemberId),
+                              );
+                              const names = memberIds
+                                .map((id) => memberById.get(id)?.name ?? id)
+                                .join(', ');
+                              return (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  className={`crew-chat-reaction-chip tactile ${
+                                    mine ? 'crew-chat-reaction-chip--mine' : ''
+                                  }`}
+                                  title={names}
+                                  onClick={() => {
+                                    primeFeedbackAudio();
+                                    triggerFeedback('check');
+                                    onToggleReaction(msg.id, emoji);
+                                  }}
+                                >
+                                  <span>{emoji}</span>
+                                  {memberIds.length > 1 && <span>{memberIds.length}</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
-
-                      {!msg.deleted && reactionEntries.length > 0 && (
-                        <div className="crew-chat-reactions">
-                          {reactionEntries.map(({ emoji, memberIds }) => {
-                            const mine = Boolean(
-                              activeMemberId && memberIds.includes(activeMemberId),
-                            );
-                            const names = memberIds
-                              .map((id) => memberById.get(id)?.name ?? id)
-                              .join(', ');
-                            return (
-                              <button
-                                key={emoji}
-                                type="button"
-                                className={`crew-chat-reaction-chip tactile ${
-                                  mine ? 'crew-chat-reaction-chip--mine' : ''
-                                }`}
-                                title={names}
-                                onClick={() => {
-                                  primeFeedbackAudio();
-                                  triggerFeedback('check');
-                                  onToggleReaction(msg.id, emoji);
-                                }}
-                              >
-                                <span>{emoji}</span>
-                                {memberIds.length > 1 && <span>{memberIds.length}</span>}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
                     </div>
                   </div>
-                </div>
-              );
-            })
-          )}
+                );
+              })}
 
-          {typingText && (
-            <div className="crew-chat-typing-row" aria-live="polite">
-              <div className="crew-chat-typing-bubble">
-                <span className="crew-chat-typing-dots" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-                <span>{typingText}</span>
-              </div>
+              {typingText && (
+                <div className="crew-chat-typing-row" aria-live="polite">
+                  <div className="crew-chat-typing-bubble">
+                    <span className="crew-chat-typing-dots" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                    <span>{typingText}</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -617,7 +983,7 @@ export function CrewChatScreen({
             type="button"
             className="crew-chat-scroll-bottom tactile"
             aria-label="Scroll to latest messages"
-            onClick={scrollToBottom}
+            onClick={() => scrollToBottom(true)}
           >
             <ChevronDown size={15} strokeWidth={2.2} />
             <span>Latest</span>
@@ -625,11 +991,11 @@ export function CrewChatScreen({
         )}
       </div>
 
-      {/* Composer (Strict Text + Built-in Stickers Only — Zero Media/Calls) */}
+      {/* Composer (Emoji Picker + Transparent Stickers + Text — Zero Media/Calls) */}
       <footer className="crew-chat-composer-wrap">
         {replyTarget && (
           <div className="crew-chat-reply-banner">
-            <Reply size={15} strokeWidth={2} style={{ color: 'var(--brand-matcha)' }} />
+            <Reply size={14} strokeWidth={2} style={{ color: 'var(--brand-matcha)' }} />
             <div className="crew-chat-reply-banner__body">
               <div className="crew-chat-reply-banner__title">
                 Replying to {replyTarget.senderName}
@@ -647,45 +1013,172 @@ export function CrewChatScreen({
           </div>
         )}
 
-        {showStickers && (
-          <div className="crew-chat-sticker-tray" aria-label="Crew sticker pack">
-            <div className="crew-chat-sticker-tray__head">
-              <span className="crew-chat-sticker-tray__label">Crew Stickers</span>
-              <span className="crew-chat-sticker-tray__hint">Tap to send</span>
+        {drawerMode === 'emoji' && (
+          <div className="crew-chat-drawer" aria-label="Emoji picker">
+            <div className="crew-chat-drawer__tabs">
+              <div className="crew-chat-drawer__pills">
+                {CHAT_EMOJI_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    className={`crew-chat-drawer__pill ${
+                      emojiCategory === cat.id ? 'crew-chat-drawer__pill--active' : ''
+                    }`}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      triggerFeedback('tap');
+                      setEmojiCategory(cat.id);
+                    }}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="crew-chat-reply-banner__close"
+                aria-label="Close emoji picker"
+                onClick={() => setDrawerMode('none')}
+              >
+                <X size={14} strokeWidth={2} />
+              </button>
             </div>
-            <div className="crew-chat-sticker-grid">
-              {CREW_STICKER_PACK.map((stk) => (
+            <div className="crew-chat-emoji-grid">
+              {activeEmojiList.map((emoji) => (
                 <button
-                  key={stk.id}
+                  key={emoji}
                   type="button"
-                  className="crew-chat-sticker-btn tactile"
-                  onClick={() => handleSendSticker(stk.id)}
+                  className="crew-chat-emoji-btn"
+                  aria-label={`Insert ${emoji}`}
+                  onPointerDown={(e) => e.preventDefault()}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertEmojiAtCursor(emoji)}
                 >
-                  <span className="crew-chat-sticker-btn__emoji">{stk.emoji}</span>
-                  <span className="crew-chat-sticker-btn__caption">{stk.caption}</span>
+                  {emoji}
                 </button>
               ))}
             </div>
           </div>
         )}
 
+        {drawerMode === 'sticker' && (
+          <div className="crew-chat-drawer" aria-label="Transparent stickers">
+            <div className="crew-chat-sticker-search-row">
+              <Search size={15} strokeWidth={2} />
+              <input
+                type="search"
+                className="crew-chat-sticker-search"
+                placeholder="Search stickers (e.g. happy, motor, food)..."
+                value={stickerQuery}
+                onChange={(e) => setStickerQuery(e.target.value)}
+              />
+              {stickerQuery && (
+                <button
+                  type="button"
+                  className="crew-chat-reply-banner__close"
+                  aria-label="Clear sticker search"
+                  onClick={() => setStickerQuery('')}
+                >
+                  <X size={13} strokeWidth={2} />
+                </button>
+              )}
+            </div>
+
+            <div className="crew-chat-sticker-grid">
+              {builtInFilteredStickers.map((stk) => (
+                <button
+                  key={stk.id}
+                  type="button"
+                  className="crew-chat-sticker-btn tactile"
+                  onClick={() =>
+                    handleSendSticker({
+                      stickerId: stk.id,
+                      stickerUrl: stk.url,
+                      stickerCaption: stk.caption,
+                    })
+                  }
+                >
+                  <TransparentStickerGraphic
+                    src={stk.url}
+                    fallbackSrc={stk.fallbackUrl}
+                    emojiFallback={stk.emoji}
+                    alt={stk.caption}
+                    className="crew-chat-sticker-btn__img"
+                  />
+                  <span className="crew-chat-sticker-btn__caption">{stk.caption}</span>
+                </button>
+              ))}
+
+              {externalStickers.map((ext) => (
+                <button
+                  key={ext.id}
+                  type="button"
+                  className="crew-chat-sticker-btn tactile"
+                  onClick={() =>
+                    handleSendSticker({
+                      stickerId: ext.id,
+                      stickerUrl: ext.url,
+                      stickerCaption: ext.caption,
+                    })
+                  }
+                >
+                  <TransparentStickerGraphic
+                    src={ext.url}
+                    emojiFallback="✨"
+                    alt={ext.caption}
+                    className="crew-chat-sticker-btn__img"
+                  />
+                  <span className="crew-chat-sticker-btn__caption">{ext.caption}</span>
+                </button>
+              ))}
+            </div>
+
+            {searchingStickers ? (
+              <div className="crew-chat-sticker-status">Searching online stickers...</div>
+            ) : (
+              builtInFilteredStickers.length === 0 &&
+              externalStickers.length === 0 && (
+                <div className="crew-chat-sticker-status">
+                  No matching stickers found — try another keyword or paste from your keyboard
+                </div>
+              )
+            )}
+          </div>
+        )}
+
         <div className="crew-chat-input-row">
           <button
             type="button"
-            className={`crew-chat-sticker-toggle tactile ${
-              showStickers ? 'crew-chat-sticker-toggle--active' : ''
+            className={`crew-chat-icon-btn tactile ${
+              drawerMode === 'emoji' ? 'crew-chat-icon-btn--active' : ''
             }`}
-            aria-label={showStickers ? 'Close sticker tray' : 'Open sticker tray'}
-            aria-pressed={showStickers}
+            aria-label={drawerMode === 'emoji' ? 'Close emoji picker' : 'Open emoji picker'}
+            aria-pressed={drawerMode === 'emoji'}
+            onPointerDown={(e) => e.preventDefault()}
             onClick={() => {
               triggerFeedback('toggle');
-              setShowStickers((prev) => !prev);
+              setDrawerMode((prev) => (prev === 'emoji' ? 'none' : 'emoji'));
             }}
           >
-            {showStickers ? (
-              <X size={19} strokeWidth={2} />
+            <Smile size={19} strokeWidth={1.9} />
+          </button>
+
+          <button
+            type="button"
+            className={`crew-chat-icon-btn tactile ${
+              drawerMode === 'sticker' ? 'crew-chat-icon-btn--active' : ''
+            }`}
+            aria-label={drawerMode === 'sticker' ? 'Close stickers' : 'Open stickers'}
+            aria-pressed={drawerMode === 'sticker'}
+            onClick={() => {
+              triggerFeedback('toggle');
+              setDrawerMode((prev) => (prev === 'sticker' ? 'none' : 'sticker'));
+            }}
+          >
+            {drawerMode === 'sticker' ? (
+              <X size={18} strokeWidth={2} />
             ) : (
-              <Sparkles size={19} strokeWidth={1.9} />
+              <Sticker size={19} strokeWidth={1.9} />
             )}
           </button>
 
@@ -697,7 +1190,8 @@ export function CrewChatScreen({
               placeholder={`Message as ${activeMemberName}...`}
               value={draft}
               maxLength={1000}
-              onFocus={() => setShowStickers(false)}
+              onFocus={() => setDrawerMode('none')}
+              onPaste={handlePaste}
               onChange={(e) => handleDraftChange(e.target.value)}
               onKeyDown={handleKeyDown}
             />
@@ -708,6 +1202,8 @@ export function CrewChatScreen({
             className="crew-chat-send-btn tactile"
             aria-label="Send message"
             disabled={!canSendText}
+            onPointerDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleSendText}
           >
             <Send size={17} strokeWidth={2.1} />
@@ -715,88 +1211,110 @@ export function CrewChatScreen({
         </div>
       </footer>
 
-      {/* Portaled IG/WA Reaction + Reply/Unsend Bar */}
-      {menuMessage &&
+      {/* Portaled IG-Style Long-Press (Hold) Menu with Dynamic Left/Right Alignment */}
+      {holdTarget &&
         typeof document !== 'undefined' &&
         createPortal(
           <div
             className="crew-chat-action-backdrop"
             role="presentation"
-            onClick={() => setMenuMessage(null)}
+            onClick={() => setHoldTarget(null)}
           >
             <div
-              className="crew-chat-action-preview"
+              className={`crew-chat-hold-stack ${
+                holdTarget.isOwn ? 'crew-chat-hold-stack--own' : 'crew-chat-hold-stack--other'
+              }`}
               onClick={(e) => e.stopPropagation()}
             >
-              <strong>{menuMessage.senderName}:</strong>{' '}
-              {menuMessage.kind === 'sticker'
-                ? `${getStickerById(menuMessage.stickerId)?.emoji ?? ''} ${menuMessage.text}`
-                : menuMessage.text}
-            </div>
-
-            <div
-              className="crew-chat-reaction-bar"
-              role="group"
-              aria-label="Quick emoji reactions"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {CHAT_QUICK_REACTIONS.map((emoji) => {
-                const list = menuMessage.reactions?.[emoji] ?? [];
-                const active = Boolean(activeMemberId && list.includes(activeMemberId));
-                return (
-                  <button
-                    key={emoji}
-                    type="button"
-                    className={`crew-chat-reaction-pick tactile ${
-                      active ? 'crew-chat-reaction-pick--active' : ''
-                    }`}
-                    aria-label={`React with ${emoji}`}
-                    aria-pressed={active}
-                    onClick={() => {
-                      primeFeedbackAudio();
-                      triggerFeedback('check');
-                      onToggleReaction(menuMessage.id, emoji);
-                      setMenuMessage(null);
-                    }}
-                  >
-                    {emoji}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div
-              className="crew-chat-action-sheet"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                className="crew-chat-action-item"
-                onClick={() => {
-                  triggerFeedback('tap');
-                  setReplyTarget(buildReplyPreview(menuMessage));
-                  setMenuMessage(null);
-                  requestAnimationFrame(() => textareaRef.current?.focus());
-                }}
+              {/* Emoji Reaction Bar ABOVE held message */}
+              <div
+                className="crew-chat-reaction-bar"
+                role="group"
+                aria-label="Quick emoji reactions"
               >
-                <span>Reply</span>
-                <Reply size={16} strokeWidth={2} />
-              </button>
+                {CHAT_QUICK_REACTIONS.map((emoji) => {
+                  const list = holdTarget.message.reactions?.[emoji] ?? [];
+                  const active = Boolean(activeMemberId && list.includes(activeMemberId));
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className={`crew-chat-reaction-pick tactile ${
+                        active ? 'crew-chat-reaction-pick--active' : ''
+                      }`}
+                      aria-label={`React with ${emoji}`}
+                      aria-pressed={active}
+                      onClick={() => {
+                        primeFeedbackAudio();
+                        triggerFeedback('check');
+                        onToggleReaction(holdTarget.message.id, emoji);
+                        setHoldTarget(null);
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  );
+                })}
+              </div>
 
-              {menuCanUnsend && (
+              {/* Highlighted Message Preview */}
+              <div className="crew-chat-hold-preview">
+                {holdTarget.message.kind === 'sticker'
+                  ? renderStickerMessage(holdTarget.message, true)
+                  : renderTextMessage(holdTarget.message, holdTarget.isOwn, true)}
+              </div>
+
+              {/* Action Menu BELOW held message */}
+              <div className="crew-chat-action-sheet">
                 <button
                   type="button"
-                  className="crew-chat-action-item crew-chat-action-item--danger"
+                  className="crew-chat-action-item"
                   onClick={() => {
-                    triggerFeedback('warning');
-                    onUnsendMessage(menuMessage.id);
-                    setMenuMessage(null);
+                    triggerFeedback('tap');
+                    setReplyTarget(buildReplyPreview(holdTarget.message));
+                    setHoldTarget(null);
+                    requestAnimationFrame(() =>
+                      textareaRef.current?.focus({ preventScroll: true }),
+                    );
                   }}
                 >
-                  <span>Unsend</span>
-                  <Trash2 size={16} strokeWidth={2} />
+                  <span>Reply</span>
+                  <Reply size={16} strokeWidth={2} />
                 </button>
-              )}
+
+                {holdTarget.message.kind === 'text' && (
+                  <button
+                    type="button"
+                    className="crew-chat-action-item"
+                    onClick={() => {
+                      triggerFeedback('check');
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(holdTarget.message.text);
+                      }
+                      setHoldTarget(null);
+                      onNotify?.('Message copied', 'info');
+                    }}
+                  >
+                    <span>Copy</span>
+                    <Copy size={16} strokeWidth={2} />
+                  </button>
+                )}
+
+                {holdCanUnsend && (
+                  <button
+                    type="button"
+                    className="crew-chat-action-item crew-chat-action-item--danger"
+                    onClick={() => {
+                      triggerFeedback('warning');
+                      onUnsendMessage(holdTarget.message.id);
+                      setHoldTarget(null);
+                    }}
+                  >
+                    <span>Unsend</span>
+                    <Trash2 size={16} strokeWidth={2} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>,
           document.body,
@@ -835,7 +1353,13 @@ export function CrewChatScreen({
                   variant="solid"
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      fontSize: '0.9rem',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
                     {u.name} {isYou ? '(You)' : ''}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>

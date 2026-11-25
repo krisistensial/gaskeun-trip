@@ -152,11 +152,14 @@ create table if not exists public.trip_messages (
   kind text not null default 'text' check (kind in ('text', 'sticker')),
   text text not null default '',
   sticker_id text,
+  sticker_url text,
   reply_to jsonb,
   reactions jsonb not null default '{}'::jsonb,
   deleted boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+alter table public.trip_messages add column if not exists sticker_url text;
 
 create index if not exists idx_trip_messages_code_created
   on public.trip_messages (trip_code, created_at desc);

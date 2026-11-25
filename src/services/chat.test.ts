@@ -7,10 +7,12 @@ import {
   createTextChatMessage,
   formatChatDayDivider,
   isGroupedWithPrevious,
+  isSafeStickerUrl,
   loadChatLastRead,
   MAX_CHAT_MESSAGES,
   mergeChatMessages,
   saveChatLastRead,
+  searchBuiltInStickers,
   toggleMessageReaction,
 } from './chat';
 
@@ -193,5 +195,30 @@ describe('Crew Chat pure helpers (text, stickers, emoji reactions, unread)', () 
     const now = new Date('2026-11-25T12:00:00.000Z');
     expect(formatChatDayDivider('2026-11-25T10:00:00.000Z', now)).toBe('Today');
     expect(formatChatDayDivider('2026-11-24T10:00:00.000Z', now)).toBe('Yesterday');
+  });
+
+  it('supports transparent external/pasted stickers, URL safety checks, and built-in sticker search', () => {
+    expect(isSafeStickerUrl('https://fonts.gstatic.com/s/e/notoemoji/latest/1f602/512.webp')).toBe(
+      true,
+    );
+    expect(isSafeStickerUrl('data:image/webp;base64,UklGRh4AAABXRUJQ')).toBe(true);
+    expect(isSafeStickerUrl('data:image/jpeg;base64,/9j/4AAQ')).toBe(false);
+    expect(isSafeStickerUrl('javascript:alert(1)')).toBe(false);
+
+    const customSticker = createStickerChatMessage({
+      tripCode: 'SOLO-27',
+      senderId: 'm-kris',
+      senderName: 'Kris',
+      stickerUrl: 'data:image/webp;base64,UklGRh4AAABXRUJQ',
+      stickerCaption: 'Custom Wave',
+    });
+    expect(customSticker).toMatchObject({
+      kind: 'sticker',
+      text: 'Custom Wave',
+      stickerUrl: 'data:image/webp;base64,UklGRh4AAABXRUJQ',
+    });
+
+    const searched = searchBuiltInStickers('motor');
+    expect(searched.some((s) => s.id === 'stk-gaskeun')).toBe(true);
   });
 });

@@ -12,6 +12,7 @@ interface TripMessageRow {
   kind: 'text' | 'sticker';
   text: string | null;
   sticker_id: string | null;
+  sticker_url?: string | null;
   reply_to: ChatReplyPreview | null;
   reactions: Record<string, string[]> | null;
   deleted: boolean | null;
@@ -55,9 +56,12 @@ function isMissingTableError(error: unknown): boolean {
   return (
     code === '42P01' ||
     code === 'PGRST205' ||
+    code === '42703' ||
+    code === 'PGRST204' ||
     err.status === 404 ||
     msg.includes('does not exist') ||
     msg.includes('could not find the table') ||
+    msg.includes('sticker_url') ||
     msg.includes('trip_messages')
   );
 }
@@ -71,6 +75,7 @@ function mapRowToChatMessage(row: TripMessageRow): ChatMessage {
     kind: row.kind === 'sticker' ? 'sticker' : 'text',
     text: row.text ?? '',
     ...(row.sticker_id ? { stickerId: row.sticker_id } : {}),
+    ...(row.sticker_url ? { stickerUrl: row.sticker_url } : {}),
     ...(row.reply_to ? { replyTo: row.reply_to } : {}),
     reactions: row.reactions && typeof row.reactions === 'object' ? row.reactions : {},
     ...(row.deleted ? { deleted: true } : {}),
@@ -87,6 +92,7 @@ function mapChatMessageToRow(msg: ChatMessage): TripMessageRow {
     kind: msg.kind,
     text: msg.deleted ? '' : msg.text,
     sticker_id: msg.stickerId ?? null,
+    sticker_url: msg.stickerUrl ?? null,
     reply_to: msg.replyTo ?? null,
     reactions: msg.reactions ?? {},
     deleted: Boolean(msg.deleted),

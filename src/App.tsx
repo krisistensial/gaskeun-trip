@@ -1119,12 +1119,17 @@ export default function App() {
     persistChatMutation(next, () => upsertRemoteChatMessage(msg));
   };
 
-  const handleSendChatSticker = (stickerId: string, replyTo?: ChatReplyPreview) => {
+  const handleSendChatSticker = (
+    payload: { stickerId?: string; stickerUrl?: string; stickerCaption?: string },
+    replyTo?: ChatReplyPreview,
+  ) => {
     const msg = createStickerChatMessage({
       tripCode: activeTrip.code,
       senderId: activeMemberId ?? 'guest',
       senderName: activeMemberName,
-      stickerId,
+      stickerId: payload.stickerId,
+      stickerUrl: payload.stickerUrl,
+      stickerCaption: payload.stickerCaption,
       replyTo,
     });
     if (!msg) return;
@@ -1272,6 +1277,7 @@ export default function App() {
                 onUnsendMessage={handleUnsendChatMessage}
                 onTypingChange={handleChatTypingChange}
                 onMarkRead={handleMarkChatRead}
+                onNotify={showToast}
                 onBack={() => setChatOpen(false)}
               />
             )}
