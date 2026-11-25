@@ -7,6 +7,7 @@ import {
   computePanBounds,
   getCropOutputDimensions,
   getRotatedDimensions,
+  isSupportedImageFile,
   shouldUseOriginalPassthrough,
 } from './photoCrop';
 
@@ -107,5 +108,13 @@ describe('Universal Photo Cropper math & Full-Res Album Passthrough (photoCrop)'
     const clamped = clampPanOffset(999, -999, bounds);
     expect(clamped.x).toBeCloseTo(80, 3);
     expect(clamped.y).toBeCloseTo(-45, 3);
+  });
+
+  it('validates image files chosen from unrestricted File Saya / OS file pickers', () => {
+    expect(isSupportedImageFile({ type: 'image/jpeg', name: 'IMG_001.jpg' })).toBe(true);
+    expect(isSupportedImageFile({ type: '', name: 'downloaded-photo.webp' })).toBe(true);
+    expect(isSupportedImageFile({ type: '', name: 'iphone-shot.HEIC' })).toBe(true);
+    expect(isSupportedImageFile({ type: 'application/pdf', name: 'ticket.pdf' })).toBe(false);
+    expect(isSupportedImageFile({ type: 'text/plain', name: 'notes.txt' })).toBe(false);
   });
 });

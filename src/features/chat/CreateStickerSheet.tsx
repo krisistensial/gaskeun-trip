@@ -3,11 +3,11 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type PointerEvent,
 } from 'react';
 import { ImagePlus, Scissors, Sparkles, Upload } from 'lucide-react';
 import { Button, LiquidBottomSheet } from '../../components/atoms';
+import { ImageSourceSheet } from '../../components/organisms/ImageSourceSheet';
 import {
   CUSTOM_STICKER_EMOJIS,
   CUSTOM_STICKER_THEMES,
@@ -268,7 +268,7 @@ export function CreateStickerSheet({
   const [caption, setCaption] = useState('');
   const [themeId, setThemeId] = useState<CustomStickerThemeId>('matcha');
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [imageSourceOpen, setImageSourceOpen] = useState(false);
   const dragRef = useRef<{
     active: boolean;
     pointerId: number;
@@ -332,11 +332,7 @@ export function CreateStickerSheet({
     emoji,
   ]);
 
-  const handleFilePicked = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-
+  const loadStickerImageFile = (file: File) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
@@ -408,14 +404,6 @@ export function CreateStickerSheet({
       onClose={onClose}
     >
       <div className="sticker-studio">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          onChange={handleFilePicked}
-        />
-
         {/* 2-Way Mode Switcher */}
         <div className="sticker-studio__tabs" role="tablist">
           <button
@@ -462,11 +450,11 @@ export function CreateStickerSheet({
             <button
               type="button"
               className="sticker-studio__pick-cta tactile"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => setImageSourceOpen(true)}
             >
               <Upload size={22} strokeWidth={2} />
-              <span>Choose Photo from Gallery</span>
-              <small>Crop shape &amp; add sticker text</small>
+              <span>Choose Photo or File</span>
+              <small>Gallery, My Files, or Camera</small>
             </button>
           ) : previewDataUrl ? (
             <img
@@ -484,7 +472,7 @@ export function CreateStickerSheet({
               <button
                 type="button"
                 className="crew-chat-drawer__pill tactile"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setImageSourceOpen(true)}
               >
                 <Upload size={12} strokeWidth={2.2} />
                 <span>Change Photo</span>
@@ -629,6 +617,12 @@ export function CreateStickerSheet({
           Save &amp; Send Sticker
         </Button>
       </div>
+      <ImageSourceSheet
+        open={imageSourceOpen}
+        title="Sticker Photo"
+        onPick={loadStickerImageFile}
+        onClose={() => setImageSourceOpen(false)}
+      />
     </LiquidBottomSheet>
   );
 }

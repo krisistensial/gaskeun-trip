@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import {
   AlertCircle,
   BedDouble,
@@ -19,6 +19,7 @@ import {
   Input,
   LiquidBottomSheet,
 } from '../../components/atoms';
+import { ImageSourceSheet } from '../../components/organisms/ImageSourceSheet';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import { normalizeCarSeats, toggleStayRoomMember } from '../../services/crewSwap';
 import { uploadSharedImage } from '../../services/mediaUploader';
@@ -83,8 +84,8 @@ export function TrainPassEditorSheet({
     initial?.trainPhotoDataUrl,
   );
   const [cropFile, setCropFile] = useState<File | null>(null);
+  const [imageSourceOpen, setImageSourceOpen] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleCroppedTrainPhoto = async (cropped: CroppedImageResult) => {
     setCropFile(null);
@@ -135,7 +136,7 @@ export function TrainPassEditorSheet({
           <button
             type="button"
             className="cover-drop-strip tactile"
-            onClick={() => photoInputRef.current?.click()}
+            onClick={() => setImageSourceOpen(true)}
           >
             {trainPhotoDataUrl ? (
               <img
@@ -173,19 +174,6 @@ export function TrainPassEditorSheet({
             </button>
           )}
         </div>
-        <input
-          ref={photoInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) {
-              setCropFile(f);
-              e.target.value = '';
-            }
-          }}
-        />
         {uploadingPhoto && (
           <div style={{ fontSize: 11.5, color: 'var(--brand-matcha)', fontWeight: 600 }}>
             Uploading train photo...
@@ -260,6 +248,13 @@ export function TrainPassEditorSheet({
           Save Train Pass
         </Button>
       </form>
+
+      <ImageSourceSheet
+        open={imageSourceOpen}
+        title="Train Pass Photo"
+        onPick={(file) => setCropFile(file)}
+        onClose={() => setImageSourceOpen(false)}
+      />
 
       <PhotoCropperSheet
         open={Boolean(cropFile)}
@@ -889,7 +884,7 @@ export function StayEditorSheet({
     ],
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const [imageSourceOpen, setImageSourceOpen] = useState(false);
 
   const handleCroppedStayPhoto = async (cropped: CroppedImageResult) => {
     setCropFile(null);
@@ -960,7 +955,7 @@ export function StayEditorSheet({
           <button
             type="button"
             className="cover-drop-strip tactile"
-            onClick={() => photoInputRef.current?.click()}
+            onClick={() => setImageSourceOpen(true)}
           >
             {photoDataUrl ? (
               <img
@@ -998,19 +993,6 @@ export function StayEditorSheet({
             </button>
           )}
         </div>
-        <input
-          ref={photoInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) {
-              setCropFile(f);
-              e.target.value = '';
-            }
-          }}
-        />
         {uploadingPhoto && (
           <div style={{ fontSize: 11.5, color: 'var(--brand-matcha)', fontWeight: 600 }}>
             Uploading stay photo...
@@ -1180,6 +1162,13 @@ export function StayEditorSheet({
           </Button>
         </div>
       </form>
+
+      <ImageSourceSheet
+        open={imageSourceOpen}
+        title="Stay / Homestay Photo"
+        onPick={(file) => setCropFile(file)}
+        onClose={() => setImageSourceOpen(false)}
+      />
 
       <PhotoCropperSheet
         open={Boolean(cropFile)}

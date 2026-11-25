@@ -12,6 +12,17 @@ export type CropPresetId =
   | 'idea'
   | 'album';
 
+const IMAGE_FILE_EXT_RE = /\.(jpe?g|png|webp|gif|heic|heif|avif|bmp)$/i;
+
+/**
+ * Validates whether a File picked from an unrestricted OS file browser
+ * is a supported image by MIME type or file extension.
+ */
+export function isSupportedImageFile(file: Pick<File, 'type' | 'name'>): boolean {
+  if (file.type && file.type.toLowerCase().startsWith('image/')) return true;
+  return IMAGE_FILE_EXT_RE.test(file.name || '');
+}
+
 export type AlbumAspectChoice = 'original' | '4:5' | '1:1' | '16:9';
 
 export const ALBUM_MAX_DIM = 4096;

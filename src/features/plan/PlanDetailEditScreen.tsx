@@ -17,6 +17,7 @@ import {
   GlassCard,
   Input,
 } from '../../components/atoms';
+import { ImageSourceSheet } from '../../components/organisms/ImageSourceSheet';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import { uploadSharedImage } from '../../services/mediaUploader';
@@ -148,9 +149,9 @@ export function PlanDetailEditScreen({
   const [activeInk, setActiveInk] = useState<string>('#182420');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [coverCropFile, setCoverCropFile] = useState<File | null>(null);
+  const [coverSourceOpen, setCoverSourceOpen] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
 
-  const coverInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const notesHtmlRef = useRef<string>(
     item.notesHtml !== undefined ? item.notesHtml : blocksToInitialHtml(item.notes),
@@ -407,7 +408,7 @@ export function PlanDetailEditScreen({
               <button
                 type="button"
                 className="cover-drop-strip tactile"
-                onClick={() => coverInputRef.current?.click()}
+                onClick={() => setCoverSourceOpen(true)}
               >
                 {draft.coverUrl ? (
                   <img
@@ -454,28 +455,6 @@ export function PlanDetailEditScreen({
               />
             </div>
           )}
-          <input
-            ref={coverInputRef}
-            type="file"
-            accept="image/*"
-            aria-hidden="true"
-            tabIndex={-1}
-            style={{
-              position: 'absolute',
-              width: 1,
-              height: 1,
-              opacity: 0,
-              overflow: 'hidden',
-              pointerEvents: 'none',
-            }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (f) {
-                setCoverCropFile(f);
-              }
-            }}
-          />
           {uploadingCover && (
             <div style={{ fontSize: 11.5, color: 'var(--brand-matcha)', fontWeight: 600 }}>
               Uploading stop photo...
@@ -862,6 +841,13 @@ export function PlanDetailEditScreen({
           </Button>
         </div>
       )}
+
+      <ImageSourceSheet
+        open={coverSourceOpen}
+        title="Stop Cover Photo"
+        onPick={(file) => setCoverCropFile(file)}
+        onClose={() => setCoverSourceOpen(false)}
+      />
 
       <PhotoCropperSheet
         open={Boolean(coverCropFile)}

@@ -28,6 +28,7 @@ import {
   LiquidBottomSheet,
 } from '../../components/atoms';
 import type { HomePhase } from '../../components/organisms/TripMenuSheet';
+import { ImageSourceSheet } from '../../components/organisms/ImageSourceSheet';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import {
   assignCarFrontSeatInPods,
@@ -138,6 +139,7 @@ export function HomeScreen({
   onRevealDock,
   onUploadCover,
   onRequestUnlockPin,
+  onNotify,
   onOpenRoute,
   onUpdateTrip,
 }: HomeScreenProps) {
@@ -183,7 +185,7 @@ export function HomeScreen({
     setFailedPhotoUrls((prev) => (prev[url] ? prev : { ...prev, [url]: true }));
   };
 
-  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const [coverSourceOpen, setCoverSourceOpen] = useState(false);
   const heroRef = useRef<HTMLElement | null>(null);
   const titleBottomRef = useRef<HTMLDivElement | null>(null);
   const prevDockVisibleRef = useRef<boolean>(isDockVisible);
@@ -627,7 +629,7 @@ export function HomeScreen({
               icon={<Camera size={18} strokeWidth={1.8} />}
               onClick={() => {
                 triggerFeedback('tap');
-                coverInputRef.current?.click();
+                setCoverSourceOpen(true);
               }}
             />
           ) : (
@@ -713,29 +715,6 @@ export function HomeScreen({
             </button>
           </div>
         </div>
-
-        <input
-          ref={coverInputRef}
-          type="file"
-          accept="image/*"
-          aria-hidden="true"
-          tabIndex={-1}
-          style={{
-            position: 'absolute',
-            width: 1,
-            height: 1,
-            opacity: 0,
-            overflow: 'hidden',
-            pointerEvents: 'none',
-          }}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            e.target.value = '';
-            if (file) {
-              setHeroCropFile(file);
-            }
-          }}
-        />
 
         {/* Boxless Editorial Magazine Serif Countdown — Elevated & Centered over Hero Photo */}
         {phase === 'pre-trip' ? (
@@ -2065,6 +2044,14 @@ export function HomeScreen({
         onSave={handleSaveStay}
         onDelete={handleDeleteStay}
         onClose={() => setStayEditor({ open: false, stay: null })}
+      />
+
+      <ImageSourceSheet
+        open={coverSourceOpen}
+        title="Home Cover Photo"
+        onPick={(file) => setHeroCropFile(file)}
+        onInvalidFile={(msg) => onNotify?.(msg, 'error')}
+        onClose={() => setCoverSourceOpen(false)}
       />
 
       <PhotoCropperSheet

@@ -27,6 +27,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import { Avatar, Badge, Button, ConfirmDialog, LiquidBottomSheet } from '../atoms';
+import { ImageSourceSheet } from './ImageSourceSheet';
 import { PhotoCropperSheet } from './PhotoCropperSheet';
 import {
   formatEditLogCategoryLabel,
@@ -133,7 +134,7 @@ export function TripMenuSheet({
   onClose,
 }: TripMenuSheetProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const [avatarSourceOpen, setAvatarSourceOpen] = useState(false);
   const [showEditorsList, setShowEditorsList] = useState(false);
   const [showMyPasscode, setShowMyPasscode] = useState(false);
   const [activityLogOpen, setActivityLogOpen] = useState(false);
@@ -282,7 +283,7 @@ export function TripMenuSheet({
             type="button"
             className="tactile"
             disabled={!activeMember}
-            onClick={() => activeMember && avatarInputRef.current?.click()}
+            onClick={() => activeMember && setAvatarSourceOpen(true)}
             style={{ position: 'relative', display: 'inline-flex', borderRadius: '50%' }}
             aria-label="Update profile photo"
           >
@@ -340,24 +341,11 @@ export function TripMenuSheet({
           <Button
             variant="glass"
             size="sm"
-            onClick={() => avatarInputRef.current?.click()}
+            onClick={() => setAvatarSourceOpen(true)}
           >
             Photo
           </Button>
         )}
-        <input
-          ref={avatarInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) {
-              setCropFile(f);
-              e.target.value = '';
-            }
-          }}
-        />
       </div>
 
       {/* Adaptive Home Focus Switcher */}
@@ -1323,6 +1311,15 @@ export function TripMenuSheet({
           setConfirmClearLog(false);
           onClearEditLog?.();
         }}
+      />
+
+      <ImageSourceSheet
+        open={avatarSourceOpen}
+        title="Profile Photo"
+        cameraFacing="user"
+        onPick={(file) => setCropFile(file)}
+        onInvalidFile={(msg) => onNotify?.(msg, 'error')}
+        onClose={() => setAvatarSourceOpen(false)}
       />
 
       <ConfirmDialog

@@ -29,6 +29,7 @@ import {
   LiquidBottomSheet,
 } from '../../components/atoms';
 import { ContentIdeaSheet } from '../../components/organisms/ContentIdeaSheet';
+import { ImageSourceSheet } from '../../components/organisms/ImageSourceSheet';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import { useHorizontalScrollFade } from '../../hooks/useHorizontalScrollFade';
@@ -120,6 +121,7 @@ export function AlbumScreen({
   useBackHandler(Boolean(lightboxPhoto), () => setLightboxPhoto(null), 'sheet', 'album-lightbox');
 
   const [cropFile, setCropFile] = useState<File | null>(null);
+  const [imageSourceOpen, setImageSourceOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [compressedBase64, setCompressedBase64] = useState('');
@@ -129,7 +131,6 @@ export function AlbumScreen({
   const [uploadDayId, setUploadDayId] = useState<string>(tripDays[0]?.id ?? 'day-1');
   const [uploading, setUploading] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const drivePhotosRef = useRef<AlbumPhoto[]>(drivePhotos);
   drivePhotosRef.current = drivePhotos;
 
@@ -531,20 +532,6 @@ export function AlbumScreen({
             ))}
           </div>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) {
-                setCropFile(f);
-                e.target.value = '';
-              }
-            }}
-          />
-
           {/* Row 3: Unified Drive Status & Actions Capsule */}
           <GlassCard
             variant="clear"
@@ -653,7 +640,7 @@ export function AlbumScreen({
                   leftIcon={<Upload size={14} strokeWidth={2} />}
                   onClick={() => {
                     triggerFeedback('tap');
-                    fileInputRef.current?.click();
+                    setImageSourceOpen(true);
                   }}
                 >
                   Upload
@@ -694,7 +681,7 @@ export function AlbumScreen({
                   leftIcon={<ImagePlus size={15} strokeWidth={2} />}
                   onClick={() => {
                     triggerFeedback('tap');
-                    fileInputRef.current?.click();
+                    setImageSourceOpen(true);
                   }}
                 >
                   Upload First Photo
@@ -896,6 +883,14 @@ export function AlbumScreen({
           setIdeaSheetOpen(false);
           setEditingIdea(null);
         }}
+      />
+
+      <ImageSourceSheet
+        open={imageSourceOpen}
+        title="Upload Trip Photo"
+        onPick={(file) => setCropFile(file)}
+        onInvalidFile={(msg) => onNotify(msg, 'error')}
+        onClose={() => setImageSourceOpen(false)}
       />
 
       {/* Interactive Photo Cropper Sheet (Original | 4:5 | 1:1 | 16:9) */}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   ArrowUpRight,
   CalendarDays,
@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { Badge, Button, ConfirmDialog, Input, LiquidBottomSheet } from '../atoms';
+import { ImageSourceSheet } from './ImageSourceSheet';
 import { PhotoCropperSheet } from './PhotoCropperSheet';
 import {
   canDeleteContentIdea,
@@ -67,10 +68,9 @@ export function ContentIdeaSheet({
   const [dayId, setDayId] = useState<string>(defaultDayId || tripDays[0]?.id || 'day-1');
   const [time, setTime] = useState('');
   const [cropFile, setCropFile] = useState<File | null>(null);
+  const [imageSourceOpen, setImageSourceOpen] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -241,7 +241,7 @@ export function ContentIdeaSheet({
                       variant="glass"
                       size="sm"
                       disabled={uploadingCover}
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => setImageSourceOpen(true)}
                     >
                       {uploadingCover ? 'Uploading...' : 'Replace'}
                     </Button>
@@ -264,26 +264,12 @@ export function ContentIdeaSheet({
                 type="button"
                 className="idea-cover-drop tactile"
                 disabled={uploadingCover}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setImageSourceOpen(true)}
               >
                 <ImagePlus size={16} strokeWidth={2} />
                 <span>{uploadingCover ? 'Uploading screenshot...' : '+ Add Screenshot'}</span>
               </button>
             ) : null}
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) {
-                  setCropFile(f);
-                  e.target.value = '';
-                }
-              }}
-            />
           </div>
 
           {/* 5. Show in Plan Rundown Toggle + Day & Time Picker */}
@@ -398,6 +384,13 @@ export function ContentIdeaSheet({
           </div>
         </form>
       </LiquidBottomSheet>
+
+      <ImageSourceSheet
+        open={imageSourceOpen}
+        title="Reference Cover"
+        onPick={(file) => setCropFile(file)}
+        onClose={() => setImageSourceOpen(false)}
+      />
 
       <PhotoCropperSheet
         open={Boolean(cropFile)}
