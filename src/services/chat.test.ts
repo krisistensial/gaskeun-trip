@@ -15,6 +15,13 @@ import {
   searchBuiltInStickers,
   toggleMessageReaction,
 } from './chat';
+import {
+  deleteCustomSticker,
+  loadCustomStickers,
+  sanitizeStickerCaption,
+  saveCustomSticker,
+} from './customStickers';
+import { expandStickerSearchTerms } from './stickerSearch';
 
 function createMemoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -220,5 +227,29 @@ describe('Crew Chat pure helpers (text, stickers, emoji reactions, unread)', () 
 
     const searched = searchBuiltInStickers('motor');
     expect(searched.some((s) => s.id === 'stk-gaskeun')).toBe(true);
+  });
+
+  it('expands Indonesian sticker queries and stores custom die-cut stickers cleanly', () => {
+    const terms = expandStickerSearchTerms('keren');
+    expect(terms).toContain('cool');
+    expect(terms).toContain('sunglasses');
+
+    expect(sanitizeStickerCaption('   GASKEUN   TERUS   BIAR MANTAP BANG  ')).toBe(
+      'GASKEUN TERUS BIAR MAN',
+    );
+
+    const saved = saveCustomSticker({
+      id: 'my-stk-1',
+      caption: 'GASKEUN!',
+      emoji: '🛵',
+      themeId: 'matcha',
+      dataUrl: 'data:image/webp;base64,UklGRh4AAABXRUJQ',
+      createdAt: '2026-11-25T10:00:00.000Z',
+    });
+    expect(saved).toHaveLength(1);
+    expect(loadCustomStickers()[0].caption).toBe('GASKEUN!');
+
+    const afterDelete = deleteCustomSticker('my-stk-1');
+    expect(afterDelete).toHaveLength(0);
   });
 });

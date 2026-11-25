@@ -1,34 +1,144 @@
-import { isSafeStickerUrl } from './chat';
+import { CREW_STICKER_PACK, isSafeStickerUrl } from './chat';
 
 export interface ExternalStickerResult {
   id: string;
   url: string;
+  fallbackUrl?: string;
+  emojiFallback?: string;
   caption: string;
-  source: 'giphy' | 'tenor' | 'wikimedia';
+  source: 'giphy' | 'tenor' | 'noto' | 'wikimedia';
+}
+
+interface NotoApiIcon {
+  codepoint: string;
+  popularity?: number;
+  categories?: string[];
+  tags?: string[];
+}
+
+const NOTO_ANIMATED_API_URL =
+  'https://googlefonts.github.io/noto-emoji-animation/data/api.json';
+
+let cachedNotoCatalog: NotoApiIcon[] | null = null;
+let inflightNotoFetch: Promise<NotoApiIcon[]> | null = null;
+
+/**
+ * Bilingual (Indonesian + English) keyword expansion so natural queries like
+ * "keren", "ngakak", "lapar", "kopi", "motor" always find matching animated stickers.
+ */
+const QUERY_SYNONYMS: Record<string, readonly string[]> = {
+  keren: ['cool', 'sunglasses', 'fire', 'star', 'sparkles', 'thumbs', '100', 'clap'],
+  mantap: ['thumbs', '100', 'ok', 'fire', 'clap', 'star', 'smile'],
+  gas: ['fire', 'rocket', 'car', 'dash', 'thumbs', 'party'],
+  gaskeun: ['scooter', 'fire', 'rocket', 'car', 'party', 'thumbs'],
+  otw: ['dash', 'car', 'train', 'run', 'airplane', 'bus'],
+  ngakak: ['laugh', 'joy', 'rofl', 'grin', 'smile', 'tears'],
+  lucu: ['laugh', 'joy', 'cat', 'puppy', 'smile', 'grin', 'wink'],
+  wkwk: ['laugh', 'joy', 'rofl', 'grin'],
+  sedih: ['sad', 'cry', 'sob', 'pleading', 'broken', 'hug'],
+  nangis: ['cry', 'sob', 'sad', 'tear'],
+  cinta: ['heart', 'love', 'kiss', 'hug', 'smiling-hearts'],
+  sayang: ['heart', 'love', 'hug', 'kiss'],
+  lapar: ['food', 'noodle', 'pizza', 'burger', 'ramen', 'eat', 'hungry'],
+  makan: ['food', 'noodle', 'pizza', 'burger', 'cake', 'dining'],
+  kopi: ['coffee', 'cup', 'beverage', 'hot'],
+  ngopi: ['coffee', 'cup', 'tea', 'boba'],
+  minum: ['coffee', 'cup', 'boba', 'cheers', 'drink'],
+  tidur: ['sleep', 'sleeping', 'yawn', 'night'],
+  ngantuk: ['sleep', 'sleeping', 'tired', 'yawn'],
+  hujan: ['rain', 'cloud', 'umbrella', 'lightning'],
+  kaget: ['exploding', 'scream', 'shocked', 'open-mouth', 'flushed'],
+  makasih: ['folded-hands', 'pray', 'heart', 'hug', 'clap'],
+  terimakasih: ['folded-hands', 'pray', 'heart', 'hug'],
+  selamat: ['party', 'confetti', 'clap', 'sparkles', 'tada'],
+  semangat: ['muscle', 'fire', 'sparkles', 'clap', '100'],
+  kucing: ['cat', 'kitty', 'meow'],
+  motor: ['scooter', 'motorcycle', 'bike', 'car'],
+  kereta: ['train', 'locomotive', 'railway'],
+  mobil: ['car', 'taxi', 'automobile'],
+  foto: ['camera', 'flash', 'sparkles', 'star'],
+  santai: ['sunglasses', 'coffee', 'relieved', 'wave'],
+  halo: ['wave', 'hand', 'smile'],
+};
+
+export function expandStickerSearchTerms(rawQuery: string): string[] {
+  const clean = rawQuery.trim().toLowerCase();
+  if (!clean) return [];
+  const words = clean.split(/\s+/).filter(Boolean);
+  const terms = new Set<string>([clean, ...words]);
+  for (const w of words) {
+    const mapped = QUERY_SYNONYMS[w];
+    if (mapped) {
+      for (const alias of mapped) terms.add(alias);
+    }
+  }
+  return Array.from(terms);
+}
+
+function codepointToEmoji(cp: string): string {
+  try {
+    const parts = cp
+      .split('_')
+      .map((hex) => Number.parseInt(hex, 16))
+      .filter((n) => Number.isFinite(n));
+    return parts.length > 0 ? String.fromCodePoint(...parts) : '✨';
+  } catch {
+    return '✨';
+  }
+}
+
+function formatNotoCaption(tags?: string[]): string {
+  const first = tags?.[0] ?? 'Sticker';
+  const cleaned = first.replace(/:/g, '').replace(/[-_]+/g, ' ').trim();
+  if (!cleaned) return 'Sticker';
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1, 24);
+}
+
+async function getNotoAnimatedCatalog(signal?: AbortSignal): Promise<NotoApiIcon[]> {
+  if (cachedNotoCatalog) return cachedNotoCatalog;
+  if (!inflightNotoFetch) {
+    inflightNotoFetch = fetch(NOTO_ANIMATED_API_URL, { signal })
+      .then(async (res) => {
+        if (!res.ok) return [];
+        const json = (await res.json()) as { icons?: NotoApiIcon[] };
+        const icons = Array.isArray(json.icons) ? json.icons : [];
+        cachedNotoCatalog = icons;
+        return icons;
+      })
+      .catch(() => [])
+      .finally(() => {
+        inflightNotoFetch = null;
+      });
+  }
+  return inflightNotoFetch;
 }
 
 /**
- * Searches free transparent PNG/WebP sticker catalogs:
- * - Uses GIPHY Stickers API if `VITE_GIPHY_API_KEY` is configured
- * - Uses Tenor Stickers API if `VITE_TENOR_API_KEY` is configured
- * - Otherwise queries Wikimedia Commons free keyless CORS API for transparent PNG stickers
+ * Searches transparent PNG/WebP sticker catalogs with instant bilingual matching:
+ * 1. Optional GIPHY Stickers API (`VITE_GIPHY_API_KEY`)
+ * 2. Optional Tenor Stickers API (`VITE_TENOR_API_KEY`)
+ * 3. Live 881-item Google Noto Animated WebP Catalog (`api.json`, zero API key)
+ * 4. Wikimedia Commons PNG search fallback
  */
 export async function searchExternalTransparentStickers(
   rawQuery: string,
   signal?: AbortSignal,
 ): Promise<ExternalStickerResult[]> {
   const query = rawQuery.trim();
-  if (query.length < 2) return [];
+  if (query.length < 1) return [];
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return [];
+
+  const terms = expandStickerSearchTerms(query);
+  const primaryEnglishQuery = terms.find((t) => t !== query.toLowerCase()) ?? query;
 
   const giphyKey = (import.meta.env.VITE_GIPHY_API_KEY as string | undefined)?.trim();
   const tenorKey = (import.meta.env.VITE_TENOR_API_KEY as string | undefined)?.trim();
 
-  if (giphyKey) {
+  if (giphyKey && query.length >= 2) {
     try {
       const endpoint = `https://api.giphy.com/v1/stickers/search?api_key=${encodeURIComponent(
         giphyKey,
-      )}&q=${encodeURIComponent(query)}&limit=16&rating=pg`;
+      )}&q=${encodeURIComponent(primaryEnglishQuery)}&limit=16&rating=pg`;
       const res = await fetch(endpoint, { signal });
       if (res.ok) {
         const json = (await res.json()) as {
@@ -45,7 +155,7 @@ export async function searchExternalTransparentStickers(
             mapped.push({
               id: `giphy-${item.id}`,
               url,
-              caption: (item.title || query).slice(0, 40),
+              caption: (item.title || query).slice(0, 32),
               source: 'giphy',
             });
           }
@@ -57,11 +167,11 @@ export async function searchExternalTransparentStickers(
     }
   }
 
-  if (tenorKey) {
+  if (tenorKey && query.length >= 2) {
     try {
       const endpoint = `https://tenor.googleapis.com/v2/search?key=${encodeURIComponent(
         tenorKey,
-      )}&q=${encodeURIComponent(query)}&searchfilter=sticker&media_filter=webp_transparent,png_transparent&limit=16`;
+      )}&q=${encodeURIComponent(primaryEnglishQuery)}&searchfilter=sticker&media_filter=webp_transparent,png_transparent&limit=16`;
       const res = await fetch(endpoint, { signal });
       if (res.ok) {
         const json = (await res.json()) as {
@@ -83,7 +193,7 @@ export async function searchExternalTransparentStickers(
             mapped.push({
               id: `tenor-${item.id}`,
               url,
-              caption: (item.content_description || query).slice(0, 40),
+              caption: (item.content_description || query).slice(0, 32),
               source: 'tenor',
             });
           }
@@ -95,48 +205,87 @@ export async function searchExternalTransparentStickers(
     }
   }
 
-  // Zero-key free public fallback: Wikimedia Commons transparent PNG sticker/emoji art
+  const builtInUrls = new Set(CREW_STICKER_PACK.map((s) => s.url));
+  const results: ExternalStickerResult[] = [];
+  const seenUrls = new Set<string>();
+
+  // 3. Official 881-item Google Noto Animated WebP Transparent Stickers
+  const notoCatalog = await getNotoAnimatedCatalog(signal);
+  if (notoCatalog.length > 0) {
+    for (const icon of notoCatalog) {
+      const haystack = [
+        ...(icon.tags ?? []),
+        ...(icon.categories ?? []),
+      ]
+        .join(' ')
+        .toLowerCase();
+      if (!terms.some((term) => haystack.includes(term))) continue;
+
+      const url = `https://fonts.gstatic.com/s/e/notoemoji/latest/${icon.codepoint}/512.webp`;
+      if (builtInUrls.has(url) || seenUrls.has(url)) continue;
+      seenUrls.add(url);
+
+      const twemojiCp = icon.codepoint.replace(/_fe0f/g, '');
+      results.push({
+        id: `noto-${icon.codepoint}`,
+        url,
+        fallbackUrl: `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${twemojiCp}.png`,
+        emojiFallback: codepointToEmoji(icon.codepoint),
+        caption: formatNotoCaption(icon.tags),
+        source: 'noto',
+      });
+      if (results.length >= 20) break;
+    }
+  }
+
+  if (results.length >= 4 || query.length < 2) {
+    return results;
+  }
+
+  // 4. Wikimedia Commons PNG clipart/sticker fallback (no unsupported filetype syntax)
   try {
     const endpoint = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch=${encodeURIComponent(
-      `${query} sticker OR emoji filetype:png`,
-    )}&gsrlimit=12&prop=imageinfo&iiprop=url|mime&iiurlwidth=240&format=json&origin=*`;
+      `${primaryEnglishQuery} sticker png`,
+    )}&gsrlimit=10&prop=imageinfo&iiprop=url|mime&iiurlwidth=240&format=json&origin=*`;
     const res = await fetch(endpoint, { signal });
-    if (!res.ok) return [];
-    const json = (await res.json()) as {
-      query?: {
-        pages?: Record<
-          string,
-          {
-            pageid: number;
-            title?: string;
-            imageinfo?: Array<{ thumburl?: string; url?: string; mime?: string }>;
-          }
-        >;
+    if (res.ok) {
+      const json = (await res.json()) as {
+        query?: {
+          pages?: Record<
+            string,
+            {
+              pageid: number;
+              title?: string;
+              imageinfo?: Array<{ thumburl?: string; url?: string; mime?: string }>;
+            }
+          >;
+        };
       };
-    };
-    const pages = Object.values(json.query?.pages ?? {});
-    const out: ExternalStickerResult[] = [];
-    for (const p of pages) {
-      const info = p.imageinfo?.[0];
-      const url = info?.thumburl || info?.url;
-      const mime = info?.mime ?? '';
-      if (
-        url &&
-        isSafeStickerUrl(url) &&
-        (mime.includes('png') || mime.includes('webp'))
-      ) {
-        out.push({
-          id: `wm-${p.pageid}`,
-          url,
-          caption: (p.title ?? query).replace(/^File:/i, '').replace(/\.[^.]+$/, '').slice(0, 36),
-          source: 'wikimedia',
-        });
+      for (const p of Object.values(json.query?.pages ?? {})) {
+        const info = p.imageinfo?.[0];
+        const url = info?.thumburl || info?.url;
+        const mime = info?.mime ?? '';
+        if (
+          url &&
+          !seenUrls.has(url) &&
+          isSafeStickerUrl(url) &&
+          (mime.includes('png') || mime.includes('webp'))
+        ) {
+          seenUrls.add(url);
+          results.push({
+            id: `wm-${p.pageid}`,
+            url,
+            caption: (p.title ?? query).replace(/^File:/i, '').replace(/\.[^.]+$/, '').slice(0, 28),
+            source: 'wikimedia',
+          });
+        }
       }
     }
-    return out;
   } catch {
-    return [];
+    // ignore network errors cleanly
   }
+
+  return results;
 }
 
 /**
