@@ -46,7 +46,14 @@ import type {
   SharedTrip,
   TripDay,
 } from '../../types/trip';
-import { ARC_HEIGHT, ARC_MAX_X, ARC_WIDTH, buildDottedArcPath, getArcX } from './arcMath';
+import {
+  ARC_HEIGHT,
+  ARC_MAX_X,
+  ARC_WIDTH,
+  buildDottedArcPath,
+  findClosestArcRow,
+  getArcX,
+} from './arcMath';
 import { PlanDetailEditScreen } from './PlanDetailEditScreen';
 import './plan.css';
 
@@ -377,22 +384,30 @@ export function PlanScreen({
     };
   }, [viewMode, activeEditingItem, timelineEntries, stageHeight, measureArcMetrics, syncArcPositions]);
 
-  // Tactile Rotary-Wheel Detent ("ttrrrrrrrrrr... tek!") on Circular Trail Scroll:
-  // Works on BOTH CSS Scroll-Driven Chrome/Android & fallback browsers with ZERO layout thrashing
-  // (reads only `scroller.scrollTop` passively, zero `getBoundingClientRect()`, zero `setState`).
+  // Tactile Rotary-Wheel Detent + Universal Center Magnetic Rest ("ttrrrrrrrrrr... TEK!")
+  // Works on BOTH CSS Scroll-Driven Chrome/Android & fallback browsers with ZERO layout thrashing:
+  // - Fast flicks fly unconstrained at 60–120fps on GPU compositor (no scroll-snap braking).
+  // - Tracks nearest centered row via cached `metricsRef` and highlights `.trail-item--centered`.
+  // - Once finger is released & momentum stops, softly glides the nearest stop right onto
+  //   the outermost arc apex (`u = 0`) and fires `settle` ("ting-tek!") haptic & audio.
   useEffect(() => {
     if (viewMode !== 'trail' || activeEditingItem || timelineEntries.length === 0) return;
     const scroller = scrollRef.current;
+    const listInner = listInnerRef.current;
     if (!scroller) return;
 
     const SCROLL_NOTCH_PX = 34; // Rotary wheel notch interval for crisp "ttrrrrrr..." glide feel
     const MIN_TICK_GAP_MS = 38; // Gives Android ERM/LRA motors clean separation between ticks
-    const SETTLE_DELAY_MS = 120; // Crisp landing "TEK!" once momentum settles
+    const SETTLE_DELAY_MS = 125; // Triggers magnetic center-dock right as momentum ends
+    const MAGNET_MIN_DIST_PX = 3; // Only smooth-glide if > 3px away from dead-center apex
 
     let lastNotchScrollTop = scroller.scrollTop;
     let lastTickTime = 0;
-    let tickedDuringGesture = false;
+    let needsMagneticSettle = false;
+    let pointerActive = false;
+    let suppressDetentUntilMs = 0;
     let settleTimerId: number | null = null;
+    let settleResetTimerId: number | null = null;
 
     const clearSettleTimer = () => {
       if (settleTimerId !== null) {
@@ -401,13 +416,85 @@ export function PlanScreen({
       }
     };
 
+    const updateCenteredClassOnly = (scrollTop: number) => {
+      if (metricsRef.current.rows.length !== timelineEntries.length) {
+        measureArcMetrics();
+      }
+      const { halfH, rows } = metricsRef.current;
+      const match = findClosestArcRow(
+        rows,
+        scrollTop,
+        halfH,
+        scroller.scrollHeight - scroller.clientHeight,
+      );
+      if (match && match.id !== centeredIdRef.current) {
+        if (centeredIdRef.current) {
+          rowRefs.current.get(centeredIdRef.current)?.classList.remove('trail-item--centered');
+        }
+        rowRefs.current.get(match.id)?.classList.add('trail-item--centered');
+        centeredIdRef.current = match.id;
+      }
+      return match;
+    };
+
+    const runMagneticSettle = () => {
+      if (pointerActive || !needsMagneticSettle) return;
+      needsMagneticSettle = false;
+
+      const currentTop = scroller.scrollTop;
+      const match = updateCenteredClassOnly(currentTop);
+      if (!match) return;
+
+      const delta = Math.abs(match.targetScrollTop - currentTop);
+      if (delta > MAGNET_MIN_DIST_PX) {
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        suppressDetentUntilMs = now + 380;
+        if (settleResetTimerId !== null) window.clearTimeout(settleResetTimerId);
+        settleResetTimerId = window.setTimeout(() => {
+          lastNotchScrollTop = scroller.scrollTop;
+          settleResetTimerId = null;
+        }, 390);
+        try {
+          scroller.scrollTo({ top: match.targetScrollTop, behavior: 'smooth' });
+        } catch {
+          scroller.scrollTop = match.targetScrollTop;
+        }
+      }
+      lastNotchScrollTop = match.targetScrollTop;
+      triggerFeedback('settle');
+    };
+
+    const scheduleSettleCheck = () => {
+      clearSettleTimer();
+      settleTimerId = window.setTimeout(() => {
+        settleTimerId = null;
+        runMagneticSettle();
+      }, SETTLE_DELAY_MS);
+    };
+
     const handleUserTouchOrWheel = () => {
       userInteractedRef.current = true;
+      suppressDetentUntilMs = 0;
       lastNotchScrollTop = scroller.scrollTop;
       primeFeedbackAudio();
     };
 
+    const handlePointerDown = () => {
+      pointerActive = true;
+      clearSettleTimer();
+      handleUserTouchOrWheel();
+    };
+
+    const handlePointerUp = () => {
+      if (!pointerActive) return;
+      pointerActive = false;
+      if (needsMagneticSettle) {
+        scheduleSettleCheck();
+      }
+    };
+
     const handleTouchMovePrime = () => {
+      pointerActive = true;
       if (!userInteractedRef.current) {
         userInteractedRef.current = true;
         lastNotchScrollTop = scroller.scrollTop;
@@ -421,48 +508,78 @@ export function PlanScreen({
         return;
       }
 
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const currentTop = scroller.scrollTop;
+
+      if (now < suppressDetentUntilMs) {
+        lastNotchScrollTop = currentTop;
+        return;
+      }
+
+      needsMagneticSettle = true;
+
+      if (SUPPORTS_CSS_SCROLL_ARC) {
+        updateCenteredClassOnly(currentTop);
+      }
+
       const moved = Math.abs(currentTop - lastNotchScrollTop);
       if (moved >= SCROLL_NOTCH_PX) {
-        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
         if (now - lastTickTime >= MIN_TICK_GAP_MS) {
           triggerFeedback('tick');
           lastTickTime = now;
-          tickedDuringGesture = true;
         }
-        // Advance anchor by whole notches so momentum ticks stay evenly spaced
         const steps = Math.floor(moved / SCROLL_NOTCH_PX);
         lastNotchScrollTop +=
           currentTop > lastNotchScrollTop ? steps * SCROLL_NOTCH_PX : -steps * SCROLL_NOTCH_PX;
       }
 
-      clearSettleTimer();
-      settleTimerId = window.setTimeout(() => {
-        settleTimerId = null;
-        if (tickedDuringGesture) {
-          triggerFeedback('settle');
-          tickedDuringGesture = false;
-        }
-      }, SETTLE_DELAY_MS);
+      if (!pointerActive) {
+        scheduleSettleCheck();
+      }
     };
 
-    scroller.addEventListener('touchstart', handleUserTouchOrWheel, { passive: true });
+    // Keep cached row offsets fresh when card heights resize (zero reads during scroll frames)
+    measureArcMetrics();
+    let listRo: ResizeObserver | null = null;
+    if (listInner && typeof ResizeObserver !== 'undefined') {
+      listRo = new ResizeObserver(() => measureArcMetrics());
+      listRo.observe(listInner);
+    }
+
+    scroller.addEventListener('touchstart', handlePointerDown, { passive: true });
+    scroller.addEventListener('pointerdown', handlePointerDown, { passive: true });
     scroller.addEventListener('touchmove', handleTouchMovePrime, { passive: true });
-    scroller.addEventListener('pointerdown', handleUserTouchOrWheel, { passive: true });
+    scroller.addEventListener('touchend', handlePointerUp, { passive: true });
+    scroller.addEventListener('touchcancel', handlePointerUp, { passive: true });
+    scroller.addEventListener('pointerup', handlePointerUp, { passive: true });
+    scroller.addEventListener('pointercancel', handlePointerUp, { passive: true });
     scroller.addEventListener('wheel', handleUserTouchOrWheel, { passive: true });
     scroller.addEventListener('scroll', handleTrailScrollDetent, { passive: true });
 
     return () => {
       clearSettleTimer();
-      scroller.removeEventListener('touchstart', handleUserTouchOrWheel);
+      if (settleResetTimerId !== null) window.clearTimeout(settleResetTimerId);
+      listRo?.disconnect();
+      scroller.removeEventListener('touchstart', handlePointerDown);
+      scroller.removeEventListener('pointerdown', handlePointerDown);
       scroller.removeEventListener('touchmove', handleTouchMovePrime);
-      scroller.removeEventListener('pointerdown', handleUserTouchOrWheel);
+      scroller.removeEventListener('touchend', handlePointerUp);
+      scroller.removeEventListener('touchcancel', handlePointerUp);
+      scroller.removeEventListener('pointerup', handlePointerUp);
+      scroller.removeEventListener('pointercancel', handlePointerUp);
       scroller.removeEventListener('wheel', handleUserTouchOrWheel);
       scroller.removeEventListener('scroll', handleTrailScrollDetent);
     };
-  }, [viewMode, activeEditingItem, timelineEntries.length, selectedDayId, filterKey]);
+  }, [
+    viewMode,
+    activeEditingItem,
+    timelineEntries.length,
+    selectedDayId,
+    filterKey,
+    measureArcMetrics,
+  ]);
 
-  // Auto-center the active ("Now") stop when switching day/filter so it opens right at arc apex
+  // Auto-center the active ("Now") or next upcoming stop when switching day/filter
   useEffect(() => {
     if (viewMode !== 'trail' || activeEditingItem || timelineEntries.length === 0) return;
     userInteractedRef.current = false;
@@ -489,9 +606,11 @@ export function PlanScreen({
         const targetTop =
           rowEl.offsetTop - scroller.clientHeight / 2 + rowEl.offsetHeight / 2;
         scroller.scrollTop = Math.max(0, targetTop);
+        rowEl.classList.add('trail-item--centered');
+        centeredIdRef.current = targetEntry.id;
       }
+      measureArcMetrics();
       if (!SUPPORTS_CSS_SCROLL_ARC) {
-        measureArcMetrics();
         syncArcPositions();
       }
     });
@@ -877,6 +996,19 @@ export function PlanScreen({
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeDasharray="1 10"
+              />
+              {/* Subtle focal docking ring at the outermost apex of the C-arc (u = 0) */}
+              <circle
+                cx={ARC_MAX_X}
+                cy={stageHeight / 2}
+                r={16}
+                className="trail-arc-focus-ring"
+              />
+              <circle
+                cx={ARC_MAX_X}
+                cy={stageHeight / 2}
+                r={12}
+                className="trail-arc-focus-halo"
               />
             </svg>
           </div>

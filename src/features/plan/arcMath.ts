@@ -53,3 +53,50 @@ export function buildDottedArcPath(paddingY = 12, samples = 56, height = ARC_HEI
 
   return cmds.join(' ');
 }
+
+export interface ArcRowMetric {
+  id: string;
+  centerY: number;
+}
+
+export interface ClosestArcMatch {
+  id: string;
+  targetScrollTop: number;
+  distancePx: number;
+}
+
+/**
+ * Finds the stop/idea row closest to the vertical center (`scrollTop + halfH`)
+ * of `.trail-scroll-viewport` and returns the exact clamped `scrollTop` needed
+ * to dock that card squarely at the outermost arc apex (`u = 0`).
+ */
+export function findClosestArcRow(
+  rows: readonly ArcRowMetric[],
+  scrollTop: number,
+  halfH: number,
+  maxScrollTop: number,
+): ClosestArcMatch | null {
+  if (rows.length === 0) return null;
+
+  const viewportCenter = scrollTop + halfH;
+  let best: ArcRowMetric = rows[0];
+  let bestDist = Math.abs(best.centerY - viewportCenter);
+
+  for (let i = 1; i < rows.length; i += 1) {
+    const dist = Math.abs(rows[i].centerY - viewportCenter);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = rows[i];
+    }
+  }
+
+  const rawTarget = best.centerY - halfH;
+  const clampedMax = Math.max(0, maxScrollTop);
+  const targetScrollTop = Math.max(0, Math.min(clampedMax, Math.round(rawTarget)));
+
+  return {
+    id: best.id,
+    targetScrollTop,
+    distancePx: bestDist,
+  };
+}

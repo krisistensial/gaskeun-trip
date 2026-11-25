@@ -219,8 +219,21 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding-top: calc(var(--trail-stage-h, 480px) * 0.34);
-  padding-bottom: calc(var(--trail-stage-h, 480px) * 0.36);
+  /* Generous end padding so BOTH first and last stops reach exact vertical center (u = 0) */
+  padding-top: calc(var(--trail-stage-h, 480px) * 0.46);
+  padding-bottom: calc(var(--trail-stage-h, 480px) * 0.46);
+}
+
+.trail-arc-focus-halo {
+  fill: rgba(227, 237, 230, 0.72);
+  stroke: rgba(74, 116, 104, 0.34);
+  stroke-width: 1.5;
+}
+
+.trail-arc-focus-ring {
+  fill: none;
+  stroke: rgba(74, 116, 104, 0.22);
+  stroke-width: 1.25;
 }
 
 .trail-item {
