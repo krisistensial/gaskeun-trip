@@ -13,6 +13,7 @@ import {
   Link2,
   Lock,
   LogOut,
+  MessageCircle,
   RefreshCw,
   RotateCcw,
   Settings2,
@@ -67,7 +68,9 @@ export interface TripMenuSheetProps {
   lastSyncedAt?: string | null;
   lastSyncError?: string | null;
   isSyncingCloud?: boolean;
+  unreadChatCount?: number;
   onForceSync?: () => void;
+  onOpenChat?: () => void;
   onToggleViewOnlyMode?: (next: boolean) => void;
   onPhaseChange: (phase: HomePhase) => void;
   onUpdateActiveAvatar: (avatarDataUrl: string) => void;
@@ -102,7 +105,9 @@ export function TripMenuSheet({
   lastSyncedAt,
   lastSyncError,
   isSyncingCloud = false,
+  unreadChatCount = 0,
   onForceSync,
+  onOpenChat,
   onToggleViewOnlyMode,
   onPhaseChange,
   onUpdateActiveAvatar,
@@ -489,6 +494,43 @@ export function TripMenuSheet({
             <span className="menu-toggle-switch__knob" />
           </span>
         </button>
+
+        {onOpenChat && (
+          <button
+            type="button"
+            className="gk-menu-item tactile"
+            onClick={() => {
+              triggerFeedback('tap');
+              onClose();
+              onOpenChat();
+            }}
+          >
+            <span className="gk-menu-item__left">
+              <span
+                className="gk-menu-item__icon"
+                style={{
+                  background: 'var(--brand-matcha-soft)',
+                  color: 'var(--brand-forest)',
+                }}
+              >
+                <MessageCircle size={18} strokeWidth={1.85} />
+              </span>
+              <span>
+                <div className="gk-menu-item__title">Crew Chat</div>
+                <div className="gk-menu-item__sub">
+                  Text, stickers &amp; emoji reactions
+                </div>
+              </span>
+            </span>
+            {unreadChatCount > 0 ? (
+              <Badge tone="coral">
+                {unreadChatCount > 99 ? '99+' : `${unreadChatCount} new`}
+              </Badge>
+            ) : (
+              <Badge tone="neutral">Open</Badge>
+            )}
+          </button>
+        )}
 
         {/* Cloud Sync Status & Force Pull Row */}
         <div

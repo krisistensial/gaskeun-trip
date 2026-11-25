@@ -260,6 +260,31 @@ export interface OnlinePresenceUser {
   joinedAt: string;
 }
 
+export type ChatMessageKind = 'text' | 'sticker';
+
+export interface ChatReplyPreview {
+  id: string;
+  senderName: string;
+  kind: ChatMessageKind;
+  text: string;
+  stickerId?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  tripCode: string;
+  senderId: string;
+  senderName: string;
+  kind: ChatMessageKind;
+  text: string;
+  stickerId?: string;
+  replyTo?: ChatReplyPreview;
+  /** Map from emoji character to array of member IDs who reacted */
+  reactions: Record<string, string[]>;
+  createdAt: string; // ISO
+  deleted?: boolean;
+}
+
 export interface SharedTrip {
   schemaVersion: number;
   /** Internal seed revision for non-destructive pilot demo upgrades */
@@ -297,6 +322,8 @@ export interface SharedTrip {
   contentIdeas?: ContentIdea[];
   /** Recent shared edit audit trail (Layer 1, capped at 80 entries, Host-viewable) */
   editLog?: EditLogEntry[];
+  /** Fallback synced crew chat cache (primary durable table is `trip_messages` when deployed) */
+  chatMessages?: ChatMessage[];
   updatedAt: string;
 }
 

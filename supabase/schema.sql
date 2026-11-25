@@ -138,3 +138,65 @@ create policy "Allow public delete trip-assets"
   for delete
   to anon, authenticated
   using (bucket_id = 'trip-assets');
+
+-- ============================================================================
+-- Lightweight Crew Chat Table (`trip_messages`)
+-- Text & Stickers + Emoji Reactions only (Zero media, zero calls/VC)
+-- ============================================================================
+
+create table if not exists public.trip_messages (
+  id text primary key,
+  trip_code text not null,
+  sender_id text not null,
+  sender_name text not null,
+  kind text not null default 'text' check (kind in ('text', 'sticker')),
+  text text not null default '',
+  sticker_id text,
+  reply_to jsonb,
+  reactions jsonb not null default '{}'::jsonb,
+  deleted boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_trip_messages_code_created
+  on public.trip_messages (trip_code, created_at desc);
+
+grant select, insert, update on public.trip_messages to anon, authenticated;
+
+alter table public.trip_messages enable row level security;
+
+drop policy if exists "Allow public read trip_messages" on public.trip_messages;
+create policy "Allow public read trip_messages"
+  on public.trip_messages
+  for select
+  to anon, authenticated
+  using (length(trim(trip_code)) >= 3);
+
+drop policy if exists "Allow public insert trip_messages" on public.trip_messages;
+create policy "Allow public insert trip_messages"
+  on public.trip_messages
+  for insert
+  to anon, authenticated
+  with check (length(trim(trip_code)) >= 3 and kind in ('text', 'sticker'));
+
+drop policy if exists "Allow public update trip_messages" on public.trip_messages;
+create policy "Allow public update trip_messages"
+  on public.trip_messages
+  for update
+  to anon, authenticated
+  using (length(trim(trip_code)) >= 3)
+  with check (length(trim(trip_code)) >= 3);
+
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1
+       from pg_publication_tables
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = 'trip_messages'
+     ) then
+    alter publication supabase_realtime add table public.trip_messages;
+  end if;
+end $$;

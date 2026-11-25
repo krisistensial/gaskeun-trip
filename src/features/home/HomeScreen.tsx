@@ -12,6 +12,7 @@ import {
   Crown,
   Images,
   LogOut,
+  MessageCircle,
   Pencil,
   Plus,
   Settings2,
@@ -98,9 +99,11 @@ export interface HomeScreenProps {
   activeMember?: TripMember;
   activeMemberName: string;
   onlineMembers?: OnlinePresenceUser[];
+  unreadChatCount?: number;
   canEdit: boolean;
   viewOnlyMode?: boolean;
   onOpenMenu: () => void;
+  onOpenChat?: () => void;
   onOpenTripSettings: () => void;
   onSwitchTrip: () => void;
   onNavigateTab: (tab: DockTabId) => void;
@@ -123,9 +126,11 @@ export function HomeScreen({
   activeMember,
   activeMemberName,
   onlineMembers = [],
+  unreadChatCount = 0,
   canEdit,
   viewOnlyMode = false,
   onOpenMenu,
+  onOpenChat,
   onOpenTripSettings,
   onSwitchTrip,
   onNavigateTab,
@@ -660,6 +665,29 @@ export function HomeScreen({
                   ))}
                 </span>
                 <span className="home-presence-live-dot" aria-hidden="true" />
+              </button>
+            )}
+            {onOpenChat && (
+              <button
+                type="button"
+                className="home-chat-orb tactile"
+                aria-label={
+                  unreadChatCount > 0
+                    ? `Open crew chat (${unreadChatCount} unread)`
+                    : 'Open crew chat'
+                }
+                title="Crew Chat"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  onOpenChat();
+                }}
+              >
+                <MessageCircle size={18} strokeWidth={1.9} />
+                {unreadChatCount > 0 && (
+                  <span className="home-chat-orb__badge">
+                    {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                  </span>
+                )}
               </button>
             )}
             <button

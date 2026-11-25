@@ -32,6 +32,25 @@ import {
 } from './services/db';
 import { fetchDriveAlbumWithStatus, isAssetFileName } from './services/gdriveAlbum';
 import { appendEditLog } from './services/activityLog';
+import {
+  countUnreadMessages,
+  createStickerChatMessage,
+  createTextChatMessage,
+  loadChatLastRead,
+  mergeChatMessages,
+  saveChatLastRead,
+  toggleMessageReaction,
+} from './services/chat';
+import {
+  fetchRemoteChatMessages,
+  loadLocalChatCache,
+  markRemoteChatDeleted,
+  patchRemoteChatReaction,
+  saveLocalChatCache,
+  subscribeToCrewChat,
+  upsertRemoteChatMessage,
+  type CrewChatChannelController,
+} from './services/chatSync';
 import { triggerFeedback } from './services/feedback';
 import { uploadSharedImage } from './services/mediaUploader';
 import {
@@ -64,6 +83,8 @@ import {
 import { buildInviteUrl } from './services/tripFactory';
 import type {
   AlbumPhoto,
+  ChatMessage,
+  ChatReplyPreview,
   DockTabId,
   LocalPersonalData,
   OnlinePresenceUser,
@@ -96,6 +117,11 @@ const CreateTripScreen = lazy(() =>
 const TripSettingsSheet = lazy(() =>
   import('./components/organisms/TripSettingsSheet').then((m) => ({
     default: m.TripSettingsSheet,
+  })),
+);
+const CrewChatScreen = lazy(() =>
+  import('./features/chat/CrewChatScreen').then((m) => ({
+    default: m.CrewChatScreen,
   })),
 );
 
@@ -159,6 +185,12 @@ export default function App() {
   );
 
   const [activeRouteTarget, setActiveRouteTarget] = useState<RouteTarget | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatLastReadIso, setChatLastReadIso] = useState<string>('');
+  const [chatTypingMap, setChatTypingMap] = useState<
+    Record<string, { memberName: string; expiresAt: number }>
+  >({});
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pinSheetOpen, setPinSheetOpen] = useState(false);
@@ -174,6 +206,8 @@ export default function App() {
   activeTripRef.current = activeTrip;
   const activeTabRef = useRef<DockTabId>(activeTab);
   activeTabRef.current = activeTab;
+  const chatChannelRef = useRef<CrewChatChannelController | null>(null);
+  const useSharedTripChatFallbackRef = useRef(false);
   const lastAutoPullMsRef = useRef<number>(0);
   const shellRef = useRef<HTMLElement | null>(null);
 
@@ -182,20 +216,27 @@ export default function App() {
     pwaHistory.initRoot();
   }, []);
 
-  // Register full-screen sub-views (`RouteMapView`, `CreateTripScreen`, `WhoAreYouScreen`) on the back stack
+  // Register full-screen sub-views (`RouteMapView`, `CrewChatScreen`, `CreateTripScreen`, `WhoAreYouScreen`) on the back stack
   useBackHandler(
     route === 'hub' && Boolean(activeRouteTarget),
     () => setActiveRouteTarget(null),
     'view',
     'route-map',
   );
+  useBackHandler(
+    route === 'hub' && !activeRouteTarget && chatOpen,
+    () => setChatOpen(false),
+    'view',
+    'crew-chat',
+  );
   useBackHandler(route === 'create', () => setRoute('landing'), 'view', 'create-trip');
   useBackHandler(route === 'who', () => setRoute('landing'), 'view', 'who-are-you');
 
-  // Clear tab history entries whenever leaving the main Hub so Landing/Gate back stack stays clean
+  // Clear tab history entries & chat view whenever leaving the main Hub so Landing/Gate back stack stays clean
   useEffect(() => {
     if (route !== 'hub') {
       pwaHistory.clearByKind('tab');
+      setChatOpen(false);
     }
   }, [route]);
 
@@ -364,7 +405,8 @@ export default function App() {
       (document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null);
     if (!metaEl) return;
 
-    const isHomeHeroScreen = route === 'hub' && !activeRouteTarget && activeTab === 'home';
+    const isHomeHeroScreen =
+      route === 'hub' && !activeRouteTarget && !chatOpen && activeTab === 'home';
 
     const updateThemeColor = () => {
       const heroThreshold = Math.max(240, window.innerHeight * 0.55);
@@ -384,7 +426,7 @@ export default function App() {
       window.removeEventListener('scroll', updateThemeColor);
       window.removeEventListener('resize', updateThemeColor);
     };
-  }, [route, activeTab, activeRouteTarget]);
+  }, [route, activeTab, activeRouteTarget, chatOpen]);
 
   // Realtime Supabase subscription for active trip (`postgres_changes` on `shared_trips`)
   useEffect(() => {
@@ -571,6 +613,143 @@ export default function App() {
       setOnlineMembers,
     );
   }, [route, activeTrip.code, activeMemberId]);
+
+  // Seed Crew Chat from local cache + fallback SharedTrip.chatMessages whenever trip/member changes
+  useEffect(() => {
+    if (!activeTrip.code) {
+      setChatMessages([]);
+      setChatLastReadIso('');
+      return;
+    }
+    setChatLastReadIso(loadChatLastRead(activeTrip.code, activeMemberId ?? 'guest'));
+    setChatMessages((prev) => {
+      const cached = loadLocalChatCache(activeTrip.code);
+      const shared = activeTrip.chatMessages ?? [];
+      return mergeChatMessages(prev.filter((m) => m.tripCode === activeTrip.code), [
+        ...cached,
+        ...shared,
+      ]);
+    });
+  }, [activeTrip.code, activeTrip.chatMessages, activeMemberId]);
+
+  // Live Supabase Realtime Crew Chat (`trip_messages` + Broadcast channel for <50ms typing/reactions/stickers)
+  useEffect(() => {
+    if (route !== 'hub' || !activeTrip.code) {
+      chatChannelRef.current = null;
+      return;
+    }
+    const code = activeTrip.code;
+    let alive = true;
+
+    void fetchRemoteChatMessages(code).then((res) => {
+      if (!alive) return;
+      if (res.ok) {
+        useSharedTripChatFallbackRef.current = false;
+        setChatMessages((prev) => {
+          const merged = mergeChatMessages(prev, res.messages);
+          saveLocalChatCache(code, merged);
+          return merged;
+        });
+      } else if (res.tableMissing) {
+        useSharedTripChatFallbackRef.current = true;
+      }
+    });
+
+    const sender = activeMemberId
+      ? { memberId: activeMemberId, memberName: activeMemberName }
+      : null;
+
+    const controller = subscribeToCrewChat(code, sender, {
+      onMessage: (incoming) => {
+        setChatMessages((prev) => {
+          const next = mergeChatMessages(prev, [incoming]);
+          saveLocalChatCache(code, next);
+          return next;
+        });
+      },
+      onReaction: ({ id, reactions }) => {
+        setChatMessages((prev) => {
+          const next = prev.map((m) => (m.id === id ? { ...m, reactions } : m));
+          saveLocalChatCache(code, next);
+          return next;
+        });
+      },
+      onDelete: ({ id }) => {
+        setChatMessages((prev) => {
+          const next = prev.map((m) =>
+            m.id === id ? { ...m, deleted: true, text: '', reactions: {} } : m,
+          );
+          saveLocalChatCache(code, next);
+          return next;
+        });
+      },
+      onTyping: ({ memberId, memberName, isTyping }) => {
+        setChatTypingMap((prev) => {
+          const next = { ...prev };
+          if (!isTyping) {
+            delete next[memberId];
+          } else {
+            next[memberId] = { memberName, expiresAt: Date.now() + 3400 };
+          }
+          return next;
+        });
+      },
+    });
+    chatChannelRef.current = controller;
+
+    return () => {
+      alive = false;
+      controller.unsubscribe();
+      if (chatChannelRef.current === controller) {
+        chatChannelRef.current = null;
+      }
+    };
+  }, [route, activeTrip.code, activeMemberId, activeMemberName]);
+
+  // Prune stale typing indicators
+  useEffect(() => {
+    const entries = Object.entries(chatTypingMap);
+    if (entries.length === 0) return;
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setChatTypingMap((prev) => {
+        let changed = false;
+        const next: typeof prev = {};
+        for (const [id, info] of Object.entries(prev)) {
+          if (info.expiresAt > now) {
+            next[id] = info;
+          } else {
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 900);
+    return () => window.clearInterval(timer);
+  }, [chatTypingMap]);
+
+  const typingUsers = useMemo(
+    () =>
+      Object.entries(chatTypingMap).map(([memberId, info]) => ({
+        memberId,
+        memberName: info.memberName,
+      })),
+    [chatTypingMap],
+  );
+
+  const unreadChatCount = useMemo(
+    () =>
+      chatOpen ? 0 : countUnreadMessages(chatMessages, chatLastReadIso, activeMemberId),
+    [chatOpen, chatMessages, chatLastReadIso, activeMemberId],
+  );
+
+  const handleMarkChatRead = useCallback(() => {
+    if (!activeTrip.code) return;
+    const latestIso =
+      chatMessages[chatMessages.length - 1]?.createdAt ?? new Date().toISOString();
+    saveChatLastRead(activeTrip.code, activeMemberId ?? 'guest', latestIso);
+    setChatLastReadIso(latestIso);
+  }, [activeTrip.code, activeMemberId, chatMessages]);
 
   const pinUnlocked = pinUnlockedCodes.includes(activeTrip.code.toUpperCase());
   const isHost = isHostMember(activeTrip, activeMemberId);
@@ -911,16 +1090,91 @@ export default function App() {
     showToast('Shared trip updated — personal data stayed untouched', 'success');
   };
 
+  const persistChatMutation = (nextMessages: ChatMessage[], remoteWork: () => Promise<{ tableMissing?: boolean }>) => {
+    saveLocalChatCache(activeTrip.code, nextMessages);
+    void remoteWork().then((res) => {
+      if (res?.tableMissing || useSharedTripChatFallbackRef.current) {
+        useSharedTripChatFallbackRef.current = true;
+        handleUpdateTrip(
+          (prev) => ({ ...prev, chatMessages: nextMessages }),
+          undefined,
+          { skipLog: true },
+        );
+      }
+    });
+  };
+
+  const handleSendChatText = (text: string, replyTo?: ChatReplyPreview) => {
+    const msg = createTextChatMessage({
+      tripCode: activeTrip.code,
+      senderId: activeMemberId ?? 'guest',
+      senderName: activeMemberName,
+      text,
+      replyTo,
+    });
+    if (!msg) return;
+    const next = mergeChatMessages(chatMessages, [msg]);
+    setChatMessages(next);
+    chatChannelRef.current?.broadcastMessage(msg);
+    persistChatMutation(next, () => upsertRemoteChatMessage(msg));
+  };
+
+  const handleSendChatSticker = (stickerId: string, replyTo?: ChatReplyPreview) => {
+    const msg = createStickerChatMessage({
+      tripCode: activeTrip.code,
+      senderId: activeMemberId ?? 'guest',
+      senderName: activeMemberName,
+      stickerId,
+      replyTo,
+    });
+    if (!msg) return;
+    const next = mergeChatMessages(chatMessages, [msg]);
+    setChatMessages(next);
+    chatChannelRef.current?.broadcastMessage(msg);
+    persistChatMutation(next, () => upsertRemoteChatMessage(msg));
+  };
+
+  const handleToggleChatReaction = (messageId: string, emoji: string) => {
+    const actorId = activeMemberId ?? 'guest';
+    const current = chatMessages.find((m) => m.id === messageId);
+    if (!current || current.deleted) return;
+    const updatedMsg = toggleMessageReaction(current, emoji, actorId);
+    const next = chatMessages.map((m) => (m.id === messageId ? updatedMsg : m));
+    setChatMessages(next);
+    chatChannelRef.current?.broadcastReaction(
+      updatedMsg.id,
+      updatedMsg.reactions,
+    );
+    persistChatMutation(next, () => patchRemoteChatReaction(updatedMsg));
+  };
+
+  const handleUnsendChatMessage = (messageId: string) => {
+    const target = chatMessages.find((m) => m.id === messageId);
+    if (!target || target.deleted) return;
+    if (target.senderId !== (activeMemberId ?? 'guest') && !isHost) return;
+    const next = chatMessages.map((m) =>
+      m.id === messageId ? { ...m, deleted: true, text: '', reactions: {} } : m,
+    );
+    setChatMessages(next);
+    chatChannelRef.current?.broadcastDelete(messageId);
+    persistChatMutation(next, () => markRemoteChatDeleted(messageId, activeTrip.code));
+  };
+
+  const handleChatTypingChange = useCallback((isTyping: boolean) => {
+    chatChannelRef.current?.sendTypingPing(isTyping);
+  }, []);
+
   const visibleSavedTrips = useMemo(
     () => filterJoinedTrips(savedTrips, joinedTripCodes),
     [savedTrips, joinedTripCodes],
   );
 
-  const showDock = route === 'hub' && !activeRouteTarget;
+  const showDock = route === 'hub' && !activeRouteTarget && !chatOpen;
   const isDockVisible = hasRevealedDock || phase === 'on-trip' || activeTab !== 'home';
   const dockHiddenForHero =
     route === 'hub' &&
     !activeRouteTarget &&
+    !chatOpen &&
     activeTab === 'home' &&
     phase === 'pre-trip' &&
     !isDockVisible;
@@ -1002,6 +1256,26 @@ export default function App() {
               />
             )}
 
+            {route === 'hub' && !activeRouteTarget && chatOpen && (
+              <CrewChatScreen
+                trip={activeTrip}
+                messages={chatMessages}
+                activeMemberId={activeMemberId}
+                activeMember={activeMember}
+                activeMemberName={activeMemberName}
+                isHost={isHost}
+                onlineMembers={onlineMembers}
+                typingUsers={typingUsers}
+                onSendText={handleSendChatText}
+                onSendSticker={handleSendChatSticker}
+                onToggleReaction={handleToggleChatReaction}
+                onUnsendMessage={handleUnsendChatMessage}
+                onTypingChange={handleChatTypingChange}
+                onMarkRead={handleMarkChatRead}
+                onBack={() => setChatOpen(false)}
+              />
+            )}
+
             {route === 'hub' && !activeRouteTarget && activeTab === 'plan' && (
               <PlanScreen
                 trip={activeTrip}
@@ -1063,7 +1337,7 @@ export default function App() {
             )}
           </Suspense>
 
-          {route === 'hub' && !activeRouteTarget && activeTab === 'home' && (
+          {route === 'hub' && !activeRouteTarget && !chatOpen && activeTab === 'home' && (
             <HomeScreen
               trip={activeTrip}
               phase={phase}
@@ -1074,9 +1348,11 @@ export default function App() {
               activeMember={activeMember}
               activeMemberName={activeMemberName}
               onlineMembers={onlineMembers}
+              unreadChatCount={unreadChatCount}
               canEdit={canEdit}
               viewOnlyMode={isViewOnlyActive}
               onOpenMenu={() => setMenuOpen(true)}
+              onOpenChat={() => setChatOpen(true)}
               onOpenTripSettings={openTripSettingsGated}
               onSwitchTrip={handleLeaveTrip}
               onNavigateTab={handleNavigateTab}
@@ -1114,12 +1390,14 @@ export default function App() {
           lastSyncedAt={lastSyncedAt}
           lastSyncError={lastSyncError}
           isSyncingCloud={isSyncingCloud}
+          unreadChatCount={unreadChatCount}
           onForceSync={() =>
             void syncActiveTripFromCloud(activeTrip.code, activeTrip, {
               force: true,
               notify: true,
             })
           }
+          onOpenChat={() => setChatOpen(true)}
           onToggleViewOnlyMode={handleToggleViewOnlyMode}
           onPhaseChange={(next) => {
             triggerFeedback('tap');
