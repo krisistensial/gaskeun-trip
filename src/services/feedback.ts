@@ -72,8 +72,8 @@ export function getFeedbackPreferences(): FeedbackPreferences {
   return {
     // Default ON unless explicitly disabled
     hapticsEnabled: rawHaptics !== 'false',
-    // Default OFF unless explicitly enabled
-    soundEnabled: rawSound === 'true',
+    // Default ON unless explicitly disabled
+    soundEnabled: rawSound !== 'false',
   };
 }
 

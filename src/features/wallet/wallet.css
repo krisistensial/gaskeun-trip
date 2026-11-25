@@ -556,3 +556,16 @@
   font-weight: 700;
   color: var(--brand-forest);
 }
+
+.tx-inline-del-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(214, 90, 79, 0.1);
+  color: var(--accent-coral);
+  flex-shrink: 0;
+  cursor: pointer;
+}

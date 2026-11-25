@@ -1,5 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 import {
+  Bell,
+  BellOff,
   Camera,
   Check,
   Cloud,
@@ -37,6 +39,13 @@ import {
   setSoundEnabled,
   triggerFeedback,
 } from '../../services/feedback';
+import {
+  getDeviceNotificationPermission,
+  getDeviceNotificationsEnabled,
+  requestDeviceNotificationPermission,
+  setDeviceNotificationsEnabled,
+  showDeviceNotification,
+} from '../../services/notifications';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import {
   changeOwnPasscode,
@@ -153,8 +162,12 @@ export function TripMenuSheet({
   const [crewEditPinInput, setCrewEditPinInput] = useState('');
   const [showCrewEditPinInput, setShowCrewEditPinInput] = useState(false);
 
-  // Local device multisensory preferences (Haptics + Web Audio)
+  // Local device multisensory preferences (Haptics + Web Audio + Phone Notifications)
   const [feedbackPrefs, setFeedbackPrefs] = useState(() => getFeedbackPreferences());
+  const [notifEnabled, setNotifEnabled] = useState(() => getDeviceNotificationsEnabled());
+  const [notifPermission, setNotifPermission] = useState(() =>
+    getDeviceNotificationPermission(),
+  );
 
   const resetLocalPanels = () => {
     setShowEditorsList(false);
@@ -489,6 +502,74 @@ export function TripMenuSheet({
           </span>
           <span
             className={`menu-toggle-switch ${feedbackPrefs.soundEnabled ? 'menu-toggle-switch--on' : ''}`}
+            aria-hidden="true"
+          >
+            <span className="menu-toggle-switch__knob" />
+          </span>
+        </button>
+
+        {/* Device / Phone Push Alert Preferences */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={notifPermission === 'granted' && notifEnabled}
+          className="gk-menu-item"
+          onClick={() => {
+            if (notifPermission === 'unsupported') return;
+            if (notifPermission === 'denied') {
+              triggerFeedback('warning');
+              return;
+            }
+            if (notifPermission === 'default') {
+              triggerFeedback('tap');
+              void requestDeviceNotificationPermission().then((res) => {
+                setNotifPermission(res.permission);
+                setNotifEnabled(res.granted);
+              });
+              return;
+            }
+            const next = !notifEnabled;
+            setDeviceNotificationsEnabled(next);
+            setNotifEnabled(next);
+            if (next) {
+              triggerFeedback('toggle', { forceHaptic: true });
+              void showDeviceNotification({
+                title: 'GASKEUN! Notifications On',
+                body: 'Live Crew Chat & trip alerts are enabled on this device.',
+                tag: 'gaskeun-test',
+              });
+            } else {
+              triggerFeedback('tap');
+            }
+          }}
+        >
+          <span className="gk-menu-item__left">
+            <span className="gk-menu-item__icon">
+              {notifPermission === 'granted' && notifEnabled ? (
+                <Bell size={18} strokeWidth={1.85} />
+              ) : (
+                <BellOff size={18} strokeWidth={1.8} />
+              )}
+            </span>
+            <span>
+              <div className="gk-menu-item__title">Phone Notifications</div>
+              <div className="gk-menu-item__sub">
+                {notifPermission === 'unsupported'
+                  ? 'Not supported on this browser'
+                  : notifPermission === 'denied'
+                    ? 'Blocked — enable alerts in browser site settings'
+                    : notifPermission === 'granted'
+                      ? notifEnabled
+                        ? 'Alerting for Crew Chat & shared updates'
+                        : 'Paused on this device'
+                      : 'Tap to allow Crew Chat & trip alerts'}
+              </div>
+            </span>
+          </span>
+          <span
+            className={`menu-toggle-switch ${
+              notifPermission === 'granted' && notifEnabled ? 'menu-toggle-switch--on' : ''
+            }`}
             aria-hidden="true"
           >
             <span className="menu-toggle-switch__knob" />

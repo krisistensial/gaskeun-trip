@@ -1,9 +1,18 @@
 import { useMemo, useRef, useState } from 'react';
-import { Check, ChevronRight, Lock, Plus, Wallet as WalletIcon } from 'lucide-react';
+import {
+  Check,
+  ChevronRight,
+  Lock,
+  Plus,
+  SlidersHorizontal,
+  Trash2,
+  Wallet as WalletIcon,
+} from 'lucide-react';
 import {
   Avatar,
   Badge,
   Button,
+  ConfirmDialog,
   CornerOrb,
   EmptyState,
   GlassCard,
@@ -23,6 +32,7 @@ import { triggerFeedback } from '../../services/feedback';
 import type { BudgetPocket, SharedTrip, Transaction } from '../../types/trip';
 import { AddTransactionSheet, type TxComposerMode } from './AddTransactionSheet';
 import { PocketSheet } from './PocketSheet';
+import { WalletHostToolsSheet } from './WalletHostToolsSheet';
 import './wallet.css';
 
 type WalletTab = 'combined' | 'pool' | 'fundraise' | 'spent' | 'personal';
@@ -32,6 +42,7 @@ export interface WalletScreenProps {
   trip: SharedTrip;
   personalTransactions: Transaction[];
   canEdit: boolean;
+  isHost?: boolean;
   viewOnlyMode?: boolean;
   onOpenMenu: () => void;
   onRequestUnlockPin: () => void;
@@ -44,6 +55,7 @@ export function WalletScreen({
   trip,
   personalTransactions,
   canEdit,
+  isHost = false,
   viewOnlyMode = false,
   onOpenMenu,
   onRequestUnlockPin,
@@ -67,6 +79,9 @@ export function WalletScreen({
     open: boolean;
     editing: BudgetPocketSummary | null;
   }>({ open: false, editing: null });
+  const [hostToolsOpen, setHostToolsOpen] = useState(false);
+  const [confirmDeleteTx, setConfirmDeleteTx] = useState<Transaction | null>(null);
+  const [confirmDeletePocket, setConfirmDeletePocket] = useState<BudgetPocket | null>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
   const ledger = useMemo(() => calculateLedger(trip), [trip]);
@@ -213,10 +228,23 @@ export function WalletScreen({
 
   return (
     <div className="wallet-root">
-      {/* Header + Corner Orb */}
+      {/* Header + Host Controls + Corner Orb */}
       <header className="wallet-header">
         <h1 className="wallet-title">Wallet</h1>
-        <CornerOrb kind="menu" ariaLabel="Trip menu" onClick={onOpenMenu} />
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {isHost && canEdit && (
+            <CornerOrb
+              kind="custom"
+              ariaLabel="Host ledger controls and balance editor"
+              icon={<SlidersHorizontal size={18} strokeWidth={1.9} />}
+              onClick={() => {
+                triggerFeedback('tap');
+                setHostToolsOpen(true);
+              }}
+            />
+          )}
+          <CornerOrb kind="menu" ariaLabel="Trip menu" onClick={onOpenMenu} />
+        </div>
       </header>
 
       {/* 5 Sub-Tab Pills (Combined Treasury · Pool · Fundraise · Spent · Personal) */}
@@ -398,6 +426,17 @@ export function WalletScreen({
 
                   {canEdit && (
                     <div className="pocket-card__actions">
+                      <button
+                        type="button"
+                        className="tx-inline-del-btn tactile"
+                        aria-label={`Delete ${summary.pocket.name} pocket`}
+                        onClick={() => {
+                          triggerFeedback('warning');
+                          setConfirmDeletePocket(summary.pocket);
+                        }}
+                      >
+                        <Trash2 size={14} strokeWidth={2} />
+                      </button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -586,7 +625,23 @@ export function WalletScreen({
                       {tx.note ? ` · ${tx.note}` : ''}
                     </div>
                   </div>
-                  <span className="tx-amt tx-amt--in">+{formatCompactIDR(tx.amount)}</span>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <span className="tx-amt tx-amt--in">+{formatCompactIDR(tx.amount)}</span>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        className="tx-inline-del-btn tactile"
+                        aria-label={`Delete ${tx.title}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerFeedback('warning');
+                          setConfirmDeleteTx(tx);
+                        }}
+                      >
+                        <Trash2 size={14} strokeWidth={2} />
+                      </button>
+                    )}
+                  </div>
                 </GlassCard>
               ))
             )}
@@ -692,9 +747,25 @@ export function WalletScreen({
                     </div>
 
                     <div className="tx-card__right">
-                      <span className={`tx-amt ${isUnpaid ? 'tx-amt--unpaid' : 'tx-amt--out'}`}>
-                        -{formatCompactIDR(tx.amount)}
-                      </span>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span className={`tx-amt ${isUnpaid ? 'tx-amt--unpaid' : 'tx-amt--out'}`}>
+                          -{formatCompactIDR(tx.amount)}
+                        </span>
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="tx-inline-del-btn tactile"
+                            aria-label={`Delete ${tx.title}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              triggerFeedback('warning');
+                              setConfirmDeleteTx(tx);
+                            }}
+                          >
+                            <Trash2 size={14} strokeWidth={2} />
+                          </button>
+                        )}
+                      </div>
                       {isUnpaid ? (
                         <Badge tone="amber">Unpaid</Badge>
                       ) : (
@@ -805,10 +876,10 @@ export function WalletScreen({
                 </p>
               ) : (
                 selectedMemberSummary.deposits.map((tx) => (
-                  <button
+                  <div
                     key={tx.id}
-                    type="button"
                     className="gk-menu-item"
+                    style={{ cursor: canEdit ? 'pointer' : 'default' }}
                     onClick={() => {
                       if (!canEdit) return;
                       setSelectedMemberId(null);
@@ -822,8 +893,24 @@ export function WalletScreen({
                         {tx.note ? ` · ${tx.note}` : ''}
                       </div>
                     </div>
-                    <span className="tx-amt tx-amt--in">+{formatCompactIDR(tx.amount)}</span>
-                  </button>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span className="tx-amt tx-amt--in">+{formatCompactIDR(tx.amount)}</span>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          className="tx-inline-del-btn tactile"
+                          aria-label={`Delete ${tx.title}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            triggerFeedback('warning');
+                            setConfirmDeleteTx(tx);
+                          }}
+                        >
+                          <Trash2 size={14} strokeWidth={2} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 ))
               )}
             </div>
@@ -887,6 +974,45 @@ export function WalletScreen({
         onSave={handleSavePocket}
         onDelete={handleDeletePocket}
         onClose={() => setPocketSheet({ open: false, editing: null })}
+      />
+
+      <WalletHostToolsSheet
+        key={`host-tools-${hostToolsOpen ? 'open' : 'closed'}`}
+        open={hostToolsOpen}
+        trip={trip}
+        ledger={ledger}
+        onUpdateTrip={onUpdateTrip}
+        onClose={() => setHostToolsOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(confirmDeleteTx)}
+        title={`Delete "${confirmDeleteTx?.title ?? 'transaction'}"?`}
+        description="Balances will immediately recalculate after removing this transaction."
+        confirmLabel="Delete"
+        destructive
+        onCancel={() => setConfirmDeleteTx(null)}
+        onConfirm={() => {
+          if (confirmDeleteTx) {
+            handleDeleteSharedTx(confirmDeleteTx.id);
+          }
+          setConfirmDeleteTx(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(confirmDeletePocket)}
+        title={`Delete "${confirmDeletePocket?.name ?? 'pocket'}"?`}
+        description="Allocated cash returns to Unallocated Cash, while any past expenses stay in Spent history."
+        confirmLabel="Delete"
+        destructive
+        onCancel={() => setConfirmDeletePocket(null)}
+        onConfirm={() => {
+          if (confirmDeletePocket) {
+            handleDeletePocket(confirmDeletePocket.id);
+          }
+          setConfirmDeletePocket(null);
+        }}
       />
     </div>
   );

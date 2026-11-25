@@ -53,6 +53,7 @@ import {
   type CrewChatChannelController,
 } from './services/chatSync';
 import { triggerFeedback } from './services/feedback';
+import { showDeviceNotification } from './services/notifications';
 import { uploadSharedImage } from './services/mediaUploader';
 import {
   canEditTrip,
@@ -211,6 +212,8 @@ export default function App() {
   activeTripRef.current = activeTrip;
   const activeTabRef = useRef<DockTabId>(activeTab);
   activeTabRef.current = activeTab;
+  const chatOpenRef = useRef<boolean>(chatOpen);
+  chatOpenRef.current = chatOpen;
   const chatChannelRef = useRef<CrewChatChannelController | null>(null);
   const useSharedTripChatFallbackRef = useRef(false);
   const lastAutoPullMsRef = useRef<number>(0);
@@ -442,10 +445,25 @@ export default function App() {
     const unsubscribe = subscribeToSharedTrip(code, (remoteTrip) => {
       const current = activeTripRef.current;
       if (!shouldApplyRemoteTrip(current, remoteTrip)) return;
+      const prevTopLogId = current.editLog?.[0]?.id;
+      const nextTopLog = remoteTrip.editLog?.[0];
       void applyRemoteSharedTrip(remoteTrip).then((persisted) => {
         setActiveTrip(persisted);
         setLastSyncedAt(new Date().toISOString());
         void listSharedTrips().then(setSavedTrips);
+        if (
+          nextTopLog &&
+          nextTopLog.id !== prevTopLogId &&
+          nextTopLog.actorId !== activeMemberId &&
+          typeof document !== 'undefined' &&
+          document.visibilityState === 'hidden'
+        ) {
+          void showDeviceNotification({
+            title: remoteTrip.title || 'Trip Updated',
+            body: `${nextTopLog.actorName}: ${nextTopLog.action}`,
+            tag: `trip-${remoteTrip.code}`,
+          });
+        }
       });
     });
 
@@ -671,8 +689,29 @@ export default function App() {
     const controller = subscribeToCrewChat(code, sender, {
       onMessage: (incoming) => {
         setChatMessages((prev) => {
+          const alreadyKnown = prev.some((m) => m.id === incoming.id);
           const next = mergeChatMessages(prev, [incoming]);
           saveLocalChatCache(code, next);
+          const msgAgeMs = Date.now() - Date.parse(incoming.createdAt);
+          const isHidden =
+            typeof document !== 'undefined' && document.visibilityState === 'hidden';
+          if (
+            !alreadyKnown &&
+            !incoming.deleted &&
+            incoming.senderId !== (activeMemberId ?? 'guest') &&
+            (!chatOpenRef.current || isHidden) &&
+            Number.isFinite(msgAgeMs) &&
+            msgAgeMs < 120_000
+          ) {
+            void showDeviceNotification({
+              title: `${incoming.senderName} · Crew Chat`,
+              body:
+                incoming.kind === 'sticker'
+                  ? `Sent sticker: ${incoming.text}`
+                  : incoming.text,
+              tag: `chat-${code}`,
+            });
+          }
           return next;
         });
       },
@@ -1367,6 +1406,7 @@ export default function App() {
                 trip={activeTrip}
                 personalTransactions={localData?.personalTransactions ?? []}
                 canEdit={canEdit}
+                isHost={isHost}
                 viewOnlyMode={isViewOnlyActive}
                 onOpenMenu={() => setMenuOpen(true)}
                 onRequestUnlockPin={() => requestUnlockPin()}

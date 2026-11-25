@@ -40,11 +40,11 @@ describe('feedback multisensory engine', () => {
     vi.unstubAllGlobals();
   });
 
-  it('uses sensible defaults: haptics ON, UI sounds OFF', () => {
+  it('uses sensible defaults: haptics ON, UI sounds ON', () => {
     const prefs = getFeedbackPreferences();
     expect(prefs).toEqual({
       hapticsEnabled: true,
-      soundEnabled: false,
+      soundEnabled: true,
     });
   });
 
@@ -155,7 +155,8 @@ describe('feedback multisensory engine', () => {
 
     vi.stubGlobal('window', { AudioContext: MockAudioContext });
 
-    // Default soundEnabled=false -> silent
+    // Explicitly muted -> silent
+    setSoundEnabled(false);
     expect(playGlassSound('tap')).toBe(false);
     expect(oscStart).not.toHaveBeenCalled();
 

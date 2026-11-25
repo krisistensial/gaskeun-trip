@@ -315,10 +315,10 @@ export function PocketSheet({
             <Button
               variant="danger"
               size="lg"
-              aria-label="Delete pocket"
+              leftIcon={<Trash2 size={16} strokeWidth={2} />}
               onClick={() => setConfirmDelete(true)}
             >
-              <Trash2 size={17} strokeWidth={2} />
+              Delete
             </Button>
           )}
           <Button type="submit" variant="matcha" size="lg" fullWidth disabled={!canSubmit}>
