@@ -25,6 +25,7 @@ import { Avatar, Badge, Button, ConfirmDialog, LiquidBottomSheet } from '../atom
 import { PhotoCropperSheet } from './PhotoCropperSheet';
 import {
   getFeedbackPreferences,
+  playRotarySoundDemo,
   setHapticsEnabled,
   setSoundEnabled,
   triggerFeedback,
@@ -449,7 +450,8 @@ export function TripMenuSheet({
             const updated = setSoundEnabled(next);
             setFeedbackPrefs(updated);
             if (next) {
-              triggerFeedback('success', { forceSound: true });
+              triggerFeedback('toggle', { forceHaptic: true });
+              playRotarySoundDemo();
             } else {
               triggerFeedback('tap');
             }

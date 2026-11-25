@@ -68,16 +68,22 @@ describe('feedback multisensory engine', () => {
     triggerFeedback('toggle');
     triggerFeedback('success');
     triggerFeedback('warning');
+    triggerFeedback('tick');
+    triggerFeedback('settle');
 
     expect(vibrateMock).toHaveBeenNthCalledWith(1, HAPTIC_PATTERNS.tap);
     expect(vibrateMock).toHaveBeenNthCalledWith(2, HAPTIC_PATTERNS.toggle);
     expect(vibrateMock).toHaveBeenNthCalledWith(3, HAPTIC_PATTERNS.success);
     expect(vibrateMock).toHaveBeenNthCalledWith(4, HAPTIC_PATTERNS.warning);
+    expect(vibrateMock).toHaveBeenNthCalledWith(5, HAPTIC_PATTERNS.tick);
+    expect(vibrateMock).toHaveBeenNthCalledWith(6, HAPTIC_PATTERNS.settle);
 
-    expect(HAPTIC_PATTERNS.tap).toBe(8);
-    expect(HAPTIC_PATTERNS.toggle).toBe(12);
-    expect(HAPTIC_PATTERNS.success).toEqual([10, 35, 14]);
-    expect(HAPTIC_PATTERNS.warning).toEqual([24, 30, 24]);
+    expect(HAPTIC_PATTERNS.tap).toBe(10);
+    expect(HAPTIC_PATTERNS.toggle).toBe(14);
+    expect(HAPTIC_PATTERNS.success).toEqual([12, 36, 18]);
+    expect(HAPTIC_PATTERNS.warning).toEqual([26, 32, 26]);
+    expect(HAPTIC_PATTERNS.tick).toBe(9);
+    expect(HAPTIC_PATTERNS.settle).toBe(18);
   });
 
   it('respects hapticsEnabled=false unless forceHaptic is passed', () => {
@@ -89,7 +95,7 @@ describe('feedback multisensory engine', () => {
     expect(vibrateMock).not.toHaveBeenCalled();
 
     expect(triggerHaptic('toggle', true)).toBe(true);
-    expect(vibrateMock).toHaveBeenCalledWith(12);
+    expect(vibrateMock).toHaveBeenCalledWith(14);
   });
 
   it('safely no-ops when navigator.vibrate and AudioContext are unavailable', () => {
@@ -144,15 +150,70 @@ describe('feedback multisensory engine', () => {
     expect(playGlassSound('tap')).toBe(false);
     expect(oscStart).not.toHaveBeenCalled();
 
-    // Enable sound -> plays 2-tone success chord with low gain <= 0.06
+    // Enable sound -> plays audible success + tick + settle with safe headroom <= 0.35
     setSoundEnabled(true);
     expect(playGlassSound('success')).toBe(true);
-    expect(oscStart).toHaveBeenCalledTimes(2);
-    expect(oscStop).toHaveBeenCalledTimes(2);
-    expect(expRamp).toHaveBeenCalledTimes(2);
+    expect(playGlassSound('tick')).toBe(true);
+    expect(playGlassSound('settle')).toBe(true);
+    expect(oscStart).toHaveBeenCalledTimes(5);
+    expect(oscStop).toHaveBeenCalledTimes(5);
+    expect(expRamp).toHaveBeenCalledTimes(5);
     for (const [peakGain] of linearRamp.mock.calls) {
-      expect(peakGain).toBeGreaterThan(0);
-      expect(peakGain).toBeLessThanOrEqual(0.06);
+      expect(peakGain).toBeGreaterThanOrEqual(0.15);
+      expect(peakGain).toBeLessThanOrEqual(0.35);
     }
+  });
+
+  it('awaits AudioContext.resume() before scheduling tone when mobile AudioContext starts suspended', async () => {
+    const oscStart = vi.fn();
+    let resolveResume!: () => void;
+
+    class SuspendedAudioContext {
+      state = 'suspended';
+      currentTime = 0;
+      destination = {};
+      resume = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveResume = () => {
+              this.state = 'running';
+              resolve();
+            };
+          }),
+      );
+      createOscillator() {
+        return {
+          type: 'sine',
+          frequency: {
+            setValueAtTime: vi.fn(),
+            exponentialRampToValueAtTime: vi.fn(),
+          },
+          connect: vi.fn(),
+          start: oscStart,
+          stop: vi.fn(),
+        };
+      }
+      createGain() {
+        return {
+          gain: {
+            setValueAtTime: vi.fn(),
+            linearRampToValueAtTime: vi.fn(),
+            exponentialRampToValueAtTime: vi.fn(),
+          },
+          connect: vi.fn(),
+        };
+      }
+    }
+
+    vi.stubGlobal('window', { AudioContext: SuspendedAudioContext });
+    setSoundEnabled(true);
+
+    expect(playGlassSound('tap')).toBe(true);
+    // Tone must wait for resume() instead of firing into a suspended context
+    expect(oscStart).not.toHaveBeenCalled();
+
+    resolveResume();
+    await Promise.resolve();
+    expect(oscStart).toHaveBeenCalledTimes(1);
   });
 });

@@ -27,7 +27,7 @@ import {
   type PlanFilterCategory,
 } from '../../services/contentIdeas';
 import { exportTripToExcel } from '../../services/excelExporter';
-import { triggerFeedback } from '../../services/feedback';
+import { primeFeedbackAudio, triggerFeedback } from '../../services/feedback';
 import { formatCompactIDR } from '../../services/ledger';
 import { toggleStopDoneStatus } from '../../services/permissions';
 import {
@@ -280,19 +280,6 @@ export function PlanScreen({
       }
       rowRefs.current.get(closestId)?.classList.add('trail-item--centered');
       centeredIdRef.current = closestId;
-
-      if (
-        prevId !== null &&
-        userInteractedRef.current &&
-        typeof navigator !== 'undefined' &&
-        typeof navigator.vibrate === 'function'
-      ) {
-        try {
-          navigator.vibrate(10);
-        } catch {
-          // Safe no-op on unsupported browsers
-        }
-      }
     }
   }, [timelineEntries.length, measureArcMetrics]);
 
@@ -389,6 +376,91 @@ export function PlanScreen({
       window.removeEventListener('resize', handleLayoutChange);
     };
   }, [viewMode, activeEditingItem, timelineEntries, stageHeight, measureArcMetrics, syncArcPositions]);
+
+  // Tactile Rotary-Wheel Detent ("ttrrrrrrrrrr... tek!") on Circular Trail Scroll:
+  // Works on BOTH CSS Scroll-Driven Chrome/Android & fallback browsers with ZERO layout thrashing
+  // (reads only `scroller.scrollTop` passively, zero `getBoundingClientRect()`, zero `setState`).
+  useEffect(() => {
+    if (viewMode !== 'trail' || activeEditingItem || timelineEntries.length === 0) return;
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+
+    const SCROLL_NOTCH_PX = 34; // Rotary wheel notch interval for crisp "ttrrrrrr..." glide feel
+    const MIN_TICK_GAP_MS = 38; // Gives Android ERM/LRA motors clean separation between ticks
+    const SETTLE_DELAY_MS = 120; // Crisp landing "TEK!" once momentum settles
+
+    let lastNotchScrollTop = scroller.scrollTop;
+    let lastTickTime = 0;
+    let tickedDuringGesture = false;
+    let settleTimerId: number | null = null;
+
+    const clearSettleTimer = () => {
+      if (settleTimerId !== null) {
+        window.clearTimeout(settleTimerId);
+        settleTimerId = null;
+      }
+    };
+
+    const handleUserTouchOrWheel = () => {
+      userInteractedRef.current = true;
+      lastNotchScrollTop = scroller.scrollTop;
+      primeFeedbackAudio();
+    };
+
+    const handleTouchMovePrime = () => {
+      if (!userInteractedRef.current) {
+        userInteractedRef.current = true;
+        lastNotchScrollTop = scroller.scrollTop;
+      }
+      primeFeedbackAudio();
+    };
+
+    const handleTrailScrollDetent = () => {
+      if (!userInteractedRef.current) {
+        lastNotchScrollTop = scroller.scrollTop;
+        return;
+      }
+
+      const currentTop = scroller.scrollTop;
+      const moved = Math.abs(currentTop - lastNotchScrollTop);
+      if (moved >= SCROLL_NOTCH_PX) {
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        if (now - lastTickTime >= MIN_TICK_GAP_MS) {
+          triggerFeedback('tick');
+          lastTickTime = now;
+          tickedDuringGesture = true;
+        }
+        // Advance anchor by whole notches so momentum ticks stay evenly spaced
+        const steps = Math.floor(moved / SCROLL_NOTCH_PX);
+        lastNotchScrollTop +=
+          currentTop > lastNotchScrollTop ? steps * SCROLL_NOTCH_PX : -steps * SCROLL_NOTCH_PX;
+      }
+
+      clearSettleTimer();
+      settleTimerId = window.setTimeout(() => {
+        settleTimerId = null;
+        if (tickedDuringGesture) {
+          triggerFeedback('settle');
+          tickedDuringGesture = false;
+        }
+      }, SETTLE_DELAY_MS);
+    };
+
+    scroller.addEventListener('touchstart', handleUserTouchOrWheel, { passive: true });
+    scroller.addEventListener('touchmove', handleTouchMovePrime, { passive: true });
+    scroller.addEventListener('pointerdown', handleUserTouchOrWheel, { passive: true });
+    scroller.addEventListener('wheel', handleUserTouchOrWheel, { passive: true });
+    scroller.addEventListener('scroll', handleTrailScrollDetent, { passive: true });
+
+    return () => {
+      clearSettleTimer();
+      scroller.removeEventListener('touchstart', handleUserTouchOrWheel);
+      scroller.removeEventListener('touchmove', handleTouchMovePrime);
+      scroller.removeEventListener('pointerdown', handleUserTouchOrWheel);
+      scroller.removeEventListener('wheel', handleUserTouchOrWheel);
+      scroller.removeEventListener('scroll', handleTrailScrollDetent);
+    };
+  }, [viewMode, activeEditingItem, timelineEntries.length, selectedDayId, filterKey]);
 
   // Auto-center the active ("Now") stop when switching day/filter so it opens right at arc apex
   useEffect(() => {
