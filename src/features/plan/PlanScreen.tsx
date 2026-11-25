@@ -549,10 +549,10 @@ export function PlanScreen({
     scroller.addEventListener('touchstart', handlePointerDown, { passive: true });
     scroller.addEventListener('pointerdown', handlePointerDown, { passive: true });
     scroller.addEventListener('touchmove', handleTouchMovePrime, { passive: true });
-    scroller.addEventListener('touchend', handlePointerUp, { passive: true });
-    scroller.addEventListener('touchcancel', handlePointerUp, { passive: true });
-    scroller.addEventListener('pointerup', handlePointerUp, { passive: true });
-    scroller.addEventListener('pointercancel', handlePointerUp, { passive: true });
+    window.addEventListener('touchend', handlePointerUp, { passive: true });
+    window.addEventListener('touchcancel', handlePointerUp, { passive: true });
+    window.addEventListener('pointerup', handlePointerUp, { passive: true });
+    window.addEventListener('pointercancel', handlePointerUp, { passive: true });
     scroller.addEventListener('wheel', handleUserTouchOrWheel, { passive: true });
     scroller.addEventListener('scroll', handleTrailScrollDetent, { passive: true });
 
@@ -563,10 +563,10 @@ export function PlanScreen({
       scroller.removeEventListener('touchstart', handlePointerDown);
       scroller.removeEventListener('pointerdown', handlePointerDown);
       scroller.removeEventListener('touchmove', handleTouchMovePrime);
-      scroller.removeEventListener('touchend', handlePointerUp);
-      scroller.removeEventListener('touchcancel', handlePointerUp);
-      scroller.removeEventListener('pointerup', handlePointerUp);
-      scroller.removeEventListener('pointercancel', handlePointerUp);
+      window.removeEventListener('touchend', handlePointerUp);
+      window.removeEventListener('touchcancel', handlePointerUp);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
       scroller.removeEventListener('wheel', handleUserTouchOrWheel);
       scroller.removeEventListener('scroll', handleTrailScrollDetent);
     };
@@ -576,6 +576,7 @@ export function PlanScreen({
     timelineEntries.length,
     selectedDayId,
     filterKey,
+    stageHeight,
     measureArcMetrics,
   ]);
 
@@ -996,19 +997,6 @@ export function PlanScreen({
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeDasharray="1 10"
-              />
-              {/* Subtle focal docking ring at the outermost apex of the C-arc (u = 0) */}
-              <circle
-                cx={ARC_MAX_X}
-                cy={stageHeight / 2}
-                r={16}
-                className="trail-arc-focus-ring"
-              />
-              <circle
-                cx={ARC_MAX_X}
-                cy={stageHeight / 2}
-                r={12}
-                className="trail-arc-focus-halo"
               />
             </svg>
           </div>
