@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type PointerEvent } from 'react';
 import {
   Check,
   ChevronRight,
@@ -38,6 +38,14 @@ import './wallet.css';
 type WalletTab = 'combined' | 'pool' | 'fundraise' | 'spent' | 'personal';
 type SpentFilter = 'all' | 'reimburse' | 'pockets' | 'pool' | 'fundraise';
 
+const WALLET_TABS: ReadonlyArray<{ id: WalletTab; label: string }> = [
+  { id: 'combined', label: 'Combined' },
+  { id: 'pool', label: 'Pool' },
+  { id: 'fundraise', label: 'Fundraise' },
+  { id: 'spent', label: 'Spent' },
+  { id: 'personal', label: 'Personal' },
+];
+
 export interface WalletScreenProps {
   trip: SharedTrip;
   personalTransactions: Transaction[];
@@ -64,9 +72,28 @@ export function WalletScreen({
   onDeletePersonalTx,
 }: WalletScreenProps) {
   const [subTab, setSubTab] = useState<WalletTab>('combined');
+  const [slideDir, setSlideDir] = useState<'left' | 'right' | 'none'>('none');
+  const [swipeUi, setSwipeUi] = useState<{ offsetX: number; snapping: boolean }>({
+    offsetX: 0,
+    snapping: false,
+  });
   const [spentFilter, setSpentFilter] = useState<SpentFilter>('all');
   const subtabsRef = useRef<HTMLDivElement | null>(null);
+  const subtabBtnRefs = useRef<Partial<Record<WalletTab, HTMLButtonElement | null>>>({});
   const subtabsFade = useHorizontalScrollFade(subtabsRef, [subTab]);
+  const swipeRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    locked: boolean;
+    offsetX: number;
+  }>({
+    pointerId: -1,
+    startX: 0,
+    startY: 0,
+    locked: false,
+    offsetX: 0,
+  });
 
   const [composer, setComposer] = useState<{
     open: boolean;
@@ -211,6 +238,89 @@ export function WalletScreen({
     );
   };
 
+  const selectWalletTab = (next: WalletTab, explicitDir?: 'left' | 'right') => {
+    if (next === subTab) return;
+    const prevIdx = WALLET_TABS.findIndex((t) => t.id === subTab);
+    const nextIdx = WALLET_TABS.findIndex((t) => t.id === next);
+    setSlideDir(explicitDir ?? (nextIdx > prevIdx ? 'left' : 'right'));
+    setSubTab(next);
+    requestAnimationFrame(() => {
+      subtabBtnRefs.current[next]?.scrollIntoView({
+        inline: 'center',
+        block: 'nearest',
+        behavior: 'smooth',
+      });
+    });
+  };
+
+  const handleStagePointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button > 0) return;
+    const target = e.target as Element | null;
+    if (
+      target?.closest('.snap-peek-row, .wallet-subtabs, .plan-filter-row, input, textarea')
+    ) {
+      return;
+    }
+    swipeRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      locked: false,
+      offsetX: 0,
+    };
+  };
+
+  const handleStagePointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const s = swipeRef.current;
+    if (s.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - s.startX;
+    const dy = e.clientY - s.startY;
+
+    if (!s.locked) {
+      if (Math.abs(dy) > 14) {
+        s.pointerId = -1;
+        return;
+      }
+      if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.45) {
+        s.locked = true;
+      } else {
+        return;
+      }
+    }
+
+    const idx = WALLET_TABS.findIndex((t) => t.id === subTab);
+    const atLeftEdge = idx === 0 && dx > 0;
+    const atRightEdge = idx === WALLET_TABS.length - 1 && dx < 0;
+    const factor = atLeftEdge || atRightEdge ? 0.16 : 0.42;
+    const offset = Math.max(-54, Math.min(54, dx * factor));
+    s.offsetX = offset;
+    setSwipeUi({ offsetX: offset, snapping: false });
+  };
+
+  const handleStagePointerEnd = (e: PointerEvent<HTMLDivElement>) => {
+    const s = swipeRef.current;
+    if (s.pointerId !== e.pointerId) return;
+    const wasLocked = s.locked;
+    const dx = e.clientX - s.startX;
+    s.pointerId = -1;
+    s.locked = false;
+
+    if (!wasLocked) return;
+
+    setSwipeUi({ offsetX: 0, snapping: true });
+    window.setTimeout(() => setSwipeUi({ offsetX: 0, snapping: false }), 220);
+
+    const idx = WALLET_TABS.findIndex((t) => t.id === subTab);
+    if (dx <= -48 && idx < WALLET_TABS.length - 1) {
+      triggerFeedback('tick');
+      selectWalletTab(WALLET_TABS[idx + 1].id, 'left');
+    } else if (dx >= 48 && idx > 0) {
+      triggerFeedback('tick');
+      selectWalletTab(WALLET_TABS[idx - 1].id, 'right');
+    }
+  };
+
   const handleToggleTentative = () => {
     onUpdateTrip(
       (prev) => ({
@@ -247,7 +357,7 @@ export function WalletScreen({
         </div>
       </header>
 
-      {/* 5 Sub-Tab Pills (Combined Treasury · Pool · Fundraise · Spent · Personal) */}
+      {/* 5 Sub-Tab Pills (Combined · Pool · Fundraise · Spent · Personal) */}
       <div
         ref={subtabsRef}
         className="wallet-subtabs"
@@ -255,79 +365,127 @@ export function WalletScreen({
         role="tablist"
         aria-label="Wallet pockets"
       >
-        {(
-          [
-            { id: 'combined', label: 'Combined' },
-            { id: 'pool', label: 'Pool' },
-            { id: 'fundraise', label: 'Fundraise' },
-            { id: 'spent', label: 'Spent' },
-            { id: 'personal', label: 'Personal' },
-          ] as const
-        ).map((tab) => (
+        {WALLET_TABS.map((tab) => (
           <button
             key={tab.id}
+            ref={(el) => {
+              subtabBtnRefs.current[tab.id] = el;
+            }}
             type="button"
             role="tab"
             aria-selected={subTab === tab.id}
             className={`wallet-subtab tactile ${subTab === tab.id ? 'wallet-subtab--active' : ''}`}
-            onClick={() => setSubTab(tab.id)}
+            onClick={() => {
+              triggerFeedback('tap');
+              selectWalletTab(tab.id);
+            }}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
+      {/* Horizontally Swipeable Tab Content Stage */}
+      <div
+        className={`wallet-swipe-stage ${swipeUi.snapping ? 'wallet-swipe-stage--snap' : ''}`}
+        style={
+          swipeUi.offsetX !== 0
+            ? { transform: `translate3d(${swipeUi.offsetX}px, 0, 0)` }
+            : undefined
+        }
+        onPointerDown={handleStagePointerDown}
+        onPointerMove={handleStagePointerMove}
+        onPointerUp={handleStagePointerEnd}
+        onPointerCancel={handleStagePointerEnd}
+      >
+        <div
+          key={subTab}
+          className={`wallet-tab-panel ${
+            slideDir === 'left'
+              ? 'wallet-tab-panel--from-right'
+              : slideDir === 'right'
+                ? 'wallet-tab-panel--from-left'
+                : ''
+          }`}
+        >
       {/* SUB-TAB 0: COMBINED TREASURY & BUDGET POCKETS */}
       {subTab === 'combined' && (
         <>
           <GlassCard variant="spotlight" padding="lg">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="gk-field__label">COMBINED TREASURY · POOL + FUNDRAISE</span>
-              <Badge tone="matcha">{ledger.pockets.length} pockets</Badge>
+              <span className="gk-field__label">COMBINED BALANCE</span>
+              <Badge tone="matcha">
+                {ledger.pockets.length} {ledger.pockets.length === 1 ? 'pocket' : 'pockets'}
+              </Badge>
             </div>
             <div className="wallet-hero-num">{formatIDR(ledger.combinedNetBalance)}</div>
-            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              Total In: <strong>{formatCompactIDR(ledger.combinedCollected)}</strong> · Total Spent:{' '}
-              <strong>{formatCompactIDR(ledger.totalSpent)}</strong>
+            <div className="treasury-inline-stats">
+              <span>In {formatCompactIDR(ledger.combinedCollected)}</span>
+              <span>·</span>
+              <span>Spent {formatCompactIDR(ledger.totalSpent)}</span>
+              <span>·</span>
+              <strong>Free {formatCompactIDR(ledger.combinedUnallocated)}</strong>
             </div>
 
-            <div className="treasury-source-grid">
-              <div className="treasury-source-tile">
+            {ledger.combinedNetBalance > 0 && (
+              <div className="treasury-alloc-track" aria-hidden="true">
+                <div
+                  className="treasury-alloc-fill"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.round(
+                        (Math.max(0, ledger.totalPocketRemaining) /
+                          Math.max(1, ledger.combinedNetBalance)) *
+                          100,
+                      ),
+                    )}%`,
+                  }}
+                />
+              </div>
+            )}
+
+            <div className="treasury-split-row">
+              <button
+                type="button"
+                className="treasury-split-col tactile"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  selectWalletTab('pool', 'left');
+                }}
+              >
                 <span className="gk-field__label">CREW POOL</span>
-                <div className="treasury-source-tile__val">
+                <div className="treasury-split-col__val">
                   {formatCompactIDR(ledger.poolCollected)}
                 </div>
-                <div className="treasury-source-tile__sub">
-                  Free: {formatCompactIDR(ledger.poolUnallocated)} · Alloc:{' '}
-                  {formatCompactIDR(ledger.poolAllocated)}
+                <div className="treasury-split-col__sub">
+                  Free {formatCompactIDR(ledger.poolUnallocated)}
                 </div>
-              </div>
+              </button>
 
-              <div className="treasury-source-tile">
+              <span className="treasury-split-divider" aria-hidden="true" />
+
+              <button
+                type="button"
+                className="treasury-split-col tactile"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  selectWalletTab('fundraise', 'left');
+                }}
+              >
                 <span className="gk-field__label">FUNDRAISE</span>
-                <div className="treasury-source-tile__val">
+                <div className="treasury-split-col__val">
                   {formatCompactIDR(ledger.fundraiseCollected)}
                 </div>
-                <div className="treasury-source-tile__sub">
-                  Free: {formatCompactIDR(ledger.fundraiseUnallocated)} · Alloc:{' '}
-                  {formatCompactIDR(ledger.fundraiseAllocated)}
+                <div className="treasury-split-col__sub">
+                  Free {formatCompactIDR(ledger.fundraiseUnallocated)}
                 </div>
-              </div>
-            </div>
-
-            <div className="treasury-unallocated-pill">
-              <span>Unallocated Cash (Ready to Assign)</span>
-              <strong>{formatIDR(ledger.combinedUnallocated)}</strong>
+              </button>
             </div>
           </GlassCard>
 
           <div className="pocket-section-head">
-            <div>
-              <div className="gk-field__label">BUDGET POCKETS</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                Allocate Combined funds into custom purpose envelopes
-              </div>
-            </div>
+            <span className="gk-field__label">POCKETS</span>
             {canEdit && (
               <Button
                 variant="matcha"
@@ -337,7 +495,7 @@ export function WalletScreen({
                   guardSharedEdit(() => setPocketSheet({ open: true, editing: null }))
                 }
               >
-                New Pocket
+                New
               </Button>
             )}
           </div>
@@ -346,7 +504,7 @@ export function WalletScreen({
             <EmptyState
               icon={<WalletIcon size={22} strokeWidth={1.8} />}
               title="No budget pockets yet"
-              description="Create pockets like Transport, Stay, or Food and choose exactly how much comes from Pool vs Fundraise."
+              description="Split combined cash into pockets like Transport, Stay, or Food and see exact Pool vs Fundraise sources."
               action={
                 canEdit ? (
                   <Button
@@ -364,110 +522,113 @@ export function WalletScreen({
             />
           ) : (
             <div className="tx-list">
-              {ledger.pockets.map((summary) => (
-                <GlassCard
-                  key={summary.pocket.id}
-                  variant="clear"
-                  padding="md"
-                  className="pocket-card"
-                >
-                  <div className="pocket-card__top">
-                    <div className="pocket-card__title-wrap">
-                      <span className="pocket-card__emoji">{summary.pocket.emoji}</span>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="pocket-card__name">{summary.pocket.name}</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                          Spent {formatCompactIDR(summary.spent)} of{' '}
+              {ledger.pockets.map((summary) => {
+                const originParts: string[] = [];
+                if (summary.allocatedFromPool > 0) {
+                  originParts.push(`Pool ${formatCompactIDR(summary.allocatedFromPool)}`);
+                }
+                if (summary.allocatedFromFundraise > 0) {
+                  originParts.push(
+                    `Fundraise ${formatCompactIDR(summary.allocatedFromFundraise)}`,
+                  );
+                }
+
+                return (
+                  <GlassCard
+                    key={summary.pocket.id}
+                    variant="clear"
+                    padding="md"
+                    interactive={canEdit}
+                    className="pocket-card"
+                    onClick={() => {
+                      if (!canEdit) return;
+                      setPocketSheet({ open: true, editing: summary });
+                    }}
+                  >
+                    <div className="pocket-card__top">
+                      <div className="pocket-card__title-wrap">
+                        <span className="pocket-card__emoji">{summary.pocket.emoji}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="pocket-card__name">{summary.pocket.name}</div>
+                          <div className="pocket-card__origin">
+                            {originParts.join(' · ') || 'No allocation'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div
+                          className={`tx-amt ${summary.isOverBudget ? 'tx-amt--out' : 'tx-amt--in'}`}
+                        >
+                          {formatCompactIDR(summary.remaining)}
+                        </div>
+                        <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600 }}>
+                          Spent {formatCompactIDR(summary.spent)} /{' '}
                           {formatCompactIDR(summary.allocatedTotal)}
                         </div>
                       </div>
                     </div>
 
-                    <div style={{ textAlign: 'right' }}>
+                    <div className="wallet-progress-track" style={{ height: 7, margin: '2px 0' }}>
                       <div
-                        className={`tx-amt ${summary.isOverBudget ? 'tx-amt--out' : 'tx-amt--in'}`}
-                      >
-                        {formatCompactIDR(summary.remaining)}
-                      </div>
-                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600 }}>
-                        {summary.isOverBudget ? 'Overbudget' : 'Remaining'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Transparent Accounting Source Breakdown */}
-                  <div className="pocket-card__sources">
-                    {summary.allocatedFromPool > 0 && (
-                      <span className="pocket-origin-pill">
-                        Pool: {formatCompactIDR(summary.allocatedFromPool)}
-                      </span>
-                    )}
-                    {summary.allocatedFromFundraise > 0 && (
-                      <span className="pocket-origin-pill">
-                        Fundraise: {formatCompactIDR(summary.allocatedFromFundraise)}
-                      </span>
-                    )}
-                    <span className="pocket-origin-pill">
-                      Total: {formatCompactIDR(summary.allocatedTotal)}
-                    </span>
-                  </div>
-
-                  <div className="wallet-progress-track" style={{ margin: '2px 0' }}>
-                    <div
-                      className="wallet-progress-fill"
-                      style={{
-                        width: `${Math.min(100, summary.progressPct)}%`,
-                        background: summary.isOverBudget
-                          ? 'var(--accent-coral)'
-                          : 'var(--brand-matcha)',
-                      }}
-                    />
-                  </div>
-
-                  {canEdit && (
-                    <div className="pocket-card__actions">
-                      <button
-                        type="button"
-                        className="tx-inline-del-btn tactile"
-                        aria-label={`Delete ${summary.pocket.name} pocket`}
-                        onClick={() => {
-                          triggerFeedback('warning');
-                          setConfirmDeletePocket(summary.pocket);
+                        className="wallet-progress-fill"
+                        style={{
+                          width: `${Math.min(100, summary.progressPct)}%`,
+                          background: summary.isOverBudget
+                            ? 'var(--accent-coral)'
+                            : 'var(--brand-matcha)',
                         }}
-                      >
-                        <Trash2 size={14} strokeWidth={2} />
-                      </button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          guardSharedEdit(() =>
-                            setPocketSheet({ open: true, editing: summary }),
-                          )
-                        }
-                      >
-                        Allocate
-                      </Button>
-                      <Button
-                        variant="matcha"
-                        size="sm"
-                        onClick={() =>
-                          guardSharedEdit(() =>
-                            setComposer({
-                              open: true,
-                              mode: 'expense',
-                              editing: null,
-                              defaultBudgetPocketId: summary.pocket.id,
-                            }),
-                          )
-                        }
-                      >
-                        Spend
-                      </Button>
+                      />
                     </div>
-                  )}
-                </GlassCard>
-              ))}
+
+                    {canEdit && (
+                      <div
+                        className="pocket-card__actions"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className="tx-inline-del-btn tactile"
+                          aria-label={`Delete ${summary.pocket.name} pocket`}
+                          onClick={() => {
+                            triggerFeedback('warning');
+                            setConfirmDeletePocket(summary.pocket);
+                          }}
+                        >
+                          <Trash2 size={14} strokeWidth={2} />
+                        </button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            guardSharedEdit(() =>
+                              setPocketSheet({ open: true, editing: summary }),
+                            )
+                          }
+                        >
+                          Allocate
+                        </Button>
+                        <Button
+                          variant="matcha"
+                          size="sm"
+                          onClick={() =>
+                            guardSharedEdit(() =>
+                              setComposer({
+                                open: true,
+                                mode: 'expense',
+                                editing: null,
+                                defaultBudgetPocketId: summary.pocket.id,
+                              }),
+                            )
+                          }
+                        >
+                          Spend
+                        </Button>
+                      </div>
+                    )}
+                  </GlassCard>
+                );
+              })}
             </div>
           )}
         </>
@@ -844,6 +1005,8 @@ export function WalletScreen({
           </div>
         </>
       )}
+        </div>
+      </div>
 
       {/* Floating Glass (+) Button — hidden in View-Only Mode, Editor-only on shared tabs */}
       {!viewOnlyMode && (subTab === 'personal' || canEdit) && (
