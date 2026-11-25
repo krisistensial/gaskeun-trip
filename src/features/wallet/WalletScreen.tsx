@@ -82,7 +82,6 @@ export function WalletScreen({
   personalTransactions,
   canEdit,
   isHost = false,
-  viewOnlyMode = false,
   onOpenMenu,
   onRequestUnlockPin,
   onUpdateTrip,
@@ -686,41 +685,35 @@ export function WalletScreen({
               <Badge tone="matcha">{ledger.poolProgressPct}%</Badge>
             </div>
             <div className="wallet-hero-num">{formatIDR(ledger.poolCollected)}</div>
-            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              of {formatIDR(ledger.poolTarget)} target ({ledger.activeMemberCount} riders)
+            <div
+              style={{
+                fontSize: 12.5,
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 8,
+              }}
+            >
+              <span>
+                of {formatIDR(ledger.poolTarget)} target ({ledger.activeMemberCount} riders)
+              </span>
+              {trip.members.some((m) => m.status === 'tentative') && canEdit && (
+                <button
+                  type="button"
+                  className="wallet-filter-pill tactile"
+                  style={{ height: 22, padding: '0 8px', fontSize: 10.5 }}
+                  onClick={handleToggleTentative}
+                >
+                  {trip.financeConfig.includeTentative ? 'Tentative: Included' : 'Tentative: Excluded'}
+                </button>
+              )}
             </div>
             <div className="wallet-progress-track">
               <div
                 className="wallet-progress-fill"
                 style={{ width: `${ledger.poolProgressPct}%` }}
               />
-            </div>
-
-            {/* Interactive Crew Avatar Strip (Tap tentative rider to recalculate split) */}
-            <div className="snap-peek-row">
-              {trip.members.map((m) => {
-                const isTentative = m.status === 'tentative';
-                return (
-                  <Avatar
-                    key={m.id}
-                    initials={m.initials}
-                    name={m.name}
-                    src={m.avatarDataUrl}
-                    showLabel
-                    size="sm"
-                    bg={m.avatarBg}
-                    color={m.avatarColor}
-                    variant={
-                      isTentative
-                        ? trip.financeConfig.includeTentative
-                          ? 'selected'
-                          : 'tentative'
-                        : 'solid'
-                    }
-                    onClick={isTentative ? handleToggleTentative : () => setSelectedMemberId(m.id)}
-                  />
-                );
-              })}
             </div>
           </GlassCard>
 
@@ -1008,15 +1001,13 @@ export function WalletScreen({
                 title="No personal treats yet"
                 description="Log snacks, coffee, or souvenirs privately on this phone."
                 action={
-                  !viewOnlyMode ? (
-                    <Button
-                      variant="matcha"
-                      size="sm"
-                      onClick={() => setComposer({ open: true, mode: 'personal', editing: null })}
-                    >
-                      Add Personal Item
-                    </Button>
-                  ) : undefined
+                  <Button
+                    variant="matcha"
+                    size="sm"
+                    onClick={() => setComposer({ open: true, mode: 'personal', editing: null })}
+                  >
+                    Add Personal Item
+                  </Button>
                 }
               />
             ) : (
@@ -1025,12 +1016,9 @@ export function WalletScreen({
                   key={tx.id}
                   variant="clear"
                   padding="md"
-                  interactive={!viewOnlyMode}
+                  interactive
                   className="tx-card"
-                  onClick={() => {
-                    if (viewOnlyMode) return;
-                    setComposer({ open: true, mode: 'personal', editing: tx });
-                  }}
+                  onClick={() => setComposer({ open: true, mode: 'personal', editing: tx })}
                 >
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{tx.title}</div>
@@ -1051,8 +1039,8 @@ export function WalletScreen({
         </div>
       </div>
 
-      {/* Floating Glass (+) Button — hidden in View-Only Mode, Editor-only on shared tabs */}
-      {!viewOnlyMode && (subTab === 'personal' || canEdit) && (
+      {/* Floating Glass (+) Button — Personal always open; Shared tabs for Wallet editors */}
+      {(subTab === 'personal' || canEdit) && (
         <CornerOrb
           kind="add"
           size="lg"

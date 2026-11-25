@@ -87,6 +87,7 @@ export interface PlanScreenProps {
   activeMemberId: string | null;
   activeMemberName: string;
   canEdit: boolean;
+  canDeleteIdeas?: boolean;
   onRequestUnlockPin: () => void;
   onOpenRoute: (target: RouteTarget) => void;
   onUpdateTrip: (updater: (prev: SharedTrip) => SharedTrip, toastMsg?: string) => void;
@@ -99,6 +100,7 @@ export function PlanScreen({
   activeMemberId,
   activeMemberName,
   canEdit,
+  canDeleteIdeas = canEdit,
   onRequestUnlockPin,
   onOpenRoute,
   onUpdateTrip,
@@ -1427,6 +1429,7 @@ export function PlanScreen({
         activeMemberId={activeMemberId}
         activeMemberName={activeMemberName}
         canEditTrip={canEdit}
+        canDeleteIdea={canDeleteIdeas}
         defaultDayId={selectedDay?.isIdeas ? undefined : selectedDay?.id}
         onSave={handleSaveIdea}
         onDelete={handleDeleteIdea}

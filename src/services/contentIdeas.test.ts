@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContentIdea, PlanItem } from '../types/trip';
 import {
+  canDeleteContentIdea,
   canManageContentIdea,
   detectContentPlatform,
   extractAutoThumbnail,
@@ -181,7 +182,7 @@ describe('Content Ideas platform detection, thumbnails & Plan rundown merge', ()
     expect(togglePlanFilter(['place', 'activity'], 'all')).toEqual([]);
   });
 
-  it('enforces creator or Host/Editor edit rights for existing content ideas while letting all crew add', () => {
+  it('lets all crew members add and edit content ideas while restricting delete to Host & Plan Editors', () => {
     const idea: ContentIdea = {
       id: 'idea-1',
       title: 'POV Shot',
@@ -195,7 +196,11 @@ describe('Content Ideas platform detection, thumbnails & Plan rundown merge', ()
 
     expect(canManageContentIdea(null, 'm-dora', false)).toBe(true);
     expect(canManageContentIdea(idea, 'm-rani', false)).toBe(true);
-    expect(canManageContentIdea(idea, 'm-dora', false)).toBe(false);
+    expect(canManageContentIdea(idea, 'm-dora', false)).toBe(true);
+    expect(canManageContentIdea(idea, 'guest', false)).toBe(false);
     expect(canManageContentIdea(idea, 'm-kris', true)).toBe(true);
+
+    expect(canDeleteContentIdea(false)).toBe(false);
+    expect(canDeleteContentIdea(true)).toBe(true);
   });
 });

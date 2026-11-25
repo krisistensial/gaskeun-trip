@@ -2,18 +2,24 @@ import { describe, expect, it } from 'vitest';
 import seedData from '../data/seed-solo-jogja-2027.json';
 import type { SharedTrip } from '../types/trip';
 import {
+  canEditModule,
   canEditTrip,
   changeOwnPasscode,
+  formatMemberAccessLabel,
   getHostReadableCrewEditPin,
+  getMemberEditScopes,
   getMemberRoleLabel,
   isHostMember,
+  isTripEditorOrHost,
   isValidPasscode,
   memberHasPasscode,
   normalizePasscode,
   resetMemberPasscodeByHost,
   setCrewEditPinByHost,
+  setMemberEditScopesByHost,
   setMemberPasscodeByHost,
   setMemberPasscodeInTrip,
+  toggleMemberEditScopeByHost,
   toggleStopDoneStatus,
   verifyCrewEditPin,
   verifyMemberPasscode,
@@ -21,29 +27,82 @@ import {
 
 const pilotTrip = seedData as unknown as SharedTrip;
 
-describe('Role-Based Edit Permissions & Manual Done Status Toggle', () => {
-  it('grants edit rights to Host (Kris) and Host-designated Editors, hides edit for Viewers & Guests', () => {
-    // Kris is creator / Host
+describe('Granular Role-Based Edit Permissions & Manual Done Status Toggle', () => {
+  it('gives Host all module scopes while denying global PIN bypass for non-editors', () => {
+    // Kris is creator / Host -> always gets all 4 scopes
     expect(isHostMember(pilotTrip, 'm-kris')).toBe(true);
-    expect(canEditTrip(pilotTrip, 'm-kris', false)).toBe(true);
-    expect(getMemberRoleLabel(pilotTrip, 'm-kris', false)).toBe('Host');
+    expect(getMemberEditScopes(pilotTrip, 'm-kris')).toEqual(['crew', 'plan', 'wallet', 'prep']);
+    expect(canEditTrip(pilotTrip, 'm-kris')).toBe(true);
+    expect(getMemberRoleLabel(pilotTrip, 'm-kris')).toBe('Host');
+    expect(formatMemberAccessLabel(pilotTrip, 'm-kris')).toBe('Host');
 
-    // Rani is NOT in editorMemberIds by default -> Viewer
-    expect(canEditTrip(pilotTrip, 'm-rani', false)).toBe(false);
-    expect(getMemberRoleLabel(pilotTrip, 'm-rani', false)).toBe('Viewer');
+    // Rani is NOT assigned any scope by default -> Member
+    expect(canEditTrip(pilotTrip, 'm-rani')).toBe(false);
+    expect(getMemberRoleLabel(pilotTrip, 'm-rani')).toBe('Member');
+    expect(formatMemberAccessLabel(pilotTrip, 'm-rani')).toBe('Member');
 
-    // Guest -> Viewer unless PIN unlocked
+    // Guest & unassigned members stay blocked even if pinUnlocked=true (no PIN bypass)
     expect(canEditTrip(pilotTrip, 'guest', false)).toBe(false);
-    expect(canEditTrip(pilotTrip, 'guest', true)).toBe(true);
+    expect(canEditTrip(pilotTrip, 'guest', true)).toBe(false);
+    expect(canEditTrip(pilotTrip, 'm-rani', true)).toBe(false);
 
-    // Host designates Rani as Editor -> gains edit rights without PIN
-    const withRaniEditor: SharedTrip = {
+    // Legacy editorMemberIds without explicit memberPermissions falls back cleanly to all scopes
+    const legacyEditorTrip: SharedTrip = {
       ...pilotTrip,
       editorMemberIds: ['m-kris', 'm-rani'],
     };
-    expect(canEditTrip(withRaniEditor, 'm-rani', false)).toBe(true);
-    expect(getMemberRoleLabel(withRaniEditor, 'm-rani', false)).toBe('Editor');
-    expect(canEditTrip(withRaniEditor, 'm-dora', false)).toBe(false);
+    expect(getMemberEditScopes(legacyEditorTrip, 'm-rani')).toEqual([
+      'crew',
+      'plan',
+      'wallet',
+      'prep',
+    ]);
+    expect(canEditTrip(legacyEditorTrip, 'm-rani')).toBe(true);
+    expect(getMemberRoleLabel(legacyEditorTrip, 'm-rani')).toBe('Editor');
+  });
+
+  it('lets Host assign independent per-module edit permissions (crew, plan, wallet, prep)', () => {
+    // Non-host cannot modify member permissions
+    const denied = toggleMemberEditScopeByHost(pilotTrip, 'm-rani', 'm-dora', 'wallet');
+    expect(denied.ok).toBe(false);
+
+    // Host cannot strip Host's own permissions
+    const stripHost = setMemberEditScopesByHost(pilotTrip, 'm-kris', 'm-kris', []);
+    expect(stripHost.ok).toBe(false);
+
+    // Host grants Rani ONLY Wallet + Crew access, and Dora ONLY Plan access
+    const raniWallet = toggleMemberEditScopeByHost(pilotTrip, 'm-kris', 'm-rani', 'wallet');
+    expect(raniWallet.ok).toBe(true);
+    const raniWalletCrew = toggleMemberEditScopeByHost(
+      raniWallet.trip,
+      'm-kris',
+      'm-rani',
+      'crew',
+    );
+    expect(raniWalletCrew.ok).toBe(true);
+    const finalRes = toggleMemberEditScopeByHost(
+      raniWalletCrew.trip,
+      'm-kris',
+      'm-dora',
+      'plan',
+    );
+    expect(finalRes.ok).toBe(true);
+    const scopedTrip = finalRes.trip;
+
+    expect(canEditModule(scopedTrip, 'm-rani', 'wallet')).toBe(true);
+    expect(canEditModule(scopedTrip, 'm-rani', 'crew')).toBe(true);
+    expect(canEditModule(scopedTrip, 'm-rani', 'plan')).toBe(false);
+    expect(canEditModule(scopedTrip, 'm-rani', 'prep')).toBe(false);
+    expect(formatMemberAccessLabel(scopedTrip, 'm-rani')).toBe('Crew · Wallet');
+    expect(isTripEditorOrHost(scopedTrip, 'm-rani')).toBe(true);
+
+    expect(canEditModule(scopedTrip, 'm-dora', 'plan')).toBe(true);
+    expect(canEditModule(scopedTrip, 'm-dora', 'wallet')).toBe(false);
+    expect(formatMemberAccessLabel(scopedTrip, 'm-dora')).toBe('Plan');
+
+    // Toggling wallet off for Rani leaves crew intact
+    const toggledOff = toggleMemberEditScopeByHost(scopedTrip, 'm-kris', 'm-rani', 'wallet');
+    expect(getMemberEditScopes(toggledOff.trip, 'm-rani')).toEqual(['crew']);
   });
 
   it('toggles itinerary stop Done status cleanly', () => {

@@ -48,16 +48,22 @@ import {
 } from '../../services/notifications';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import {
+  TRIP_EDIT_SCOPE_META,
   changeOwnPasscode,
-  getHostReadableCrewEditPin,
+  formatMemberAccessLabel,
+  getMemberEditScopes,
   isValidPasscode,
   memberHasPasscode,
   normalizePasscode,
-  type TripAccessRole,
 } from '../../services/permissions';
 import { isCloudSyncConfigured } from '../../services/supabaseSync';
 import type { CroppedImageResult } from '../../services/photoCrop';
-import type { EditLogCategory, SharedTrip, TripMember } from '../../types/trip';
+import type {
+  EditLogCategory,
+  SharedTrip,
+  TripEditScope,
+  TripMember,
+} from '../../types/trip';
 import './sheets.css';
 
 export type HomePhase = 'pre-trip' | 'on-trip';
@@ -70,8 +76,6 @@ export interface TripMenuSheetProps {
   hasEditRights?: boolean;
   viewOnlyMode?: boolean;
   isHost: boolean;
-  pinUnlocked: boolean;
-  roleLabel: TripAccessRole;
   activeMember?: TripMember;
   activeMemberName: string;
   lastSyncedAt?: string | null;
@@ -84,11 +88,8 @@ export interface TripMenuSheetProps {
   onPhaseChange: (phase: HomePhase) => void;
   onUpdateActiveAvatar: (avatarDataUrl: string) => void;
   onSetMemberPasscode: (memberId: string, passcode: string | undefined, toastMsg?: string) => void;
-  onUpdateCrewEditPin: (newPin: string) => void;
-  onToggleEditorMember: (memberId: string) => void;
+  onToggleMemberScope: (memberId: string, scope: TripEditScope) => void;
   onClearEditLog?: () => void;
-  onRequestUnlock: () => void;
-  onLockEditing: () => void;
   onOpenTripSettings: () => void;
   onCopyInvite: () => void;
   onSwitchProfile: () => void;
@@ -104,12 +105,9 @@ export function TripMenuSheet({
   open,
   trip,
   phase,
-  canEdit,
-  hasEditRights = canEdit,
+  hasEditRights = false,
   viewOnlyMode = false,
   isHost,
-  pinUnlocked,
-  roleLabel,
   activeMember,
   activeMemberName,
   lastSyncedAt,
@@ -122,11 +120,8 @@ export function TripMenuSheet({
   onPhaseChange,
   onUpdateActiveAvatar,
   onSetMemberPasscode,
-  onUpdateCrewEditPin,
-  onToggleEditorMember,
+  onToggleMemberScope,
   onClearEditLog,
-  onRequestUnlock,
-  onLockEditing,
   onOpenTripSettings,
   onCopyInvite,
   onSwitchProfile,
@@ -159,11 +154,6 @@ export function TripMenuSheet({
   const [hostShowPin, setHostShowPin] = useState(false);
   const [confirmResetMember, setConfirmResetMember] = useState<TripMember | null>(null);
 
-  // Host-only Shared Crew Editing PIN state
-  const [revealCrewEditPin, setRevealCrewEditPin] = useState(false);
-  const [crewEditPinInput, setCrewEditPinInput] = useState('');
-  const [showCrewEditPinInput, setShowCrewEditPinInput] = useState(false);
-
   // Local device multisensory preferences (Haptics + Web Audio + Phone Notifications)
   const [feedbackPrefs, setFeedbackPrefs] = useState(() => getFeedbackPreferences());
   const [notifEnabled, setNotifEnabled] = useState(() => getDeviceNotificationsEnabled());
@@ -184,9 +174,6 @@ export function TripMenuSheet({
     setHostPinTargetId(null);
     setHostPinValue('');
     setConfirmResetMember(null);
-    setRevealCrewEditPin(false);
-    setCrewEditPinInput('');
-    setShowCrewEditPinInput(false);
   };
 
   const handleCroppedAvatar = async (cropped: CroppedImageResult) => {
@@ -251,18 +238,10 @@ export function TripMenuSheet({
     setHostShowPin(false);
   };
 
-  const handleHostSaveCrewEditPin = (e: FormEvent) => {
-    e.preventDefault();
-    if (!isHost || !isValidPasscode(crewEditPinInput)) return;
-    triggerFeedback('success');
-    onUpdateCrewEditPin(crewEditPinInput);
-    setCrewEditPinInput('');
-    setShowCrewEditPinInput(false);
-  };
-
-  const hostReadableCrewEditPin = isHost ? getHostReadableCrewEditPin(trip) : null;
-
-  const editorIds = new Set(trip.editorMemberIds ?? []);
+  const roleAccessText = formatMemberAccessLabel(trip, activeMember?.id ?? null);
+  const activeEditorCount = trip.members.filter(
+    (m) => m.isCreator || getMemberEditScopes(trip, m.id).length > 0,
+  ).length;
   const cloudConfigured = isCloudSyncConfigured();
   const deviceOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
   const cloudConnected = cloudConfigured && deviceOnline;
@@ -342,7 +321,7 @@ export function TripMenuSheet({
               {activeMemberName}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 3 }}>
-              <Badge tone={roleLabel === 'Viewer' ? 'neutral' : 'mint'}>{roleLabel}</Badge>
+              <Badge tone={roleAccessText === 'Member' ? 'neutral' : 'mint'}>{roleAccessText}</Badge>
               {viewOnlyMode && hasEditRights && (
                 <Badge tone="amber" icon={<Eye size={10} strokeWidth={2.2} />}>
                   View-Only
@@ -427,7 +406,7 @@ export function TripMenuSheet({
               <span>
                 <div className="gk-menu-item__title">View-Only Mode</div>
                 <div className="gk-menu-item__sub">
-                  Hide all edit controls for a clean trip-day view
+                  Hide edit controls (Drive upload &amp; chat stay active)
                 </div>
               </span>
             </span>
@@ -890,97 +869,28 @@ export function TripMenuSheet({
                 <span>
                   <div className="gk-menu-item__title">Crew Access &amp; Editors</div>
                   <div className="gk-menu-item__sub">
-                    Manage editors and set or reset member passcodes
+                    Assign module edit rights &amp; member passcodes
                   </div>
                 </span>
               </span>
               <Badge tone="matcha">
-                {Math.max(1, editorIds.size)} active
+                {Math.max(1, activeEditorCount)} active
               </Badge>
             </button>
 
             {showEditorsList && (
               <div className="menu-crew-panel">
-                {/* Host-Only Shared Crew Editing PIN Card */}
-                <form className="menu-crew-pin-card" onSubmit={handleHostSaveCrewEditPin}>
-                  <div className="menu-crew-pin-head">
-                    <div>
-                      <div className="menu-crew-pin-title">Crew Editing PIN</div>
-                      <div className="menu-crew-pin-sub">
-                        4-digit code to unlock shared editing
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="menu-crew-pin-badge tactile"
-                      aria-label={revealCrewEditPin ? 'Hide Crew Editing PIN' : 'Show Crew Editing PIN'}
-                      onClick={() => setRevealCrewEditPin((v) => !v)}
-                    >
-                      <span className="menu-crew-pin-digits">
-                        {revealCrewEditPin ? hostReadableCrewEditPin ?? 'Custom' : '••••'}
-                      </span>
-                      {revealCrewEditPin ? (
-                        <EyeOff size={13} strokeWidth={2} />
-                      ) : (
-                        <Eye size={13} strokeWidth={2} />
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="menu-host-pin-inline">
-                    <div className="menu-pin-shell menu-pin-shell--compact">
-                      <input
-                        id="host-crew-edit-pin"
-                        type={showCrewEditPinInput ? 'text' : 'password'}
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        maxLength={4}
-                        placeholder="••••"
-                        aria-label="New 4-digit Crew Editing PIN"
-                        value={crewEditPinInput}
-                        className="menu-pin-input menu-pin-input--compact"
-                        onChange={(e) => setCrewEditPinInput(normalizePasscode(e.target.value))}
-                      />
-                      <button
-                        type="button"
-                        className="menu-pin-eye"
-                        aria-label={showCrewEditPinInput ? 'Hide new PIN' : 'Show new PIN'}
-                        onClick={() => setShowCrewEditPinInput((s) => !s)}
-                      >
-                        {showCrewEditPinInput ? (
-                          <EyeOff size={14} strokeWidth={1.9} />
-                        ) : (
-                          <Eye size={14} strokeWidth={1.9} />
-                        )}
-                      </button>
-                    </div>
-                    <Button
-                      type="submit"
-                      variant="matcha"
-                      size="sm"
-                      disabled={crewEditPinInput.length < 4}
-                    >
-                      Save PIN
-                    </Button>
-                  </div>
-                </form>
-
                 {trip.members.map((m) => {
                   const isCreator = Boolean(m.isCreator);
-                  const isEd = isCreator || editorIds.has(m.id);
+                  const memberScopes = getMemberEditScopes(trip, m.id);
+                  const memberSummary = formatMemberAccessLabel(trip, m.id);
                   const hasPin = memberHasPasscode(m);
                   const isSettingHostPin = hostPinTargetId === m.id;
 
                   return (
                     <div key={m.id} className="menu-crew-row-card">
                       <div className="menu-crew-row-top">
-                        <button
-                          type="button"
-                          disabled={isCreator}
-                          onClick={() => onToggleEditorMember(m.id)}
-                          className="menu-crew-member-btn"
-                          style={{ opacity: isCreator ? 0.9 : 1 }}
-                        >
+                        <div className="menu-crew-member-btn">
                           <Avatar
                             initials={m.initials}
                             name={m.name}
@@ -989,18 +899,21 @@ export function TripMenuSheet({
                             bg={m.avatarBg}
                             color={m.avatarColor}
                           />
-                          <span className="menu-crew-member-name">
-                            {m.name}
-                            {hasPin && (
-                              <Lock
-                                size={11}
-                                strokeWidth={2.2}
-                                color="var(--brand-matcha)"
-                                style={{ marginLeft: 5, verticalAlign: '-1px' }}
-                              />
-                            )}
-                          </span>
-                        </button>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="menu-crew-member-name">
+                              {m.name}
+                              {hasPin && (
+                                <Lock
+                                  size={11}
+                                  strokeWidth={2.2}
+                                  color="var(--brand-matcha)"
+                                  style={{ marginLeft: 5, verticalAlign: '-1px' }}
+                                />
+                              )}
+                            </div>
+                            <div className="menu-crew-member-meta">{memberSummary}</div>
+                          </div>
+                        </div>
 
                         <div className="menu-crew-controls">
                           {hasPin ? (
@@ -1027,20 +940,34 @@ export function TripMenuSheet({
                             </button>
                           )}
 
-                          {isCreator ? (
-                            <Badge tone="matcha">Host</Badge>
-                          ) : (
-                            <button
-                              type="button"
-                              aria-label={isEd ? `Remove ${m.name} as editor` : `Make ${m.name} an editor`}
-                              onClick={() => onToggleEditorMember(m.id)}
-                              className={`menu-editor-check ${isEd ? 'menu-editor-check--on' : ''}`}
-                            >
-                              {isEd && <Check size={13} strokeWidth={2.6} />}
-                            </button>
-                          )}
+                          {isCreator && <Badge tone="matcha">Host</Badge>}
                         </div>
                       </div>
+
+                      {!isCreator && (
+                        <div className="menu-scope-row" role="group" aria-label={`Module permissions for ${m.name}`}>
+                          {TRIP_EDIT_SCOPE_META.map((meta) => {
+                            const active = memberScopes.includes(meta.scope);
+                            return (
+                              <button
+                                key={meta.scope}
+                                type="button"
+                                aria-pressed={active}
+                                className={`menu-scope-chip tactile ${
+                                  active ? 'menu-scope-chip--on' : ''
+                                }`}
+                                onClick={() => {
+                                  triggerFeedback('tap');
+                                  onToggleMemberScope(m.id, meta.scope);
+                                }}
+                              >
+                                {active && <Check size={11} strokeWidth={2.6} />}
+                                <span>{meta.shortLabel}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
 
                       {isSettingHostPin && (
                         <div className="menu-host-pin-inline">
@@ -1107,8 +1034,8 @@ export function TripMenuSheet({
           </>
         )}
 
-        {/* Trip Settings (Visible to Host & Designated Editors) */}
-        {canEdit && (
+        {/* Trip Settings (Host Only, hidden in View-Only Mode) */}
+        {isHost && !viewOnlyMode && (
           <button
             type="button"
             className="gk-menu-item"
@@ -1126,40 +1053,6 @@ export function TripMenuSheet({
                 <div className="gk-menu-item__title">Trip Settings</div>
                 <div className="gk-menu-item__sub">
                   Trip name, subtitle, targets &amp; Drive sync
-                </div>
-              </span>
-            </span>
-          </button>
-        )}
-
-        {/* Subtle Crew PIN Unlock for Viewers (or Lock if unlocked via PIN) */}
-        {(!hasEditRights || (pinUnlocked && !isHost && !viewOnlyMode)) && (
-          <button
-            type="button"
-            className="gk-menu-item"
-            onClick={() => {
-              resetLocalPanels();
-              onClose();
-              if (pinUnlocked) onLockEditing();
-              else onRequestUnlock();
-            }}
-          >
-            <span className="gk-menu-item__left">
-              <span className="gk-menu-item__icon">
-                {pinUnlocked ? (
-                  <Lock size={18} strokeWidth={1.8} />
-                ) : (
-                  <KeyRound size={18} strokeWidth={1.8} />
-                )}
-              </span>
-              <span>
-                <div className="gk-menu-item__title">
-                  {pinUnlocked ? 'Lock Crew Editing' : 'Unlock with Crew PIN'}
-                </div>
-                <div className="gk-menu-item__sub">
-                  {pinUnlocked
-                    ? 'Return to clean viewer mode'
-                    : 'Enter 4-digit PIN for temporary edit access'}
                 </div>
               </span>
             </span>

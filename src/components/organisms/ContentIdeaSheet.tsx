@@ -12,6 +12,7 @@ import {
 import { Badge, Button, ConfirmDialog, Input, LiquidBottomSheet } from '../atoms';
 import { PhotoCropperSheet } from './PhotoCropperSheet';
 import {
+  canDeleteContentIdea,
   canManageContentIdea,
   detectContentPlatform,
   extractAutoThumbnail,
@@ -28,7 +29,10 @@ export interface ContentIdeaSheetProps {
   idea: ContentIdea | null;
   activeMemberId: string | null;
   activeMemberName: string;
+  /** True when user is Host or Plan Editor (controls Delete action) */
   canEditTrip: boolean;
+  /** Optional explicit override for Delete permission (defaults to canEditTrip) */
+  canDeleteIdea?: boolean;
   defaultDayId?: string;
   onSave: (idea: ContentIdea, isNew: boolean) => void;
   onDelete: (ideaId: string) => void;
@@ -42,6 +46,7 @@ export function ContentIdeaSheet({
   activeMemberId,
   activeMemberName,
   canEditTrip,
+  canDeleteIdea = canEditTrip,
   defaultDayId,
   onSave,
   onDelete,
@@ -50,6 +55,7 @@ export function ContentIdeaSheet({
   const tripDays = useMemo(() => trip.days.filter((d) => !d.isIdeas), [trip.days]);
   const isNew = !idea;
   const editable = canManageContentIdea(idea, activeMemberId, canEditTrip);
+  const deletable = !isNew && canDeleteContentIdea(canDeleteIdea);
 
   const [referenceUrl, setReferenceUrl] = useState('');
   const [title, setTitle] = useState('');
@@ -362,9 +368,9 @@ export function ContentIdeaSheet({
             </div>
           )}
 
-          {/* Ergonomic Action Footer: Red Delete on LEFT, Matcha Save on RIGHT */}
+          {/* Ergonomic Action Footer: Red Delete on LEFT (Host & Editors only), Matcha Save on RIGHT */}
           <div className="idea-sheet-actions">
-            {!isNew && editable ? (
+            {deletable ? (
               <Button
                 variant="danger"
                 size="md"

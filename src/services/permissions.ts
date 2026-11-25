@@ -1,7 +1,34 @@
-import type { PlanItemStatus, SharedTrip, TripMember } from '../types/trip';
+import type { PlanItemStatus, SharedTrip, TripEditScope, TripMember } from '../types/trip';
 import { verifyPin } from './tripFactory';
 
-export type TripAccessRole = 'Host' | 'Editor' | 'Viewer';
+export type TripAccessRole = 'Host' | 'Editor' | 'Member';
+
+export const ALL_TRIP_EDIT_SCOPES: readonly TripEditScope[] = [
+  'crew',
+  'plan',
+  'wallet',
+  'prep',
+] as const;
+
+export const TRIP_EDIT_SCOPE_META: ReadonlyArray<{
+  scope: TripEditScope;
+  label: string;
+  shortLabel: string;
+}> = [
+  { scope: 'crew', label: 'Crew & Stay', shortLabel: 'Crew' },
+  { scope: 'plan', label: 'Plan', shortLabel: 'Plan' },
+  { scope: 'wallet', label: 'Wallet', shortLabel: 'Wallet' },
+  { scope: 'prep', label: 'Group Prep', shortLabel: 'Prep' },
+];
+
+/**
+ * Normalizes a scope array to deduplicated valid TripEditScope entries in canonical order.
+ */
+export function normalizeEditScopes(raw?: readonly string[] | null): TripEditScope[] {
+  if (!Array.isArray(raw)) return [];
+  const valid = new Set(raw);
+  return ALL_TRIP_EDIT_SCOPES.filter((scope) => valid.has(scope));
+}
 
 /**
  * Returns true if the active member is the trip Host (creator).
@@ -13,30 +40,156 @@ export function isHostMember(trip: SharedTrip, activeMemberId: string | null): b
 }
 
 /**
- * Returns true if the current user can edit Layer-1 Shared Trip data:
- * - Unlocked via 4-digit Crew PIN, OR
- * - Is the trip Host (creator), OR
- * - Is explicitly designated in `trip.editorMemberIds`.
+ * Resolves the exact modular edit scopes held by a member:
+ * - Host (`isCreator`) always holds all 4 scopes ('crew', 'plan', 'wallet', 'prep').
+ * - Members configured in `trip.memberPermissions` receive strictly those scopes.
+ * - Legacy trips with `editorMemberIds` (before granular `memberPermissions` was saved
+ *   for that member) default to full 4-scope editor rights for backward compatibility.
+ * - Guests and unassigned members return `[]` (no shared edit bypass via global PIN).
+ */
+export function getMemberEditScopes(
+  trip: SharedTrip,
+  activeMemberId: string | null,
+): TripEditScope[] {
+  if (!activeMemberId || activeMemberId === 'guest') return [];
+  if (isHostMember(trip, activeMemberId)) return [...ALL_TRIP_EDIT_SCOPES];
+
+  const perms = trip.memberPermissions;
+  if (perms && Object.prototype.hasOwnProperty.call(perms, activeMemberId)) {
+    return normalizeEditScopes(perms[activeMemberId]);
+  }
+
+  if (Array.isArray(trip.editorMemberIds) && trip.editorMemberIds.includes(activeMemberId)) {
+    return [...ALL_TRIP_EDIT_SCOPES];
+  }
+
+  return [];
+}
+
+/**
+ * Returns true if the active member is allowed to edit a specific shared trip module.
+ */
+export function canEditModule(
+  trip: SharedTrip,
+  activeMemberId: string | null,
+  scope: TripEditScope,
+): boolean {
+  return getMemberEditScopes(trip, activeMemberId).includes(scope);
+}
+
+/**
+ * Returns true if the active member is the Host or holds at least one module edit permission.
+ */
+export function isTripEditorOrHost(trip: SharedTrip, activeMemberId: string | null): boolean {
+  return getMemberEditScopes(trip, activeMemberId).length > 0;
+}
+
+/**
+ * Returns true if the current user can edit any shared trip module.
+ * Shared edits follow strict member role assignment (no global PIN bypass).
  */
 export function canEditTrip(
   trip: SharedTrip,
   activeMemberId: string | null,
-  pinUnlocked: boolean,
+  _pinUnlocked?: boolean,
 ): boolean {
-  if (pinUnlocked) return true;
-  if (!activeMemberId || activeMemberId === 'guest') return false;
-  if (isHostMember(trip, activeMemberId)) return true;
-  return Array.isArray(trip.editorMemberIds) && trip.editorMemberIds.includes(activeMemberId);
+  void _pinUnlocked;
+  return isTripEditorOrHost(trip, activeMemberId);
 }
 
 export function getMemberRoleLabel(
   trip: SharedTrip,
   activeMemberId: string | null,
-  pinUnlocked: boolean,
+  _pinUnlocked?: boolean,
 ): TripAccessRole {
+  void _pinUnlocked;
   if (isHostMember(trip, activeMemberId)) return 'Host';
-  if (canEditTrip(trip, activeMemberId, pinUnlocked)) return 'Editor';
-  return 'Viewer';
+  if (isTripEditorOrHost(trip, activeMemberId)) return 'Editor';
+  return 'Member';
+}
+
+/**
+ * Formats a concise badge string showing Host, Editor (all 4 scopes),
+ * custom scopes (e.g. "Crew · Wallet"), or Member.
+ */
+export function formatMemberAccessLabel(
+  trip: SharedTrip,
+  activeMemberId: string | null,
+): string {
+  if (isHostMember(trip, activeMemberId)) return 'Host';
+  const scopes = getMemberEditScopes(trip, activeMemberId);
+  if (scopes.length === 0) return 'Member';
+  if (scopes.length === ALL_TRIP_EDIT_SCOPES.length) return 'Editor';
+  const labels = scopes.map(
+    (scope) => TRIP_EDIT_SCOPE_META.find((m) => m.scope === scope)?.shortLabel ?? scope,
+  );
+  return labels.join(' · ');
+}
+
+/**
+ * Host-only assignment of exact modular edit scopes for a non-host crew member.
+ * Synchronizes `memberPermissions` and legacy `editorMemberIds` consistently.
+ */
+export function setMemberEditScopesByHost(
+  trip: SharedTrip,
+  actorMemberId: string | null,
+  targetMemberId: string,
+  nextScopes: readonly TripEditScope[],
+): PasscodeActionResult {
+  if (!isHostMember(trip, actorMemberId)) {
+    return { ok: false, trip, error: 'Only the trip host can change member permissions' };
+  }
+  const target = trip.members.find((m) => m.id === targetMemberId);
+  if (!target) {
+    return { ok: false, trip, error: 'Member not found' };
+  }
+  if (target.isCreator) {
+    return { ok: false, trip, error: 'Host always retains full trip permissions' };
+  }
+
+  const nextPerms: Record<string, TripEditScope[]> = {};
+  for (const m of trip.members) {
+    if (m.isCreator) continue;
+    nextPerms[m.id] =
+      m.id === targetMemberId
+        ? normalizeEditScopes(nextScopes)
+        : getMemberEditScopes(trip, m.id);
+  }
+
+  const hostIds = trip.members.filter((m) => m.isCreator).map((m) => m.id);
+  const derivedEditors = Array.from(
+    new Set([
+      ...hostIds,
+      ...Object.entries(nextPerms)
+        .filter(([, scopes]) => scopes.length > 0)
+        .map(([id]) => id),
+    ]),
+  );
+
+  return {
+    ok: true,
+    trip: {
+      ...trip,
+      memberPermissions: nextPerms,
+      editorMemberIds: derivedEditors,
+    },
+  };
+}
+
+/**
+ * Host-only toggle for one specific module permission (`crew`, `plan`, `wallet`, `prep`)
+ * on a non-host crew member.
+ */
+export function toggleMemberEditScopeByHost(
+  trip: SharedTrip,
+  actorMemberId: string | null,
+  targetMemberId: string,
+  scope: TripEditScope,
+): PasscodeActionResult {
+  const current = getMemberEditScopes(trip, targetMemberId);
+  const has = current.includes(scope);
+  const next = has ? current.filter((s) => s !== scope) : [...current, scope];
+  return setMemberEditScopesByHost(trip, actorMemberId, targetMemberId, next);
 }
 
 /**

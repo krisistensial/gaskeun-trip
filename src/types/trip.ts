@@ -4,6 +4,8 @@
 
 export type DockTabId = 'home' | 'plan' | 'wallet' | 'album' | 'prep';
 
+export type TripEditScope = 'crew' | 'plan' | 'wallet' | 'prep';
+
 export type MemberRole = 'driver' | 'passenger';
 export type MemberStatus = 'confirmed' | 'tentative';
 
@@ -329,8 +331,10 @@ export interface SharedTrip {
   crewPinHash: string;
   /** Host-customizable 4-digit Crew Editing PIN synced in Layer 1 (never leaked in non-host UI) */
   crewEditPin?: string;
-  /** Host-designated editors allowed to edit shared trip data without PIN */
+  /** Host-designated editors allowed to edit shared trip data (legacy/derived summary) */
   editorMemberIds?: string[];
+  /** Granular per-member module edit scopes configured by Host ('crew' | 'plan' | 'wallet' | 'prep') */
+  memberPermissions?: Record<string, TripEditScope[]>;
   /** Shared Home Hero cover photo URL (Layer 1 — synced across all crew devices via Supabase) */
   coverPhotoUrl?: string;
   /** Legacy alias for coverPhotoUrl kept for backward compatibility with older snapshots */

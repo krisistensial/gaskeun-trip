@@ -14,20 +14,16 @@ import './gate.css';
 export interface WhoAreYouScreenProps {
   trip: SharedTrip;
   selectedMemberId: string | null;
-  canEdit: boolean;
   onSelectProfile: (memberId: string) => void;
   onSetMemberPasscode: (memberId: string, passcode: string | undefined, toastMsg?: string) => void;
-  onRequestUnlockPin: () => void;
   onBack: () => void;
 }
 
 export function WhoAreYouScreen({
   trip,
   selectedMemberId,
-  canEdit,
   onSelectProfile,
   onSetMemberPasscode,
-  onRequestUnlockPin,
   onBack,
 }: WhoAreYouScreenProps) {
   const [pendingPickId, setPendingPickId] = useState<string | null>(null);
@@ -176,18 +172,7 @@ export function WhoAreYouScreen({
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Button
-          variant="glass"
-          size="lg"
-          fullWidth
-          leftIcon={<Lock size={16} strokeWidth={1.8} />}
-          onClick={onRequestUnlockPin}
-        >
-          {canEdit ? 'Crew Editing Unlocked' : 'Unlock Crew Editing (4-digit PIN)'}
-        </Button>
-        <p className="gate-footer-note">Tap your profile to continue</p>
-      </div>
+      <p className="gate-footer-note">Tap your profile to continue</p>
 
       {/* Crystal Liquid Profile Join Confirmation + 4-Digit Passcode Guard */}
       <LiquidBottomSheet

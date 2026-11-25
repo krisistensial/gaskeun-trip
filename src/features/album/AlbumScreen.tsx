@@ -58,6 +58,8 @@ export interface AlbumScreenProps {
   activeMemberId: string | null;
   activeMemberName: string;
   canEdit: boolean;
+  canEditSettings?: boolean;
+  canDeleteIdeas?: boolean;
   viewOnlyMode?: boolean;
   onDrivePhotosSync?: (photos: AlbumPhoto[]) => void;
   onSaveLocalPhotos: (photos: AlbumPhoto[], toastMsg?: string) => void;
@@ -90,7 +92,8 @@ export function AlbumScreen({
   activeMemberId,
   activeMemberName,
   canEdit,
-  viewOnlyMode = false,
+  canEditSettings = canEdit,
+  canDeleteIdeas = canEdit,
   onDrivePhotosSync,
   onSaveLocalPhotos,
   onUpdateTrip,
@@ -633,7 +636,7 @@ export function AlbumScreen({
                       }
                     />
                   </button>
-                ) : !viewOnlyMode ? (
+                ) : canEditSettings ? (
                   <button
                     type="button"
                     aria-label="Drive sync settings"
@@ -644,24 +647,22 @@ export function AlbumScreen({
                   </button>
                 ) : null}
 
-                {!viewOnlyMode && (
-                  <Button
-                    variant="matcha"
-                    size="sm"
-                    leftIcon={<Upload size={14} strokeWidth={2} />}
-                    onClick={() => {
-                      triggerFeedback('tap');
-                      fileInputRef.current?.click();
-                    }}
-                  >
-                    Upload
-                  </Button>
-                )}
+                <Button
+                  variant="matcha"
+                  size="sm"
+                  leftIcon={<Upload size={14} strokeWidth={2} />}
+                  onClick={() => {
+                    triggerFeedback('tap');
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  Upload
+                </Button>
               </div>
             </div>
 
             {/* Slim secondary row when local pending photos are ready to push */}
-            {!viewOnlyMode && localPhotos.length > 0 && hasSyncScript && syncHealth.status === 'ok' && (
+            {localPhotos.length > 0 && hasSyncScript && syncHealth.status === 'ok' && (
               <div className="album-drive-capsule__pending">
                 <span className="album-drive-capsule__pending-text">
                   {localPhotos.length} local {localPhotos.length === 1 ? 'photo' : 'photos'} waiting
@@ -687,19 +688,17 @@ export function AlbumScreen({
               title="No trip photos yet"
               description="Upload highlights from your gallery — original quality is preserved for sharing."
               action={
-                !viewOnlyMode ? (
-                  <Button
-                    variant="matcha"
-                    size="sm"
-                    leftIcon={<ImagePlus size={15} strokeWidth={2} />}
-                    onClick={() => {
-                      triggerFeedback('tap');
-                      fileInputRef.current?.click();
-                    }}
-                  >
-                    Upload First Photo
-                  </Button>
-                ) : undefined
+                <Button
+                  variant="matcha"
+                  size="sm"
+                  leftIcon={<ImagePlus size={15} strokeWidth={2} />}
+                  onClick={() => {
+                    triggerFeedback('tap');
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  Upload First Photo
+                </Button>
               }
             />
           ) : (
@@ -758,20 +757,18 @@ export function AlbumScreen({
                 </button>
               ))}
             </div>
-            {!viewOnlyMode && (
-              <Button
-                variant="matcha"
-                size="sm"
-                leftIcon={<Plus size={14} strokeWidth={2.2} />}
-                onClick={() => {
-                  triggerFeedback('tap');
-                  setEditingIdea(null);
-                  setIdeaSheetOpen(true);
-                }}
-              >
-                Idea
-              </Button>
-            )}
+            <Button
+              variant="matcha"
+              size="sm"
+              leftIcon={<Plus size={14} strokeWidth={2.2} />}
+              onClick={() => {
+                triggerFeedback('tap');
+                setEditingIdea(null);
+                setIdeaSheetOpen(true);
+              }}
+            >
+              Idea
+            </Button>
           </div>
 
           {filteredIdeas.length === 0 ? (
@@ -780,20 +777,18 @@ export function AlbumScreen({
               title={ideaFilter === 'all' ? 'No content ideas yet' : 'No matching ideas'}
               description="Save IG Reels, TikTok transitions, or group pose inspiration so the crew never forgets a shot."
               action={
-                !viewOnlyMode ? (
-                  <Button
-                    variant="matcha"
-                    size="sm"
-                    leftIcon={<Plus size={14} strokeWidth={2.2} />}
-                    onClick={() => {
-                      triggerFeedback('tap');
-                      setEditingIdea(null);
-                      setIdeaSheetOpen(true);
-                    }}
-                  >
-                    Add First Idea
-                  </Button>
-                ) : undefined
+                <Button
+                  variant="matcha"
+                  size="sm"
+                  leftIcon={<Plus size={14} strokeWidth={2.2} />}
+                  onClick={() => {
+                    triggerFeedback('tap');
+                    setEditingIdea(null);
+                    setIdeaSheetOpen(true);
+                  }}
+                >
+                  Add First Idea
+                </Button>
               }
             />
           ) : (
@@ -894,6 +889,7 @@ export function AlbumScreen({
         activeMemberId={activeMemberId}
         activeMemberName={activeMemberName}
         canEditTrip={canEdit}
+        canDeleteIdea={canDeleteIdeas}
         onSave={handleSaveIdea}
         onDelete={handleDeleteIdea}
         onClose={() => {

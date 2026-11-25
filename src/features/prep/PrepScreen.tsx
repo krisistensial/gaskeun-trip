@@ -70,7 +70,6 @@ export function PrepScreen({
   trip,
   personalPrep,
   canEdit,
-  viewOnlyMode = false,
   onOpenMenu,
   onRequestUnlockPin,
   onUpdatePersonalPrep,
@@ -109,7 +108,7 @@ export function PrepScreen({
     'prep-delete-dialog',
   );
 
-  const canEditActiveTab = !viewOnlyMode && (tab === 'personal' || canEdit);
+  const canEditActiveTab = tab === 'personal' || canEdit;
 
   // Exit edit mode safely when switching to Group without editor permission or enabling View-Only Mode
   useEffect(() => {

@@ -141,19 +141,25 @@ export function formatPlatformLabel(platform: ContentPlatform, url?: string): st
 }
 
 /**
- * Returns true if the active member can edit or delete a specific ContentIdea:
- * - Creating a new idea is open to all crew.
- * - Editing/deleting an existing idea is allowed for its creator or any trip Editor/Host.
+ * Returns true if the active user can create or edit a ContentIdea:
+ * - All signed-in crew members can add and update Content Ideas freely.
  */
 export function canManageContentIdea(
-  idea: ContentIdea | null,
+  _idea: ContentIdea | null,
   activeMemberId: string | null,
-  canEditTripFlag: boolean,
+  canEditPlanOrHost = false,
 ): boolean {
-  if (!idea) return true;
-  if (canEditTripFlag) return true;
-  if (!activeMemberId || activeMemberId === 'guest') return false;
-  return idea.createdBy === activeMemberId;
+  void _idea;
+  if (canEditPlanOrHost) return true;
+  return Boolean(activeMemberId && activeMemberId !== 'guest');
+}
+
+/**
+ * Returns true if the active member can permanently delete a ContentIdea:
+ * - Strictly restricted to the Trip Host and Plan Editors.
+ */
+export function canDeleteContentIdea(canEditPlanOrHost: boolean): boolean {
+  return Boolean(canEditPlanOrHost);
 }
 
 function toSortTimeKey(hhmm?: string): string {

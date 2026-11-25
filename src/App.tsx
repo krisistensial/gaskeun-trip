@@ -12,7 +12,6 @@ import { createPortal } from 'react-dom';
 import seedData from './data/seed-solo-jogja-2027.json';
 import { Avatar, ConfirmDialog, Toast, type ToastTone } from './components/atoms';
 import { ExpandingGlassDock } from './components/organisms/ExpandingGlassDock';
-import { PinUnlockSheet } from './components/organisms/PinUnlockSheet';
 import { TripMenuSheet, type HomePhase } from './components/organisms/TripMenuSheet';
 import { OverlayProvider } from './context/OverlayContext';
 import { useKeyboardOffset } from './hooks/useVisualViewport';
@@ -57,11 +56,10 @@ import { triggerFeedback } from './services/feedback';
 import { showDeviceNotification } from './services/notifications';
 import { uploadSharedImage } from './services/mediaUploader';
 import {
-  canEditTrip,
-  getMemberRoleLabel,
+  getMemberEditScopes,
   isHostMember,
-  setCrewEditPinByHost,
   setMemberPasscodeInTrip,
+  toggleMemberEditScopeByHost,
 } from './services/permissions';
 import type { CroppedImageResult } from './services/photoCrop';
 import { pwaHistory, useBackHandler } from './services/pwaHistory';
@@ -96,6 +94,7 @@ import type {
   RouteTarget,
   SharedTrip,
   Transaction,
+  TripEditScope,
 } from './types/trip';
 import './App.css';
 
@@ -184,9 +183,6 @@ export default function App() {
   const [phase, setPhase] = useState<HomePhase>('pre-trip');
   const [hasRevealedDock, setHasRevealedDock] = useState<boolean>(false);
   const [viewOnlyMode, setViewOnlyMode] = useState<boolean>(() => loadViewOnlyMode());
-  const [pinUnlockedCodes, setPinUnlockedCodes] = useState<string[]>(
-    () => loadSavedSession()?.pinUnlockedCodes ?? [],
-  );
 
   const [activeRouteTarget, setActiveRouteTarget] = useState<RouteTarget | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
@@ -200,8 +196,6 @@ export default function App() {
   >({});
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [pinSheetOpen, setPinSheetOpen] = useState(false);
-  const [pendingAfterUnlock, setPendingAfterUnlock] = useState<(() => void) | null>(null);
   const [pendingImportTrip, setPendingImportTrip] = useState<SharedTrip | null>(null);
   const [toast, setToast] = useState<{ open: boolean; message: string; tone: ToastTone }>({
     open: false,
@@ -370,7 +364,7 @@ export default function App() {
               saveActiveSession({
                 tripCode: matched.code,
                 activeMemberId: local.activeMemberId,
-                pinUnlockedCodes: loadSavedSession()?.pinUnlockedCodes ?? [],
+                pinUnlockedCodes: [],
               });
               setRoute('hub');
             } else {
@@ -397,7 +391,6 @@ export default function App() {
             setJoinedTripCodes(recordJoinedTripCode(restored.code));
             setActiveTrip(restored);
             setLocalData(syncedLocal);
-            setPinUnlockedCodes(saved.pinUnlockedCodes);
             setRoute('hub');
             lastAutoPullMsRef.current = Date.now();
             void syncActiveTripFromCloud(restored.code, restored, {
@@ -884,12 +877,16 @@ export default function App() {
     }
   }, [activeMemberId, chatMessages, chatReadReceipts]);
 
-  const pinUnlocked = pinUnlockedCodes.includes(activeTrip.code.toUpperCase());
   const isHost = isHostMember(activeTrip, activeMemberId);
-  const rawCanEdit = canEditTrip(activeTrip, activeMemberId, pinUnlocked);
-  const isViewOnlyActive = rawCanEdit && viewOnlyMode;
-  const canEdit = rawCanEdit && !isViewOnlyActive;
-  const roleLabel = getMemberRoleLabel(activeTrip, activeMemberId, pinUnlocked);
+  const activeEditScopes = getMemberEditScopes(activeTrip, activeMemberId);
+  const hasEditRights = activeEditScopes.length > 0;
+  const isViewOnlyActive = hasEditRights && viewOnlyMode;
+  const canEditCrew = !isViewOnlyActive && activeEditScopes.includes('crew');
+  const canEditPlan = !isViewOnlyActive && activeEditScopes.includes('plan');
+  const canEditWallet = !isViewOnlyActive && activeEditScopes.includes('wallet');
+  const canEditPrep = !isViewOnlyActive && activeEditScopes.includes('prep');
+  const canEdit = canEditCrew || canEditPlan || canEditWallet || canEditPrep;
+  const canDeleteIdeas = !isViewOnlyActive && (isHost || activeEditScopes.includes('plan'));
 
   const handleToggleViewOnlyMode = (next: boolean) => {
     triggerFeedback('toggle');
@@ -905,11 +902,11 @@ export default function App() {
     );
   };
 
-  const persistSession = (tripCode: string, memberId: string, unlockedList: string[]) => {
+  const persistSession = (tripCode: string, memberId: string) => {
     saveActiveSession({
       tripCode,
       activeMemberId: memberId,
-      pinUnlockedCodes: unlockedList,
+      pinUnlockedCodes: [],
     });
   };
 
@@ -963,16 +960,16 @@ export default function App() {
     );
   };
 
-  const requestUnlockPin = (onSuccess?: () => void) => {
-    setPendingAfterUnlock(() => onSuccess ?? null);
-    setPinSheetOpen(true);
-  };
-
   const openTripSettingsGated = () => {
-    if (canEdit) {
+    if (isHost && !isViewOnlyActive) {
       setSettingsOpen(true);
     } else {
-      requestUnlockPin(() => setSettingsOpen(true));
+      showToast(
+        isViewOnlyActive
+          ? 'Turn off View-Only Mode to open Trip Settings'
+          : 'Only the Trip Host can open Trip Settings',
+        'info',
+      );
     }
   };
 
@@ -1004,7 +1001,7 @@ export default function App() {
   const handleSelectProfile = async (memberId: string) => {
     const nextLocal = await setActiveMemberLocal(activeTrip.id, memberId);
     setLocalData(nextLocal);
-    persistSession(activeTrip.code, memberId, pinUnlockedCodes);
+    persistSession(activeTrip.code, memberId);
     setRoute('hub');
     const name =
       memberId === 'guest'
@@ -1034,30 +1031,11 @@ export default function App() {
     );
   };
 
-  const handleUpdateCrewEditPin = (newPin: string) => {
-    const check = setCrewEditPinByHost(activeTrip, activeMemberId, newPin);
-    if (!check.ok) {
-      showToast(check.error || 'Could not update Crew Editing PIN', 'error');
-      return;
-    }
-    handleUpdateTrip(
-      (prev) => {
-        const res = setCrewEditPinByHost(prev, activeMemberId, newPin);
-        return res.ok ? res.trip : prev;
-      },
-      'Crew Editing PIN updated',
-    );
-  };
-
-  const handleToggleEditorMember = (memberId: string) => {
+  const handleToggleMemberScope = (memberId: string, scope: TripEditScope) => {
     handleUpdateTrip((prev) => {
-      const hostIds = prev.members.filter((m) => m.isCreator).map((m) => m.id);
-      const current = new Set([...(prev.editorMemberIds ?? []), ...hostIds]);
-      if (hostIds.includes(memberId)) return prev;
-      if (current.has(memberId)) current.delete(memberId);
-      else current.add(memberId);
-      return { ...prev, editorMemberIds: Array.from(current) };
-    }, 'Editor permissions updated');
+      const res = toggleMemberEditScopeByHost(prev, activeMemberId, memberId, scope);
+      return res.ok ? res.trip : prev;
+    }, 'Member permissions updated');
   };
 
   const handleLeaveTrip = () => {
@@ -1084,11 +1062,9 @@ export default function App() {
     setJoinedTripCodes(recordJoinedTripCode(newTrip.code));
     const creatorId = newTrip.members[0]?.id ?? 'guest';
     const local = await setActiveMemberLocal(newTrip.id, creatorId);
-    const nextUnlocked = Array.from(new Set([...pinUnlockedCodes, newTrip.code.toUpperCase()]));
     setActiveTrip(newTrip);
     setLocalData(local);
-    setPinUnlockedCodes(nextUnlocked);
-    persistSession(newTrip.code, creatorId, nextUnlocked);
+    persistSession(newTrip.code, creatorId);
   };
 
   const handleCopyText = (text: string, label: string) => {
@@ -1104,9 +1080,8 @@ export default function App() {
   };
 
   const handleUploadCover = async (cropped: CroppedImageResult) => {
-    if (!canEdit) {
-      showToast('Unlock with Crew PIN to change the cover photo', 'info');
-      requestUnlockPin();
+    if (!canEditCrew) {
+      showToast('Ask your Trip Host for Crew edit access to update the cover', 'info');
       return;
     }
 
@@ -1360,10 +1335,8 @@ export default function App() {
             <WhoAreYouScreen
               trip={activeTrip}
               selectedMemberId={activeMemberId}
-              canEdit={canEdit}
               onSelectProfile={handleSelectProfile}
               onSetMemberPasscode={handleSetMemberPasscode}
-              onRequestUnlockPin={() => requestUnlockPin()}
               onBack={() => setRoute('landing')}
             />
           )}
@@ -1440,8 +1413,11 @@ export default function App() {
                 homePhase={phase}
                 activeMemberId={activeMemberId}
                 activeMemberName={activeMemberName}
-                canEdit={canEdit}
-                onRequestUnlockPin={() => requestUnlockPin()}
+                canEdit={canEditPlan}
+                canDeleteIdeas={canDeleteIdeas}
+                onRequestUnlockPin={() =>
+                  showToast('Ask your Trip Host for Plan edit access', 'info')
+                }
                 onOpenRoute={(target) => setActiveRouteTarget(target)}
                 onUpdateTrip={handleUpdateTrip}
                 onNotify={showToast}
@@ -1452,11 +1428,13 @@ export default function App() {
               <WalletScreen
                 trip={activeTrip}
                 personalTransactions={localData?.personalTransactions ?? []}
-                canEdit={canEdit}
+                canEdit={canEditWallet}
                 isHost={isHost}
                 viewOnlyMode={isViewOnlyActive}
                 onOpenMenu={() => setMenuOpen(true)}
-                onRequestUnlockPin={() => requestUnlockPin()}
+                onRequestUnlockPin={() =>
+                  showToast('Ask your Trip Host for Wallet edit access', 'info')
+                }
                 onUpdateTrip={handleUpdateTrip}
                 onUpsertPersonalTx={(tx, isNew) => void handleUpsertPersonalTx(tx, isNew)}
                 onDeletePersonalTx={(id) => void handleDeletePersonalTx(id)}
@@ -1470,7 +1448,9 @@ export default function App() {
                 cachedDrivePhotos={driveAlbumPhotos}
                 activeMemberId={activeMemberId}
                 activeMemberName={activeMemberName}
-                canEdit={canEdit}
+                canEdit={canEditPlan}
+                canEditSettings={!isViewOnlyActive && isHost}
+                canDeleteIdeas={canDeleteIdeas}
                 viewOnlyMode={isViewOnlyActive}
                 onDrivePhotosSync={handleDrivePhotosSync}
                 onSaveLocalPhotos={(photos, msg) => void handleSaveLocalAlbumPhotos(photos, msg)}
@@ -1484,10 +1464,12 @@ export default function App() {
               <PrepScreen
                 trip={activeTrip}
                 personalPrep={localData?.personalPrep ?? []}
-                canEdit={canEdit}
+                canEdit={canEditPrep}
                 viewOnlyMode={isViewOnlyActive}
                 onOpenMenu={() => setMenuOpen(true)}
-                onRequestUnlockPin={() => requestUnlockPin()}
+                onRequestUnlockPin={() =>
+                  showToast('Ask your Trip Host for Group Prep edit access', 'info')
+                }
                 onUpdatePersonalPrep={(tasks, msg) => void handleUpdatePersonalPrep(tasks, msg)}
                 onUpdateGroupPrep={(tasks, msg) =>
                   handleUpdateTrip((prev) => ({ ...prev, groupPrep: tasks }), msg)
@@ -1508,7 +1490,7 @@ export default function App() {
               activeMemberName={activeMemberName}
               onlineMembers={onlineMembers}
               unreadChatCount={unreadChatCount}
-              canEdit={canEdit}
+              canEdit={canEditCrew}
               viewOnlyMode={isViewOnlyActive}
               onOpenMenu={() => setMenuOpen(true)}
               onOpenChat={() => setChatOpen(true)}
@@ -1518,7 +1500,9 @@ export default function App() {
               isDockVisible={isDockVisible}
               onRevealDock={() => setHasRevealedDock(true)}
               onUploadCover={(cropped) => void handleUploadCover(cropped)}
-              onRequestUnlockPin={() => requestUnlockPin()}
+              onRequestUnlockPin={() =>
+                showToast('Ask your Trip Host for Crew edit access', 'info')
+              }
               onNotify={showToast}
               onOpenRoute={(target) => setActiveRouteTarget(target)}
               onUpdateTrip={handleUpdateTrip}
@@ -1539,11 +1523,9 @@ export default function App() {
           trip={activeTrip}
           phase={phase}
           canEdit={canEdit}
-          hasEditRights={rawCanEdit}
+          hasEditRights={hasEditRights}
           viewOnlyMode={isViewOnlyActive}
           isHost={isHost}
-          pinUnlocked={pinUnlocked}
-          roleLabel={roleLabel}
           activeMember={activeMember}
           activeMemberName={activeMemberName}
           lastSyncedAt={lastSyncedAt}
@@ -1572,19 +1554,8 @@ export default function App() {
             }
           }}
           onSetMemberPasscode={handleSetMemberPasscode}
-          onUpdateCrewEditPin={handleUpdateCrewEditPin}
-          onToggleEditorMember={handleToggleEditorMember}
+          onToggleMemberScope={handleToggleMemberScope}
           onClearEditLog={handleClearEditLog}
-          onRequestUnlock={() => requestUnlockPin()}
-          onLockEditing={() => {
-            const codeUpper = activeTrip.code.toUpperCase();
-            const nextUnlocked = pinUnlockedCodes.filter((c) => c !== codeUpper);
-            setPinUnlockedCodes(nextUnlocked);
-            if (activeMemberId) {
-              persistSession(activeTrip.code, activeMemberId, nextUnlocked);
-            }
-            showToast('Crew editing locked', 'info');
-          }}
           onOpenTripSettings={openTripSettingsGated}
           onCopyInvite={() => handleCopyInvite()}
           onSwitchProfile={() => setRoute('who')}
@@ -1627,30 +1598,6 @@ export default function App() {
             />
           </Suspense>
         )}
-
-        <PinUnlockSheet
-          open={pinSheetOpen}
-          trip={activeTrip}
-          onUnlocked={() => {
-            const codeUpper = activeTrip.code.toUpperCase();
-            const nextUnlocked = Array.from(new Set([...pinUnlockedCodes, codeUpper]));
-            setPinUnlockedCodes(nextUnlocked);
-            if (activeMemberId) {
-              persistSession(activeTrip.code, activeMemberId, nextUnlocked);
-            }
-            setPinSheetOpen(false);
-            showToast('Crew editing unlocked', 'success');
-            if (pendingAfterUnlock) {
-              const cb = pendingAfterUnlock;
-              setPendingAfterUnlock(null);
-              cb();
-            }
-          }}
-          onClose={() => {
-            setPinSheetOpen(false);
-            setPendingAfterUnlock(null);
-          }}
-        />
 
         <ConfirmDialog
           open={Boolean(pendingImportTrip)}

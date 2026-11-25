@@ -49,6 +49,7 @@ export function inferEditLogCategory(
     prev.heroCoverUrl !== next.heroCoverUrl ||
     prev.crewEditPin !== next.crewEditPin ||
     prev.editorMemberIds !== next.editorMemberIds ||
+    prev.memberPermissions !== next.memberPermissions ||
     prev.gdriveScriptUrl !== next.gdriveScriptUrl ||
     prev.gdriveFolderUrl !== next.gdriveFolderUrl
   ) {
@@ -63,7 +64,13 @@ export function inferEditLogCategory(
   }
   if (low.includes('prep') || low.includes('checked') || low.includes('checklist')) return 'prep';
   if (low.includes('idea') || low.includes('photo')) return 'album';
-  if (low.includes('pin') || low.includes('editor') || low.includes('setting') || low.includes('cover')) {
+  if (
+    low.includes('pin') ||
+    low.includes('editor') ||
+    low.includes('permission') ||
+    low.includes('setting') ||
+    low.includes('cover')
+  ) {
     return 'settings';
   }
   if (low.includes('crew') || low.includes('seat') || low.includes('swap') || low.includes('stay')) {
