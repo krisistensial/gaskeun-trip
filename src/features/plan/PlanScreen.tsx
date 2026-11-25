@@ -551,8 +551,8 @@ export function PlanScreen({
 
   const handleToggleStopDone = (stop: PlanItem) => {
     if (!canEdit) return;
-    triggerFeedback('toggle');
     const nextStatus = toggleStopDoneStatus(stop.status);
+    triggerFeedback(nextStatus === 'done' ? 'check' : 'uncheck');
     onUpdateTrip(
       (prev) => ({
         ...prev,
@@ -617,8 +617,8 @@ export function PlanScreen({
   };
 
   const handleToggleIdeaShot = (idea: ContentIdea) => {
-    triggerFeedback('toggle');
     const nextStatus: ContentIdeaStatus = idea.status === 'shot' ? 'to-shoot' : 'shot';
+    triggerFeedback(nextStatus === 'shot' ? 'check' : 'uncheck');
     onUpdateTrip(
       (prev) => ({
         ...prev,

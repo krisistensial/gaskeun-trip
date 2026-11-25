@@ -198,8 +198,10 @@ export function PrepScreen({
 
   const handleToggle = (task: PrepTask) => {
     guardGroupEdit(() => {
-      triggerFeedback('toggle');
       const next = activeTasks.map((t) => (t.id === task.id ? { ...t, done: !t.done } : t));
+      const checkingOn = !task.done;
+      const allNowDone = checkingOn && next.length > 0 && next.every((t) => t.done);
+      triggerFeedback(allNowDone ? 'complete' : checkingOn ? 'check' : 'uncheck');
       const actionMsg = task.done ? `Unchecked "${task.title}"` : `Checked "${task.title}"`;
       commitChangeWithUndo(tab, next, actionMsg);
     });

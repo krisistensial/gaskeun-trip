@@ -7,7 +7,16 @@
  * - Preferences stored locally per device in `localStorage`.
  */
 
-export type FeedbackKind = 'tap' | 'toggle' | 'success' | 'warning' | 'tick' | 'settle';
+export type FeedbackKind =
+  | 'tap'
+  | 'toggle'
+  | 'success'
+  | 'warning'
+  | 'tick'
+  | 'settle'
+  | 'check'
+  | 'uncheck'
+  | 'complete';
 
 export interface FeedbackPreferences {
   hapticsEnabled: boolean;
@@ -24,6 +33,9 @@ export const HAPTIC_PATTERNS: Record<FeedbackKind, number | number[]> = {
   warning: [26, 32, 26],
   tick: 9,
   settle: 18,
+  check: 12,
+  uncheck: 9,
+  complete: [12, 34, 14, 34, 20],
 };
 
 interface AudioWindow extends Window {
@@ -321,6 +333,74 @@ function renderSoundForKind(ctx: AudioContext, kind: FeedbackKind): void {
         endFreq: 1975.5, // B6
         gainPeak: 0.12,
         durationSec: 0.018,
+      });
+      break;
+    case 'check':
+      // Sparkling crystal bell "TING!" when checking off a Prep / checklist item
+      scheduleClickNoise(ctx, {
+        centerFreq: 4200,
+        q: 3.8,
+        gainPeak: 0.1,
+        durationSec: 0.008,
+      });
+      scheduleTone(ctx, {
+        type: 'sine',
+        startFreq: 1318.5, // E6 pure crystal bell
+        endFreq: 1318.5,
+        gainPeak: 0.21,
+        durationSec: 0.17,
+      });
+      scheduleTone(ctx, {
+        type: 'sine',
+        startFreq: 2637, // E7 airy shimmer harmonic
+        endFreq: 2637,
+        gainPeak: 0.1,
+        durationSec: 0.11,
+      });
+      break;
+    case 'uncheck':
+      // Soft, light downward droplet when unchecking an item
+      scheduleTone(ctx, {
+        type: 'sine',
+        startFreq: 1175, // D6
+        endFreq: 784, // G5
+        gainPeak: 0.16,
+        durationSec: 0.048,
+      });
+      break;
+    case 'complete':
+      // Celebratory crystal harp arpeggio "ti-li-TING!" when hitting 100% ready
+      scheduleTone(ctx, {
+        type: 'sine',
+        startFreq: 880, // A5
+        endFreq: 880,
+        gainPeak: 0.17,
+        durationSec: 0.09,
+        delaySec: 0,
+      });
+      scheduleTone(ctx, {
+        type: 'sine',
+        startFreq: 1108.7, // C#6
+        endFreq: 1108.7,
+        gainPeak: 0.18,
+        durationSec: 0.11,
+        delaySec: 0.052,
+      });
+      scheduleTone(ctx, {
+        type: 'sine',
+        startFreq: 1318.5, // E6
+        endFreq: 1318.5,
+        gainPeak: 0.2,
+        durationSec: 0.14,
+        delaySec: 0.104,
+      });
+      scheduleTone(ctx, {
+        type: 'sine',
+        startFreq: 1760, // A6 sparkling crystal peak
+        endFreq: 1760,
+        gainPeak: 0.22,
+        durationSec: 0.22,
+        delaySec: 0.156,
       });
       break;
   }

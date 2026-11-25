@@ -70,6 +70,9 @@ describe('feedback multisensory engine', () => {
     triggerFeedback('warning');
     triggerFeedback('tick');
     triggerFeedback('settle');
+    triggerFeedback('check');
+    triggerFeedback('uncheck');
+    triggerFeedback('complete');
 
     expect(vibrateMock).toHaveBeenNthCalledWith(1, HAPTIC_PATTERNS.tap);
     expect(vibrateMock).toHaveBeenNthCalledWith(2, HAPTIC_PATTERNS.toggle);
@@ -77,6 +80,9 @@ describe('feedback multisensory engine', () => {
     expect(vibrateMock).toHaveBeenNthCalledWith(4, HAPTIC_PATTERNS.warning);
     expect(vibrateMock).toHaveBeenNthCalledWith(5, HAPTIC_PATTERNS.tick);
     expect(vibrateMock).toHaveBeenNthCalledWith(6, HAPTIC_PATTERNS.settle);
+    expect(vibrateMock).toHaveBeenNthCalledWith(7, HAPTIC_PATTERNS.check);
+    expect(vibrateMock).toHaveBeenNthCalledWith(8, HAPTIC_PATTERNS.uncheck);
+    expect(vibrateMock).toHaveBeenNthCalledWith(9, HAPTIC_PATTERNS.complete);
 
     expect(HAPTIC_PATTERNS.tap).toBe(10);
     expect(HAPTIC_PATTERNS.toggle).toBe(14);
@@ -84,6 +90,9 @@ describe('feedback multisensory engine', () => {
     expect(HAPTIC_PATTERNS.warning).toEqual([26, 32, 26]);
     expect(HAPTIC_PATTERNS.tick).toBe(9);
     expect(HAPTIC_PATTERNS.settle).toBe(18);
+    expect(HAPTIC_PATTERNS.check).toBe(12);
+    expect(HAPTIC_PATTERNS.uncheck).toBe(9);
+    expect(HAPTIC_PATTERNS.complete).toEqual([12, 34, 14, 34, 20]);
   });
 
   it('respects hapticsEnabled=false unless forceHaptic is passed', () => {
@@ -150,14 +159,17 @@ describe('feedback multisensory engine', () => {
     expect(playGlassSound('tap')).toBe(false);
     expect(oscStart).not.toHaveBeenCalled();
 
-    // Enable sound -> plays audible success + tick + settle with safe headroom <= 0.35
+    // Enable sound -> plays audible success + tick + settle + check + uncheck + complete
     setSoundEnabled(true);
     expect(playGlassSound('success')).toBe(true);
     expect(playGlassSound('tick')).toBe(true);
     expect(playGlassSound('settle')).toBe(true);
-    expect(oscStart).toHaveBeenCalledTimes(5);
-    expect(oscStop).toHaveBeenCalledTimes(5);
-    expect(expRamp).toHaveBeenCalledTimes(5);
+    expect(playGlassSound('check')).toBe(true);
+    expect(playGlassSound('uncheck')).toBe(true);
+    expect(playGlassSound('complete')).toBe(true);
+    expect(oscStart).toHaveBeenCalledTimes(12);
+    expect(oscStop).toHaveBeenCalledTimes(12);
+    expect(expRamp).toHaveBeenCalledTimes(12);
     for (const [peakGain] of linearRamp.mock.calls) {
       expect(peakGain).toBeGreaterThanOrEqual(0.1);
       expect(peakGain).toBeLessThanOrEqual(0.35);
