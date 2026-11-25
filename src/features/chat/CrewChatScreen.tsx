@@ -10,8 +10,12 @@ import {
 import { createPortal } from 'react-dom';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
+  Check,
+  CheckCheck,
+  CheckSquare,
   ChevronDown,
   Copy,
+  Eye,
   MessageCircle,
   Plus,
   Reply,
@@ -22,21 +26,29 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { Avatar, CornerOrb, LiquidBottomSheet, type ToastTone } from '../../components/atoms';
+import {
+  Avatar,
+  ConfirmDialog,
+  CornerOrb,
+  LiquidBottomSheet,
+  type ToastTone,
+} from '../../components/atoms';
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import {
   buildReplyPreview,
-  CHAT_EMOJI_CATEGORIES,
   CHAT_QUICK_REACTIONS,
+  computeLatestSeenAnchors,
   countTotalReactions,
   CREW_STICKER_PACK,
   formatChatDayDivider,
   formatChatTime,
   getChatDateKey,
+  getMessageSeenByMembers,
   getStickerById,
   isGroupedWithPrevious,
   sanitizeChatText,
 } from '../../services/chat';
+import { FULL_EMOJI_GROUPS, searchEmojiCatalog } from '../../services/emojiCatalog';
 import {
   CUSTOM_STICKER_EMOJIS,
   CUSTOM_STICKER_THEMES,
@@ -58,6 +70,7 @@ import { primeFeedbackAudio, triggerFeedback } from '../../services/feedback';
 import { useBackHandler } from '../../services/pwaHistory';
 import type {
   ChatMessage,
+  ChatReadReceipt,
   ChatReplyPreview,
   OnlinePresenceUser,
   SharedTrip,
@@ -74,6 +87,7 @@ export interface StickerSendPayload {
 export interface CrewChatScreenProps {
   trip: SharedTrip;
   messages: ChatMessage[];
+  readReceipts?: Record<string, ChatReadReceipt>;
   activeMemberId: string | null;
   activeMember?: TripMember;
   activeMemberName: string;
@@ -84,6 +98,7 @@ export interface CrewChatScreenProps {
   onSendSticker: (payload: StickerSendPayload, replyTo?: ChatReplyPreview) => void;
   onToggleReaction: (messageId: string, emoji: string) => void;
   onUnsendMessage: (messageId: string) => void;
+  onUnsendMultiple?: (messageIds: string[]) => void;
   onTypingChange: (isTyping: boolean) => void;
   onMarkRead: () => void;
   onNotify?: (message: string, tone?: ToastTone) => void;
@@ -169,6 +184,7 @@ const SPRING_PANEL = {
 export function CrewChatScreen({
   trip,
   messages,
+  readReceipts,
   activeMemberId,
   activeMemberName,
   isHost,
@@ -178,6 +194,7 @@ export function CrewChatScreen({
   onSendSticker,
   onToggleReaction,
   onUnsendMessage,
+  onUnsendMultiple,
   onTypingChange,
   onMarkRead,
   onNotify,
@@ -185,7 +202,8 @@ export function CrewChatScreen({
 }: CrewChatScreenProps) {
   const [draft, setDraft] = useState('');
   const [drawerMode, setDrawerMode] = useState<DrawerMode>('none');
-  const [emojiCategory, setEmojiCategory] = useState(CHAT_EMOJI_CATEGORIES[0].id);
+  const [emojiCategory, setEmojiCategory] = useState(FULL_EMOJI_GROUPS[0].id);
+  const [emojiQuery, setEmojiQuery] = useState('');
 
   // Sticker Drawer + Search + Custom Die-Cut Maker
   const [stickerTab, setStickerTab] = useState<StickerTabMode>('browse');
@@ -200,10 +218,21 @@ export function CrewChatScreen({
   const [creatorTheme, setCreatorTheme] = useState<CustomStickerThemeId>('matcha');
 
   const [replyTarget, setReplyTarget] = useState<ChatReplyPreview | null>(null);
+
+  // IG Hold Overlay + Release Guard (prevents accidental tap/Unsend on finger lift!)
   const [holdTarget, setHoldTarget] = useState<{
     message: ChatMessage;
     isOwn: boolean;
   } | null>(null);
+  const [holdInteractable, setHoldInteractable] = useState(false);
+
+  // WA-style Multi-Select Delete Mode
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
+
+  // Seen-by sheet & Online sheet
+  const [seenSheetMsg, setSeenSheetMsg] = useState<ChatMessage | null>(null);
   const [onlineSheetOpen, setOnlineSheetOpen] = useState(false);
   const [heartPopId, setHeartPopId] = useState<string | null>(null);
   const [flashMessageId, setFlashMessageId] = useState<string | null>(null);
@@ -247,7 +276,16 @@ export function CrewChatScreen({
     thresholdHit: false,
   });
 
-  useRegisterOverlay(Boolean(holdTarget));
+  const canDeleteMessage = (msg: ChatMessage) =>
+    !msg.deleted && (isHost || msg.senderId === (activeMemberId ?? 'guest'));
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setConfirmBatchDelete(false);
+  };
+
+  useRegisterOverlay(Boolean(holdTarget) || Boolean(seenSheetMsg) || confirmBatchDelete);
   useBackHandler(
     Boolean(holdTarget),
     () => setHoldTarget(null),
@@ -255,11 +293,48 @@ export function CrewChatScreen({
     'crew-chat-msg-menu',
   );
   useBackHandler(
-    drawerMode !== 'none' && !holdTarget && !onlineSheetOpen,
+    selectMode && !holdTarget && !seenSheetMsg && !confirmBatchDelete,
+    exitSelectMode,
+    'sheet',
+    'crew-chat-select',
+  );
+  useBackHandler(
+    drawerMode !== 'none' && !holdTarget && !onlineSheetOpen && !selectMode,
     () => setDrawerMode('none'),
     'sheet',
     'crew-chat-drawer',
   );
+
+  // Release Guard for IG Hold Menu: stay non-interactive while finger is still pressed down!
+  useEffect(() => {
+    if (!holdTarget) {
+      setHoldInteractable(false);
+      return;
+    }
+
+    let released = false;
+    let delayTimer: number | null = null;
+    const unlock = () => {
+      if (released) return;
+      released = true;
+      delayTimer = window.setTimeout(() => {
+        setHoldInteractable(true);
+      }, 95);
+    };
+
+    const safetyTimer = window.setTimeout(unlock, 340);
+    window.addEventListener('pointerup', unlock, { once: true });
+    window.addEventListener('touchend', unlock, { once: true });
+    window.addEventListener('pointercancel', unlock, { once: true });
+
+    return () => {
+      window.clearTimeout(safetyTimer);
+      if (delayTimer !== null) window.clearTimeout(delayTimer);
+      window.removeEventListener('pointerup', unlock);
+      window.removeEventListener('touchend', unlock);
+      window.removeEventListener('pointercancel', unlock);
+    };
+  }, [holdTarget]);
 
   // Disable pinch-zoom & double-tap zoom strictly while Crew Chat is mounted (restores cleanly on close)
   useEffect(() => {
@@ -311,6 +386,17 @@ export function CrewChatScreen({
     [onlineMembers, activeMemberId],
   );
   const visibleOnlineStack = onlineOthers.slice(0, 3);
+
+  const seenAnchors = useMemo(
+    () =>
+      computeLatestSeenAnchors(
+        messages,
+        readReceipts,
+        trip.members,
+        activeMemberId,
+      ),
+    [messages, readReceipts, trip.members, activeMemberId],
+  );
 
   const builtInFilteredStickers = useMemo(() => {
     const q = stickerQuery.trim();
@@ -482,7 +568,6 @@ export function CrewChatScreen({
     }
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      // Keep focus in input so mobile keyboard never collapses on Send
       textareaRef.current.focus({ preventScroll: true });
     }
     isNearBottomRef.current = true;
@@ -563,7 +648,7 @@ export function CrewChatScreen({
   };
 
   const triggerHeartPop = (msg: ChatMessage) => {
-    if (msg.deleted) return;
+    if (msg.deleted || selectMode) return;
     primeFeedbackAudio();
     triggerFeedback('check');
     onToggleReaction(msg.id, '❤️');
@@ -580,12 +665,30 @@ export function CrewChatScreen({
     }
   };
 
+  const toggleSelectMessage = (msg: ChatMessage) => {
+    if (!canDeleteMessage(msg)) {
+      triggerFeedback('warning');
+      onNotify?.('Only sender or Host can select others’ messages to unsend', 'info');
+      return;
+    }
+    triggerFeedback('tap');
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(msg.id)) {
+        next.delete(msg.id);
+      } else {
+        next.add(msg.id);
+      }
+      return next;
+    });
+  };
+
   const handleRowPointerDown = (
     msg: ChatMessage,
     isOwn: boolean,
     e: PointerEvent<HTMLDivElement>,
   ) => {
-    if (msg.deleted || e.button > 0) return;
+    if (msg.deleted || e.button > 0 || selectMode) return;
     clearLongPress();
 
     gestureRef.current = {
@@ -602,11 +705,13 @@ export function CrewChatScreen({
       longPressTimerRef.current = null;
       if (gestureRef.current.swiping) return;
       triggerFeedback('toggle');
+      setHoldInteractable(false);
       setHoldTarget({ message: msg, isOwn });
-    }, 360);
+    }, 380);
   };
 
   const handleRowPointerMove = (msg: ChatMessage, e: PointerEvent<HTMLDivElement>) => {
+    if (selectMode) return;
     const g = gestureRef.current;
     if (g.msg?.id !== msg.id || g.pointerId !== e.pointerId) return;
 
@@ -638,6 +743,7 @@ export function CrewChatScreen({
 
   const handleRowPointerEnd = (msg: ChatMessage, e: PointerEvent<HTMLDivElement>) => {
     clearLongPress();
+    if (selectMode) return;
     const g = gestureRef.current;
     if (g.msg?.id !== msg.id || g.pointerId !== e.pointerId) return;
 
@@ -664,7 +770,11 @@ export function CrewChatScreen({
   };
 
   const handleBubbleTap = (msg: ChatMessage) => {
-    if (msg.deleted || gestureRef.current.swiping) return;
+    if (selectMode) {
+      toggleSelectMessage(msg);
+      return;
+    }
+    if (msg.deleted || gestureRef.current.swiping || holdTarget) return;
     const now = Date.now();
     const prevTap = lastTapRef.current;
     if (prevTap && prevTap.id === msg.id && now - prevTap.at < 290) {
@@ -706,14 +816,59 @@ export function CrewChatScreen({
       : `${trip.code} · Text & stickers only`;
 
   const canSendText = sanitizeChatText(draft).length > 0;
-  const activeEmojiList =
-    CHAT_EMOJI_CATEGORIES.find((c) => c.id === emojiCategory)?.emojis ??
-    CHAT_EMOJI_CATEGORIES[0].emojis;
+  const activeEmojiItems = useMemo(() => {
+    if (emojiQuery.trim()) {
+      return searchEmojiCatalog(emojiQuery);
+    }
+    return (
+      FULL_EMOJI_GROUPS.find((g) => g.id === emojiCategory)?.emojis ??
+      FULL_EMOJI_GROUPS[0].emojis
+    );
+  }, [emojiQuery, emojiCategory]);
+
+  const eligibleDeleteMessages = useMemo(
+    () => messages.filter(canDeleteMessage),
+    [messages, isHost, activeMemberId],
+  );
 
   const holdCanUnsend =
     holdTarget &&
     !holdTarget.message.deleted &&
     (holdTarget.message.senderId === activeMemberId || isHost);
+
+  const holdSeenList = useMemo(() => {
+    if (!holdTarget) return [];
+    return getMessageSeenByMembers(
+      holdTarget.message,
+      readReceipts,
+      trip.members,
+      activeMemberId,
+    );
+  }, [holdTarget, readReceipts, trip.members, activeMemberId]);
+
+  const seenSheetDetails = useMemo(() => {
+    if (!seenSheetMsg) return { seen: [], unseen: [] as TripMember[] };
+    const seen = getMessageSeenByMembers(
+      seenSheetMsg,
+      readReceipts,
+      trip.members,
+      activeMemberId,
+    );
+    const seenIds = new Set(seen.map((s) => s.member.id));
+    const unseen = trip.members.filter(
+      (m) =>
+        (!activeMemberId || m.id !== activeMemberId) &&
+        m.id !== seenSheetMsg.senderId &&
+        !seenIds.has(m.id),
+    );
+    return { seen, unseen };
+  }, [seenSheetMsg, readReceipts, trip.members, activeMemberId]);
+
+  const openHoldViaContextMenu = (msg: ChatMessage, isOwn: boolean) => {
+    if (msg.deleted || selectMode) return;
+    setHoldInteractable(true);
+    setHoldTarget({ message: msg, isOwn });
+  };
 
   const renderStickerMessage = (msg: ChatMessage, inHoldOverlay = false) => {
     const builtIn = getStickerById(msg.stickerId);
@@ -729,10 +884,10 @@ export function CrewChatScreen({
             ? undefined
             : (e) => {
                 e.preventDefault();
-                setHoldTarget({
-                  message: msg,
-                  isOwn: Boolean(activeMemberId && msg.senderId === activeMemberId),
-                });
+                openHoldViaContextMenu(
+                  msg,
+                  Boolean(activeMemberId && msg.senderId === activeMemberId),
+                );
               }
         }
       >
@@ -742,7 +897,11 @@ export function CrewChatScreen({
             className="crew-chat-sticker-reply-pill"
             onClick={(e) => {
               e.stopPropagation();
-              jumpToQuotedMessage(msg.replyTo!.id);
+              if (selectMode) {
+                toggleSelectMessage(msg);
+              } else {
+                jumpToQuotedMessage(msg.replyTo!.id);
+              }
             }}
           >
             <span className="crew-chat-reply-quote__author">{msg.replyTo.senderName}</span>
@@ -781,7 +940,7 @@ export function CrewChatScreen({
           ? undefined
           : (e) => {
               e.preventDefault();
-              setHoldTarget({ message: msg, isOwn });
+              openHoldViaContextMenu(msg, isOwn);
             }
       }
     >
@@ -792,7 +951,11 @@ export function CrewChatScreen({
           onClick={(e) => {
             e.stopPropagation();
             if (!inHoldOverlay) {
-              jumpToQuotedMessage(msg.replyTo!.id);
+              if (selectMode) {
+                toggleSelectMessage(msg);
+              } else {
+                jumpToQuotedMessage(msg.replyTo!.id);
+              }
             }
           }}
         >
@@ -812,6 +975,14 @@ export function CrewChatScreen({
     </div>
   );
 
+  const formatSeenSummary = (seenList: Array<{ member: TripMember; seenAt: string }>) => {
+    if (seenList.length === 1) return `Seen by ${seenList[0].member.name}`;
+    if (seenList.length === 2) {
+      return `Seen by ${seenList[0].member.name}, ${seenList[1].member.name}`;
+    }
+    return `Seen by ${seenList[0].member.name} +${seenList.length - 1}`;
+  };
+
   return (
     <MotionConfig reducedMotion="user">
       <motion.div
@@ -823,56 +994,115 @@ export function CrewChatScreen({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={SPRING_PANEL}
       >
-        {/* Header (Text & Stickers Only — Zero Call/VC/Media Controls) */}
+        {/* Header: Normal Chat Header OR WA-Style Multi-Select Header */}
         <header className="crew-chat-header">
-          <CornerOrb
-            kind="back"
-            ariaLabel="Back to trip hub"
-            onClick={() => {
-              triggerFeedback('tap');
-              onBack();
-            }}
-          />
-          <div className="crew-chat-header__meta">
-            <h1 className="crew-chat-header__title">Crew Chat</h1>
-            <div
-              className={`crew-chat-header__sub ${typingText ? 'crew-chat-header__sub--typing' : ''}`}
-            >
-              {headerSubText}
-            </div>
-          </div>
-
-          {visibleOnlineStack.length > 0 && (
-            <button
-              type="button"
-              className="crew-chat-online-pill tactile"
-              aria-label={`${onlineOthers.length} online right now`}
-              onClick={() => {
-                triggerFeedback('tap');
-                setOnlineSheetOpen(true);
-              }}
-            >
-              <span className="crew-chat-online-stack">
-                {visibleOnlineStack.map((u, idx) => (
-                  <span
-                    key={u.memberId}
-                    className="crew-chat-online-avatar"
-                    style={{ zIndex: visibleOnlineStack.length - idx }}
+          {selectMode ? (
+            <>
+              <CornerOrb
+                kind="close"
+                ariaLabel="Cancel multi-select"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  exitSelectMode();
+                }}
+              />
+              <div className="crew-chat-header__meta">
+                <h1 className="crew-chat-header__title">
+                  {selectedIds.size} selected
+                </h1>
+                <div className="crew-chat-header__sub">
+                  {isHost
+                    ? 'Tap messages to unsend'
+                    : 'Tap your messages to unsend'}
+                </div>
+              </div>
+              <div className="crew-chat-header-actions">
+                {eligibleDeleteMessages.length > 0 && (
+                  <button
+                    type="button"
+                    className="crew-chat-header-btn tactile"
+                    onClick={() => {
+                      triggerFeedback('tap');
+                      const allSelected =
+                        selectedIds.size === eligibleDeleteMessages.length;
+                      setSelectedIds(
+                        allSelected
+                          ? new Set()
+                          : new Set(eligibleDeleteMessages.map((m) => m.id)),
+                      );
+                    }}
                   >
-                    <Avatar
-                      initials={u.initials}
-                      name={u.name}
-                      src={u.avatarDataUrl}
-                      size="sm"
-                      bg={u.avatarBg}
-                      color={u.avatarColor}
-                      variant="solid"
-                    />
+                    {selectedIds.size === eligibleDeleteMessages.length
+                      ? 'Clear'
+                      : 'All'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="crew-chat-header-btn crew-chat-header-btn--danger tactile"
+                  disabled={selectedIds.size === 0}
+                  onClick={() => {
+                    triggerFeedback('warning');
+                    setConfirmBatchDelete(true);
+                  }}
+                >
+                  <Trash2 size={14} strokeWidth={2.2} />
+                  <span>Delete</span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <CornerOrb
+                kind="back"
+                ariaLabel="Back to trip hub"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  onBack();
+                }}
+              />
+              <div className="crew-chat-header__meta">
+                <h1 className="crew-chat-header__title">Crew Chat</h1>
+                <div
+                  className={`crew-chat-header__sub ${typingText ? 'crew-chat-header__sub--typing' : ''}`}
+                >
+                  {headerSubText}
+                </div>
+              </div>
+
+              {visibleOnlineStack.length > 0 && (
+                <button
+                  type="button"
+                  className="crew-chat-online-pill tactile"
+                  aria-label={`${onlineOthers.length} online right now`}
+                  onClick={() => {
+                    triggerFeedback('tap');
+                    setOnlineSheetOpen(true);
+                  }}
+                >
+                  <span className="crew-chat-online-stack">
+                    {visibleOnlineStack.map((u, idx) => (
+                      <span
+                        key={u.memberId}
+                        className="crew-chat-online-avatar"
+                        style={{ zIndex: visibleOnlineStack.length - idx }}
+                      >
+                        <Avatar
+                          initials={u.initials}
+                          name={u.name}
+                          src={u.avatarDataUrl}
+                          size="sm"
+                          bg={u.avatarBg}
+                          color={u.avatarColor}
+                          variant="solid"
+                        />
+                      </span>
+                    ))}
                   </span>
-                ))}
-              </span>
-              <span className="crew-chat-online-dot" aria-hidden="true" />
-            </button>
+                  <span className="crew-chat-online-dot" aria-hidden="true" />
+                </button>
+              )}
+            </>
           )}
         </header>
 
@@ -929,12 +1159,15 @@ export function CrewChatScreen({
                   const isOwn = Boolean(activeMemberId && msg.senderId === activeMemberId);
                   const senderMember = memberById.get(msg.senderId);
                   const reactionEntries = countTotalReactions(msg.reactions);
+                  const seenByAtAnchor = seenAnchors[msg.id] ?? [];
 
                   const isNewMessage = !initialIdsRef.current?.has(msg.id);
                   const isBeingSwiped = swipeUi.id === msg.id;
                   const offset = isBeingSwiped ? swipeUi.offset : 0;
                   const swipeProgress = Math.min(1, offset / 46);
                   const swipeReady = offset >= 46;
+                  const isSelected = selectedIds.has(msg.id);
+                  const deletable = canDeleteMessage(msg);
 
                   return (
                     <motion.div
@@ -948,9 +1181,19 @@ export function CrewChatScreen({
                       }
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       transition={SPRING_BUBBLE}
-                      className={`crew-chat-swipe-stage ${
-                        groupedWithPrev && !showDayDivider ? 'crew-chat-swipe-stage--grouped' : ''
-                      }`}
+                      className={[
+                        'crew-chat-swipe-stage',
+                        groupedWithPrev && !showDayDivider ? 'crew-chat-swipe-stage--grouped' : '',
+                        selectMode && !msg.deleted ? 'crew-chat-swipe-stage--selectable' : '',
+                        selectMode && isSelected ? 'crew-chat-swipe-stage--selected' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      onClick={
+                        selectMode && !msg.deleted
+                          ? () => toggleSelectMessage(msg)
+                          : undefined
+                      }
                     >
                       {showDayDivider && (
                         <div className="crew-chat-day-divider">
@@ -992,6 +1235,21 @@ export function CrewChatScreen({
                         onPointerUp={(e) => handleRowPointerEnd(msg, e)}
                         onPointerCancel={(e) => handleRowPointerEnd(msg, e)}
                       >
+                        {selectMode && !msg.deleted && (
+                          <span
+                            className={`crew-chat-select-check ${
+                              isSelected
+                                ? 'crew-chat-select-check--on'
+                                : !deletable
+                                  ? 'crew-chat-select-check--locked'
+                                  : ''
+                            }`}
+                            aria-hidden="true"
+                          >
+                            {isSelected && <Check size={13} strokeWidth={2.8} />}
+                          </span>
+                        )}
+
                         {!isOwn && (
                           <div className="crew-chat-avatar-col">
                             {!groupedWithNext && (
@@ -1054,7 +1312,9 @@ export function CrewChatScreen({
                                         mine ? 'crew-chat-reaction-chip--mine' : ''
                                       }`}
                                       title={names}
-                                      onClick={() => {
+                                      onClick={(e) => {
+                                        if (selectMode) return;
+                                        e.stopPropagation();
                                         primeFeedbackAudio();
                                         triggerFeedback('check');
                                         onToggleReaction(msg.id, emoji);
@@ -1070,6 +1330,40 @@ export function CrewChatScreen({
                           </AnimatePresence>
                         </div>
                       </div>
+
+                      {!msg.deleted && seenByAtAnchor.length > 0 && (
+                        <button
+                          type="button"
+                          className={`crew-chat-seen-row ${
+                            isOwn ? 'crew-chat-seen-row--own' : 'crew-chat-seen-row--other'
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (selectMode) return;
+                            triggerFeedback('tap');
+                            setSeenSheetMsg(msg);
+                          }}
+                        >
+                          <span className="crew-chat-seen-avatars">
+                            {seenByAtAnchor.slice(0, 3).map((entry) => (
+                              <span key={entry.member.id} className="crew-chat-seen-avatar">
+                                <Avatar
+                                  initials={entry.member.initials}
+                                  name={entry.member.name}
+                                  src={entry.member.avatarDataUrl}
+                                  size="sm"
+                                  bg={entry.member.avatarBg}
+                                  color={entry.member.avatarColor}
+                                  variant="solid"
+                                />
+                              </span>
+                            ))}
+                          </span>
+                          <span className="crew-chat-seen-label">
+                            {formatSeenSummary(seenByAtAnchor)}
+                          </span>
+                        </button>
+                      )}
                     </motion.div>
                   );
                 })}
@@ -1121,432 +1415,462 @@ export function CrewChatScreen({
           </AnimatePresence>
         </div>
 
-        {/* Composer (Emoji Picker + Transparent Stickers + Custom Maker + Text) */}
-        <footer className="crew-chat-composer-wrap">
-          <AnimatePresence initial={false}>
-            {replyTarget && (
-              <motion.div
-                key="reply-banner"
-                className="crew-chat-reply-banner"
-                initial={{ opacity: 0, y: 8, height: 0 }}
-                animate={{ opacity: 1, y: 0, height: 'auto' }}
-                exit={{ opacity: 0, y: 6, height: 0 }}
-                transition={SPRING_PANEL}
-              >
-                <Reply size={14} strokeWidth={2} style={{ color: 'var(--brand-matcha)' }} />
-                <div className="crew-chat-reply-banner__body">
-                  <div className="crew-chat-reply-banner__title">
-                    Replying to {replyTarget.senderName}
-                  </div>
-                  <div className="crew-chat-reply-banner__snippet">{replyTarget.text}</div>
-                </div>
-                <button
-                  type="button"
-                  className="crew-chat-reply-banner__close"
-                  aria-label="Cancel reply"
-                  onClick={() => setReplyTarget(null)}
+        {/* Composer (Hidden in Multi-Select Mode) */}
+        {!selectMode && (
+          <footer className="crew-chat-composer-wrap">
+            <AnimatePresence initial={false}>
+              {replyTarget && (
+                <motion.div
+                  key="reply-banner"
+                  className="crew-chat-reply-banner"
+                  initial={{ opacity: 0, y: 8, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: 6, height: 0 }}
+                  transition={SPRING_PANEL}
                 >
-                  <X size={14} strokeWidth={2} />
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                  <Reply size={14} strokeWidth={2} style={{ color: 'var(--brand-matcha)' }} />
+                  <div className="crew-chat-reply-banner__body">
+                    <div className="crew-chat-reply-banner__title">
+                      Replying to {replyTarget.senderName}
+                    </div>
+                    <div className="crew-chat-reply-banner__snippet">{replyTarget.text}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="crew-chat-reply-banner__close"
+                    aria-label="Cancel reply"
+                    onClick={() => setReplyTarget(null)}
+                  >
+                    <X size={14} strokeWidth={2} />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          <AnimatePresence mode="wait">
-            {drawerMode === 'emoji' && (
-              <motion.div
-                key="drawer-emoji"
-                className="crew-chat-drawer"
-                aria-label="Emoji picker"
-                initial={{ opacity: 0, y: 14, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.97 }}
-                transition={SPRING_PANEL}
-              >
-                <div className="crew-chat-drawer__tabs">
-                  <div className="crew-chat-drawer__pills">
-                    {CHAT_EMOJI_CATEGORIES.map((cat) => (
+            <AnimatePresence mode="wait">
+              {drawerMode === 'emoji' && (
+                <motion.div
+                  key="drawer-emoji"
+                  className="crew-chat-drawer"
+                  aria-label="Full emoji picker"
+                  initial={{ opacity: 0, y: 14, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.97 }}
+                  transition={SPRING_PANEL}
+                >
+                  <div className="crew-chat-drawer__tabs">
+                    <div className="crew-chat-drawer__pills">
+                      {FULL_EMOJI_GROUPS.map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          className={`crew-chat-drawer__pill ${
+                            !emojiQuery && emojiCategory === cat.id
+                              ? 'crew-chat-drawer__pill--active'
+                              : ''
+                          }`}
+                          onPointerDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            triggerFeedback('tap');
+                            setEmojiQuery('');
+                            setEmojiCategory(cat.id);
+                          }}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className="crew-chat-reply-banner__close"
+                      aria-label="Close emoji picker"
+                      onClick={() => setDrawerMode('none')}
+                    >
+                      <X size={14} strokeWidth={2} />
+                    </button>
+                  </div>
+
+                  <div className="crew-chat-sticker-search-row">
+                    <Search size={15} strokeWidth={2} />
+                    <input
+                      type="text"
+                      inputMode="search"
+                      enterKeyHint="search"
+                      className="crew-chat-sticker-search"
+                      placeholder="Search emoji (e.g. batu, moai, fire, nangis)..."
+                      value={emojiQuery}
+                      onChange={(e) => setEmojiQuery(e.target.value)}
+                    />
+                    {emojiQuery && (
                       <button
-                        key={cat.id}
                         type="button"
-                        className={`crew-chat-drawer__pill ${
-                          emojiCategory === cat.id ? 'crew-chat-drawer__pill--active' : ''
-                        }`}
-                        onPointerDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          triggerFeedback('tap');
-                          setEmojiCategory(cat.id);
-                        }}
+                        className="crew-chat-reply-banner__close"
+                        aria-label="Clear emoji search"
+                        onClick={() => setEmojiQuery('')}
                       >
-                        {cat.label}
+                        <X size={13} strokeWidth={2} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="crew-chat-emoji-grid">
+                    {activeEmojiItems.slice(0, 160).map((item) => (
+                      <button
+                        key={item.emoji}
+                        type="button"
+                        className="crew-chat-emoji-btn"
+                        aria-label={`Insert ${item.name}`}
+                        title={item.name}
+                        onPointerDown={(e) => e.preventDefault()}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertEmojiAtCursor(item.emoji)}
+                      >
+                        {item.emoji}
                       </button>
                     ))}
                   </div>
-                  <button
-                    type="button"
-                    className="crew-chat-reply-banner__close"
-                    aria-label="Close emoji picker"
-                    onClick={() => setDrawerMode('none')}
-                  >
-                    <X size={14} strokeWidth={2} />
-                  </button>
-                </div>
-                <div className="crew-chat-emoji-grid">
-                  {activeEmojiList.map((emoji) => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      className="crew-chat-emoji-btn"
-                      aria-label={`Insert ${emoji}`}
-                      onPointerDown={(e) => e.preventDefault()}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => insertEmojiAtCursor(emoji)}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
+                </motion.div>
+              )}
 
-            {drawerMode === 'sticker' && (
-              <motion.div
-                key="drawer-sticker"
-                className="crew-chat-drawer"
-                aria-label="Transparent stickers"
-                initial={{ opacity: 0, y: 14, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.97 }}
-                transition={SPRING_PANEL}
-              >
-                <div className="crew-chat-drawer__tabs">
-                  <div className="crew-chat-drawer__pills">
-                    <button
-                      type="button"
-                      className={`crew-chat-drawer__pill ${
-                        stickerTab === 'browse' ? 'crew-chat-drawer__pill--active' : ''
-                      }`}
-                      onClick={() => {
-                        triggerFeedback('tap');
-                        setStickerTab('browse');
-                      }}
-                    >
-                      Stickers
-                    </button>
-                    <button
-                      type="button"
-                      className={`crew-chat-drawer__pill ${
-                        stickerTab === 'mine' ? 'crew-chat-drawer__pill--active' : ''
-                      }`}
-                      onClick={() => {
-                        triggerFeedback('tap');
-                        setStickerTab('mine');
-                      }}
-                    >
-                      My Stickers {customStickers.length > 0 ? `(${customStickers.length})` : ''}
-                    </button>
-                    <button
-                      type="button"
-                      className={`crew-chat-drawer__pill ${
-                        stickerTab === 'create' ? 'crew-chat-drawer__pill--active' : ''
-                      }`}
-                      onClick={() => {
-                        triggerFeedback('tap');
-                        setStickerTab('create');
-                      }}
-                    >
-                      <Plus size={12} strokeWidth={2.5} />
-                      <span>Create</span>
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    className="crew-chat-reply-banner__close"
-                    aria-label="Close stickers"
-                    onClick={() => setDrawerMode('none')}
-                  >
-                    <X size={14} strokeWidth={2} />
-                  </button>
-                </div>
-
-                {stickerTab === 'browse' && (
-                  <>
-                    <div className="crew-chat-sticker-search-row">
-                      <Search size={15} strokeWidth={2} />
-                      <input
-                        type="text"
-                        inputMode="search"
-                        enterKeyHint="search"
-                        className="crew-chat-sticker-search"
-                        placeholder="Search stickers (e.g. keren, cat, coffee)..."
-                        value={stickerQuery}
-                        onChange={(e) => setStickerQuery(e.target.value)}
-                      />
-                      {stickerQuery && (
-                        <button
-                          type="button"
-                          className="crew-chat-reply-banner__close"
-                          aria-label="Clear search"
-                          onClick={() => setStickerQuery('')}
-                        >
-                          <X size={13} strokeWidth={2} />
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="crew-chat-sticker-grid">
-                      {builtInFilteredStickers.map((stk) => (
-                        <button
-                          key={stk.id}
-                          type="button"
-                          className="crew-chat-sticker-btn tactile"
-                          onClick={() =>
-                            handleSendSticker({
-                              stickerId: stk.id,
-                              stickerUrl: stk.url,
-                              stickerCaption: stk.caption,
-                            })
-                          }
-                        >
-                          <TransparentStickerGraphic
-                            src={stk.url}
-                            fallbackSrc={stk.fallbackUrl}
-                            emojiFallback={stk.emoji}
-                            alt={stk.caption}
-                            className="crew-chat-sticker-btn__img"
-                          />
-                          <span className="crew-chat-sticker-btn__caption">{stk.caption}</span>
-                        </button>
-                      ))}
-
-                      {externalStickers.map((ext) => (
-                        <button
-                          key={ext.id}
-                          type="button"
-                          className="crew-chat-sticker-btn tactile"
-                          onClick={() =>
-                            handleSendSticker({
-                              stickerId: ext.id,
-                              stickerUrl: ext.url,
-                              stickerCaption: ext.caption,
-                            })
-                          }
-                        >
-                          <TransparentStickerGraphic
-                            src={ext.url}
-                            fallbackSrc={ext.fallbackUrl}
-                            emojiFallback={ext.emojiFallback ?? '✨'}
-                            alt={ext.caption}
-                            className="crew-chat-sticker-btn__img"
-                          />
-                          <span className="crew-chat-sticker-btn__caption">{ext.caption}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {searchingStickers ? (
-                      <div className="crew-chat-sticker-status">
-                        Searching online transparent stickers...
-                      </div>
-                    ) : (
-                      builtInFilteredStickers.length === 0 &&
-                      externalStickers.length === 0 && (
-                        <div className="crew-chat-sticker-status">
-                          No matches — try &quot;cool&quot;, &quot;love&quot;, or tap + Create to make your own!
-                        </div>
-                      )
-                    )}
-                  </>
-                )}
-
-                {stickerTab === 'mine' && (
-                  <>
-                    {customStickers.length === 0 ? (
-                      <div className="crew-chat-sticker-status">
-                        No custom stickers yet — tap <strong>+ Create</strong> to design your own!
-                      </div>
-                    ) : (
-                      <div className="crew-chat-sticker-grid">
-                        {customStickers.map((mine) => (
-                          <div key={mine.id} className="crew-chat-sticker-item-wrap">
-                            <button
-                              type="button"
-                              className="crew-chat-sticker-delete"
-                              aria-label={`Delete ${mine.caption}`}
-                              onClick={() => {
-                                triggerFeedback('warning');
-                                setCustomStickers(deleteCustomSticker(mine.id));
-                              }}
-                            >
-                              <X size={10} strokeWidth={2.5} />
-                            </button>
-                            <button
-                              type="button"
-                              className="crew-chat-sticker-btn tactile"
-                              onClick={() =>
-                                handleSendSticker({
-                                  stickerId: mine.id,
-                                  stickerUrl: mine.dataUrl,
-                                  stickerCaption: mine.caption,
-                                })
-                              }
-                            >
-                              <img
-                                src={mine.dataUrl}
-                                alt={mine.caption}
-                                className="crew-chat-sticker-btn__img"
-                              />
-                              <span className="crew-chat-sticker-btn__caption">{mine.caption}</span>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {stickerTab === 'create' && (
-                  <div className="crew-chat-creator">
-                    <div className="crew-chat-creator__preview-stage">
-                      {creatorPreviewUrl ? (
-                        <img
-                          src={creatorPreviewUrl}
-                          alt={creatorCaption || 'Custom sticker preview'}
-                          className="crew-chat-creator__preview-img"
-                        />
-                      ) : (
-                        <span style={{ fontSize: '2.5rem' }}>{creatorEmoji}</span>
-                      )}
-                    </div>
-
-                    <div className="crew-chat-creator__emoji-strip">
-                      {CUSTOM_STICKER_EMOJIS.map((em) => (
-                        <button
-                          key={em}
-                          type="button"
-                          className={`crew-chat-creator__emoji-chip ${
-                            creatorEmoji === em ? 'crew-chat-creator__emoji-chip--active' : ''
-                          }`}
-                          onClick={() => {
-                            triggerFeedback('tap');
-                            setCreatorEmoji(em);
-                          }}
-                        >
-                          {em}
-                        </button>
-                      ))}
-                    </div>
-
+              {drawerMode === 'sticker' && (
+                <motion.div
+                  key="drawer-sticker"
+                  className="crew-chat-drawer"
+                  aria-label="Transparent stickers"
+                  initial={{ opacity: 0, y: 14, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.97 }}
+                  transition={SPRING_PANEL}
+                >
+                  <div className="crew-chat-drawer__tabs">
                     <div className="crew-chat-drawer__pills">
-                      {CUSTOM_STICKER_THEMES.map((theme) => (
-                        <button
-                          key={theme.id}
-                          type="button"
-                          className={`crew-chat-drawer__pill ${
-                            creatorTheme === theme.id ? 'crew-chat-drawer__pill--active' : ''
-                          }`}
-                          onClick={() => {
-                            triggerFeedback('tap');
-                            setCreatorTheme(theme.id);
-                          }}
-                        >
-                          {theme.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="crew-chat-creator__controls">
-                      <input
-                        type="text"
-                        className="crew-chat-creator__input"
-                        placeholder="Sticker text (max 22 chars)..."
-                        value={creatorCaption}
-                        maxLength={22}
-                        onChange={(e) => setCreatorCaption(e.target.value)}
-                      />
                       <button
                         type="button"
-                        className="crew-chat-creator__save-btn tactile"
-                        onClick={handleCreateAndSendCustomSticker}
+                        className={`crew-chat-drawer__pill ${
+                          stickerTab === 'browse' ? 'crew-chat-drawer__pill--active' : ''
+                        }`}
+                        onClick={() => {
+                          triggerFeedback('tap');
+                          setStickerTab('browse');
+                        }}
                       >
-                        Save &amp; Send
+                        Stickers
+                      </button>
+                      <button
+                        type="button"
+                        className={`crew-chat-drawer__pill ${
+                          stickerTab === 'mine' ? 'crew-chat-drawer__pill--active' : ''
+                        }`}
+                        onClick={() => {
+                          triggerFeedback('tap');
+                          setStickerTab('mine');
+                        }}
+                      >
+                        My Stickers {customStickers.length > 0 ? `(${customStickers.length})` : ''}
+                      </button>
+                      <button
+                        type="button"
+                        className={`crew-chat-drawer__pill ${
+                          stickerTab === 'create' ? 'crew-chat-drawer__pill--active' : ''
+                        }`}
+                        onClick={() => {
+                          triggerFeedback('tap');
+                          setStickerTab('create');
+                        }}
+                      >
+                        <Plus size={12} strokeWidth={2.5} />
+                        <span>Create</span>
                       </button>
                     </div>
+                    <button
+                      type="button"
+                      className="crew-chat-reply-banner__close"
+                      aria-label="Close stickers"
+                      onClick={() => setDrawerMode('none')}
+                    >
+                      <X size={14} strokeWidth={2} />
+                    </button>
                   </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
 
-          <div className="crew-chat-input-row">
-            <motion.button
-              type="button"
-              whileTap={{ scale: 0.9 }}
-              className={`crew-chat-icon-btn ${
-                drawerMode === 'emoji' ? 'crew-chat-icon-btn--active' : ''
-              }`}
-              aria-label={drawerMode === 'emoji' ? 'Close emoji picker' : 'Open emoji picker'}
-              aria-pressed={drawerMode === 'emoji'}
-              onPointerDown={(e) => e.preventDefault()}
-              onClick={() => {
-                triggerFeedback('toggle');
-                setDrawerMode((prev) => (prev === 'emoji' ? 'none' : 'emoji'));
-              }}
-            >
-              <Smile size={19} strokeWidth={1.9} />
-            </motion.button>
+                  {stickerTab === 'browse' && (
+                    <>
+                      <div className="crew-chat-sticker-search-row">
+                        <Search size={15} strokeWidth={2} />
+                        <input
+                          type="text"
+                          inputMode="search"
+                          enterKeyHint="search"
+                          className="crew-chat-sticker-search"
+                          placeholder="Search stickers (e.g. keren, cat, coffee)..."
+                          value={stickerQuery}
+                          onChange={(e) => setStickerQuery(e.target.value)}
+                        />
+                        {stickerQuery && (
+                          <button
+                            type="button"
+                            className="crew-chat-reply-banner__close"
+                            aria-label="Clear search"
+                            onClick={() => setStickerQuery('')}
+                          >
+                            <X size={13} strokeWidth={2} />
+                          </button>
+                        )}
+                      </div>
 
-            <motion.button
-              type="button"
-              whileTap={{ scale: 0.9 }}
-              className={`crew-chat-icon-btn ${
-                drawerMode === 'sticker' ? 'crew-chat-icon-btn--active' : ''
-              }`}
-              aria-label={drawerMode === 'sticker' ? 'Close stickers' : 'Open stickers'}
-              aria-pressed={drawerMode === 'sticker'}
-              onClick={() => {
-                triggerFeedback('toggle');
-                setDrawerMode((prev) => (prev === 'sticker' ? 'none' : 'sticker'));
-              }}
-            >
-              {drawerMode === 'sticker' ? (
-                <X size={18} strokeWidth={2} />
-              ) : (
-                <Sticker size={19} strokeWidth={1.9} />
+                      <div className="crew-chat-sticker-grid">
+                        {builtInFilteredStickers.map((stk) => (
+                          <button
+                            key={stk.id}
+                            type="button"
+                            className="crew-chat-sticker-btn tactile"
+                            onClick={() =>
+                              handleSendSticker({
+                                stickerId: stk.id,
+                                stickerUrl: stk.url,
+                                stickerCaption: stk.caption,
+                              })
+                            }
+                          >
+                            <TransparentStickerGraphic
+                              src={stk.url}
+                              fallbackSrc={stk.fallbackUrl}
+                              emojiFallback={stk.emoji}
+                              alt={stk.caption}
+                              className="crew-chat-sticker-btn__img"
+                            />
+                            <span className="crew-chat-sticker-btn__caption">{stk.caption}</span>
+                          </button>
+                        ))}
+
+                        {externalStickers.map((ext) => (
+                          <button
+                            key={ext.id}
+                            type="button"
+                            className="crew-chat-sticker-btn tactile"
+                            onClick={() =>
+                              handleSendSticker({
+                                stickerId: ext.id,
+                                stickerUrl: ext.url,
+                                stickerCaption: ext.caption,
+                              })
+                            }
+                          >
+                            <TransparentStickerGraphic
+                              src={ext.url}
+                              fallbackSrc={ext.fallbackUrl}
+                              emojiFallback={ext.emojiFallback ?? '✨'}
+                              alt={ext.caption}
+                              className="crew-chat-sticker-btn__img"
+                            />
+                            <span className="crew-chat-sticker-btn__caption">{ext.caption}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {searchingStickers ? (
+                        <div className="crew-chat-sticker-status">
+                          Searching online transparent stickers...
+                        </div>
+                      ) : (
+                        builtInFilteredStickers.length === 0 &&
+                        externalStickers.length === 0 && (
+                          <div className="crew-chat-sticker-status">
+                            No matches — try &quot;cool&quot;, &quot;love&quot;, or tap + Create to make your own!
+                          </div>
+                        )
+                      )}
+                    </>
+                  )}
+
+                  {stickerTab === 'mine' && (
+                    <>
+                      {customStickers.length === 0 ? (
+                        <div className="crew-chat-sticker-status">
+                          No custom stickers yet — tap <strong>+ Create</strong> to design your own!
+                        </div>
+                      ) : (
+                        <div className="crew-chat-sticker-grid">
+                          {customStickers.map((mine) => (
+                            <div key={mine.id} className="crew-chat-sticker-item-wrap">
+                              <button
+                                type="button"
+                                className="crew-chat-sticker-delete"
+                                aria-label={`Delete ${mine.caption}`}
+                                onClick={() => {
+                                  triggerFeedback('warning');
+                                  setCustomStickers(deleteCustomSticker(mine.id));
+                                }}
+                              >
+                                <X size={10} strokeWidth={2.5} />
+                              </button>
+                              <button
+                                type="button"
+                                className="crew-chat-sticker-btn tactile"
+                                onClick={() =>
+                                  handleSendSticker({
+                                    stickerId: mine.id,
+                                    stickerUrl: mine.dataUrl,
+                                    stickerCaption: mine.caption,
+                                  })
+                                }
+                              >
+                                <img
+                                  src={mine.dataUrl}
+                                  alt={mine.caption}
+                                  className="crew-chat-sticker-btn__img"
+                                />
+                                <span className="crew-chat-sticker-btn__caption">{mine.caption}</span>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {stickerTab === 'create' && (
+                    <div className="crew-chat-creator">
+                      <div className="crew-chat-creator__preview-stage">
+                        {creatorPreviewUrl ? (
+                          <img
+                            src={creatorPreviewUrl}
+                            alt={creatorCaption || 'Custom sticker preview'}
+                            className="crew-chat-creator__preview-img"
+                          />
+                        ) : (
+                          <span style={{ fontSize: '2.5rem' }}>{creatorEmoji}</span>
+                        )}
+                      </div>
+
+                      <div className="crew-chat-creator__emoji-strip">
+                        {CUSTOM_STICKER_EMOJIS.map((em) => (
+                          <button
+                            key={em}
+                            type="button"
+                            className={`crew-chat-creator__emoji-chip ${
+                              creatorEmoji === em ? 'crew-chat-creator__emoji-chip--active' : ''
+                            }`}
+                            onClick={() => {
+                              triggerFeedback('tap');
+                              setCreatorEmoji(em);
+                            }}
+                          >
+                            {em}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="crew-chat-drawer__pills">
+                        {CUSTOM_STICKER_THEMES.map((theme) => (
+                          <button
+                            key={theme.id}
+                            type="button"
+                            className={`crew-chat-drawer__pill ${
+                              creatorTheme === theme.id ? 'crew-chat-drawer__pill--active' : ''
+                            }`}
+                            onClick={() => {
+                              triggerFeedback('tap');
+                              setCreatorTheme(theme.id);
+                            }}
+                          >
+                            {theme.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="crew-chat-creator__controls">
+                        <input
+                          type="text"
+                          className="crew-chat-creator__input"
+                          placeholder="Sticker text (max 22 chars)..."
+                          value={creatorCaption}
+                          maxLength={22}
+                          onChange={(e) => setCreatorCaption(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="crew-chat-creator__save-btn tactile"
+                          onClick={handleCreateAndSendCustomSticker}
+                        >
+                          Save &amp; Send
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
               )}
-            </motion.button>
+            </AnimatePresence>
 
-            <div className="crew-chat-input-box">
-              <textarea
-                ref={textareaRef}
-                rows={1}
-                className="crew-chat-textarea"
-                placeholder={`Message as ${activeMemberName}...`}
-                value={draft}
-                maxLength={1000}
-                onFocus={() => setDrawerMode('none')}
-                onPaste={handlePaste}
-                onChange={(e) => handleDraftChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-              />
+            <div className="crew-chat-input-row">
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.9 }}
+                className={`crew-chat-icon-btn ${
+                  drawerMode === 'emoji' ? 'crew-chat-icon-btn--active' : ''
+                }`}
+                aria-label={drawerMode === 'emoji' ? 'Close emoji picker' : 'Open emoji picker'}
+                aria-pressed={drawerMode === 'emoji'}
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  triggerFeedback('toggle');
+                  setDrawerMode((prev) => (prev === 'emoji' ? 'none' : 'emoji'));
+                }}
+              >
+                <Smile size={19} strokeWidth={1.9} />
+              </motion.button>
+
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.9 }}
+                className={`crew-chat-icon-btn ${
+                  drawerMode === 'sticker' ? 'crew-chat-icon-btn--active' : ''
+                }`}
+                aria-label={drawerMode === 'sticker' ? 'Close stickers' : 'Open stickers'}
+                aria-pressed={drawerMode === 'sticker'}
+                onClick={() => {
+                  triggerFeedback('toggle');
+                  setDrawerMode((prev) => (prev === 'sticker' ? 'none' : 'sticker'));
+                }}
+              >
+                {drawerMode === 'sticker' ? (
+                  <X size={18} strokeWidth={2} />
+                ) : (
+                  <Sticker size={19} strokeWidth={1.9} />
+                )}
+              </motion.button>
+
+              <div className="crew-chat-input-box">
+                <textarea
+                  ref={textareaRef}
+                  rows={1}
+                  className="crew-chat-textarea"
+                  placeholder={`Message as ${activeMemberName}...`}
+                  value={draft}
+                  maxLength={1000}
+                  onFocus={() => setDrawerMode('none')}
+                  onPaste={handlePaste}
+                  onChange={(e) => handleDraftChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                />
+              </div>
+
+              <motion.button
+                type="button"
+                whileTap={canSendText ? { scale: 0.88 } : undefined}
+                className="crew-chat-send-btn"
+                aria-label="Send message"
+                disabled={!canSendText}
+                onPointerDown={(e) => e.preventDefault()}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleSendText}
+              >
+                <Send size={17} strokeWidth={2.1} />
+              </motion.button>
             </div>
+          </footer>
+        )}
 
-            <motion.button
-              type="button"
-              whileTap={canSendText ? { scale: 0.88 } : undefined}
-              className="crew-chat-send-btn"
-              aria-label="Send message"
-              disabled={!canSendText}
-              onPointerDown={(e) => e.preventDefault()}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={handleSendText}
-            >
-              <Send size={17} strokeWidth={2.1} />
-            </motion.button>
-          </div>
-        </footer>
-
-        {/* Portaled IG-Style Long-Press (Hold) Menu with Dynamic Left/Right Alignment */}
+        {/* Portaled IG-Style Long-Press (Hold) Menu with Release Guard & Dynamic Alignment */}
         {typeof document !== 'undefined' &&
           createPortal(
             <AnimatePresence>
@@ -1555,11 +1879,15 @@ export function CrewChatScreen({
                   key="ig-hold-overlay"
                   className="crew-chat-action-backdrop"
                   role="presentation"
+                  style={{ pointerEvents: holdInteractable ? 'auto' : 'none' }}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.16 }}
-                  onClick={() => setHoldTarget(null)}
+                  onClick={() => {
+                    if (!holdInteractable) return;
+                    setHoldTarget(null);
+                  }}
                 >
                   <div
                     className={`crew-chat-hold-stack ${
@@ -1591,6 +1919,7 @@ export function CrewChatScreen({
                             aria-label={`React with ${emoji}`}
                             aria-pressed={active}
                             onClick={() => {
+                              if (!holdInteractable) return;
                               primeFeedbackAudio();
                               triggerFeedback('check');
                               onToggleReaction(holdTarget.message.id, emoji);
@@ -1628,6 +1957,7 @@ export function CrewChatScreen({
                         type="button"
                         className="crew-chat-action-item"
                         onClick={() => {
+                          if (!holdInteractable) return;
                           triggerFeedback('tap');
                           setReplyTarget(buildReplyPreview(holdTarget.message));
                           setHoldTarget(null);
@@ -1645,6 +1975,7 @@ export function CrewChatScreen({
                           type="button"
                           className="crew-chat-action-item"
                           onClick={() => {
+                            if (!holdInteractable) return;
                             triggerFeedback('check');
                             if (navigator.clipboard?.writeText) {
                               void navigator.clipboard.writeText(holdTarget.message.text);
@@ -1658,11 +1989,54 @@ export function CrewChatScreen({
                         </button>
                       )}
 
+                      <button
+                        type="button"
+                        className="crew-chat-action-item"
+                        onClick={() => {
+                          if (!holdInteractable) return;
+                          const target = holdTarget.message;
+                          setHoldTarget(null);
+                          setSelectMode(true);
+                          if (canDeleteMessage(target)) {
+                            triggerFeedback('tap');
+                            setSelectedIds(new Set([target.id]));
+                          } else {
+                            triggerFeedback('warning');
+                            setSelectedIds(new Set());
+                            onNotify?.(
+                              'Select Mode — tap your own messages to unsend',
+                              'info',
+                            );
+                          }
+                        }}
+                      >
+                        <span>Select</span>
+                        <CheckSquare size={16} strokeWidth={2} />
+                      </button>
+
+                      <button
+                        type="button"
+                        className="crew-chat-action-item"
+                        onClick={() => {
+                          if (!holdInteractable) return;
+                          triggerFeedback('tap');
+                          const target = holdTarget.message;
+                          setHoldTarget(null);
+                          setSeenSheetMsg(target);
+                        }}
+                      >
+                        <span>
+                          Seen by {holdSeenList.length > 0 ? `(${holdSeenList.length})` : ''}
+                        </span>
+                        <Eye size={16} strokeWidth={2} />
+                      </button>
+
                       {holdCanUnsend && (
                         <button
                           type="button"
                           className="crew-chat-action-item crew-chat-action-item--danger"
                           onClick={() => {
+                            if (!holdInteractable) return;
                             triggerFeedback('warning');
                             onUnsendMessage(holdTarget.message.id);
                             setHoldTarget(null);
@@ -1679,6 +2053,141 @@ export function CrewChatScreen({
             </AnimatePresence>,
             document.body,
           )}
+
+        {/* Batch Delete Confirmation */}
+        <ConfirmDialog
+          open={confirmBatchDelete}
+          title={`Unsend ${selectedIds.size} ${selectedIds.size === 1 ? 'message' : 'messages'}?`}
+          description="Selected messages will be removed from the crew chat for everyone."
+          confirmLabel="Unsend"
+          destructive
+          onCancel={() => setConfirmBatchDelete(false)}
+          onConfirm={() => {
+            const ids = Array.from(selectedIds);
+            setConfirmBatchDelete(false);
+            if (onUnsendMultiple) {
+              onUnsendMultiple(ids);
+            } else {
+              for (const id of ids) onUnsendMessage(id);
+            }
+            exitSelectMode();
+          }}
+        />
+
+        {/* Seen By Detail Bottom Sheet */}
+        <LiquidBottomSheet
+          open={Boolean(seenSheetMsg)}
+          onClose={() => setSeenSheetMsg(null)}
+          title="Seen By"
+          subtitle={
+            seenSheetMsg
+              ? `Message at ${formatChatTime(seenSheetMsg.createdAt)}`
+              : undefined
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div
+              style={{
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                color: 'var(--brand-forest)',
+              }}
+            >
+              Read ({seenSheetDetails.seen.length})
+            </div>
+
+            {seenSheetDetails.seen.length === 0 ? (
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '4px 0' }}>
+                No crew members have opened chat since this message yet.
+              </div>
+            ) : (
+              seenSheetDetails.seen.map(({ member, seenAt }) => (
+                <div
+                  key={member.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '7px 10px',
+                    borderRadius: 14,
+                    background: 'rgba(255,255,255,0.72)',
+                    border: '1px solid rgba(45,74,66,0.08)',
+                  }}
+                >
+                  <Avatar
+                    initials={member.initials}
+                    name={member.name}
+                    src={member.avatarDataUrl}
+                    size="sm"
+                    bg={member.avatarBg}
+                    color={member.avatarColor}
+                    variant="solid"
+                  />
+                  <div style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: '0.88rem' }}>
+                    {member.name}
+                  </div>
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      color: 'var(--brand-matcha)',
+                    }}
+                  >
+                    <CheckCheck size={14} strokeWidth={2.2} />
+                    <span>{formatChatTime(seenAt)}</span>
+                  </div>
+                </div>
+              ))
+            )}
+
+            {seenSheetDetails.unseen.length > 0 && (
+              <>
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  Not Yet ({seenSheetDetails.unseen.length})
+                </div>
+                {seenSheetDetails.unseen.map((member) => (
+                  <div
+                    key={member.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '6px 10px',
+                      borderRadius: 14,
+                      background: 'rgba(255,255,255,0.45)',
+                      opacity: 0.72,
+                    }}
+                  >
+                    <Avatar
+                      initials={member.initials}
+                      name={member.name}
+                      src={member.avatarDataUrl}
+                      size="sm"
+                      bg={member.avatarBg}
+                      color={member.avatarColor}
+                      variant="solid"
+                    />
+                    <div style={{ fontWeight: 600, fontSize: '0.84rem' }}>{member.name}</div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </LiquidBottomSheet>
 
         {/* Online Now Sheet */}
         <LiquidBottomSheet

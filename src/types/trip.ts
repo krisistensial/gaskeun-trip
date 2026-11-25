@@ -287,6 +287,12 @@ export interface ChatMessage {
   deleted?: boolean;
 }
 
+export interface ChatReadReceipt {
+  memberId: string;
+  lastReadAt: string; // ISO
+  lastMessageId?: string;
+}
+
 export interface SharedTrip {
   schemaVersion: number;
   /** Internal seed revision for non-destructive pilot demo upgrades */
@@ -326,6 +332,8 @@ export interface SharedTrip {
   editLog?: EditLogEntry[];
   /** Fallback synced crew chat cache (primary durable table is `trip_messages` when deployed) */
   chatMessages?: ChatMessage[];
+  /** Per-member read receipts (`Seen by`) synced via Realtime Broadcast + Layer 1 */
+  chatReadReceipts?: Record<string, ChatReadReceipt>;
   updatedAt: string;
 }
 

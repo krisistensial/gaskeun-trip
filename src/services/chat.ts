@@ -1,4 +1,9 @@
-import type { ChatMessage, ChatReplyPreview } from '../types/trip';
+import type {
+  ChatMessage,
+  ChatReadReceipt,
+  ChatReplyPreview,
+  TripMember,
+} from '../types/trip';
 
 export const MAX_CHAT_MESSAGES = 150;
 export const MAX_CHAT_TEXT_LENGTH = 1000;
@@ -656,4 +661,97 @@ export function isGroupedWithPrevious(prev: ChatMessage | undefined, curr: ChatM
   const currMs = Date.parse(curr.createdAt);
   if (!Number.isFinite(prevMs) || !Number.isFinite(currMs)) return false;
   return currMs - prevMs <= 2 * 60 * 1000;
+}
+
+/**
+ * Merges read receipts per memberId, always keeping the newest `lastReadAt` timestamp.
+ */
+export function mergeChatReadReceipts(
+  existing: Record<string, ChatReadReceipt> | undefined,
+  incoming: Record<string, ChatReadReceipt> | undefined,
+): Record<string, ChatReadReceipt> {
+  const next: Record<string, ChatReadReceipt> = { ...(existing ?? {}) };
+  for (const [memberId, rec] of Object.entries(incoming ?? {})) {
+    if (!rec?.lastReadAt) continue;
+    const prev = next[memberId];
+    if (!prev || Date.parse(rec.lastReadAt) > Date.parse(prev.lastReadAt)) {
+      next[memberId] = rec;
+    }
+  }
+  return next;
+}
+
+export interface MessageSeenMemberInfo {
+  member: TripMember;
+  seenAt: string;
+}
+
+/**
+ * Returns all crew members (excluding active viewer & message sender) who have read
+ * up through `message.createdAt`, sorted most-recent-reader first.
+ */
+export function getMessageSeenByMembers(
+  message: ChatMessage,
+  readReceipts: Record<string, ChatReadReceipt> | undefined,
+  members: readonly TripMember[],
+  activeMemberId: string | null,
+): MessageSeenMemberInfo[] {
+  if (!readReceipts || message.deleted) return [];
+  const msgMs = Date.parse(message.createdAt);
+  if (!Number.isFinite(msgMs)) return [];
+
+  const list: MessageSeenMemberInfo[] = [];
+  for (const member of members) {
+    if (activeMemberId && member.id === activeMemberId) continue;
+    if (member.id === message.senderId) continue;
+    const receipt = readReceipts[member.id];
+    if (!receipt?.lastReadAt) continue;
+    const readMs = Date.parse(receipt.lastReadAt);
+    if (Number.isFinite(readMs) && readMs >= msgMs) {
+      list.push({ member, seenAt: receipt.lastReadAt });
+    }
+  }
+
+  return list.sort((a, b) => b.seenAt.localeCompare(a.seenAt));
+}
+
+/**
+ * Maps each messageId -> list of members whose *latest* seen non-deleted message is that ID
+ * (IG/Messenger-style clean inline `Seen by` avatar anchor).
+ */
+export function computeLatestSeenAnchors(
+  messages: readonly ChatMessage[],
+  readReceipts: Record<string, ChatReadReceipt> | undefined,
+  members: readonly TripMember[],
+  activeMemberId: string | null,
+): Record<string, MessageSeenMemberInfo[]> {
+  const anchors: Record<string, MessageSeenMemberInfo[]> = {};
+  if (!readReceipts || messages.length === 0) return anchors;
+
+  for (const member of members) {
+    if (activeMemberId && member.id === activeMemberId) continue;
+    const receipt = readReceipts[member.id];
+    if (!receipt?.lastReadAt) continue;
+    const readMs = Date.parse(receipt.lastReadAt);
+    if (!Number.isFinite(readMs)) continue;
+
+    let latestMsgId: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.deleted) continue;
+      if (m.senderId === member.id) continue;
+      const mMs = Date.parse(m.createdAt);
+      if (Number.isFinite(mMs) && readMs >= mMs) {
+        latestMsgId = m.id;
+        break;
+      }
+    }
+
+    if (latestMsgId) {
+      if (!anchors[latestMsgId]) anchors[latestMsgId] = [];
+      anchors[latestMsgId].push({ member, seenAt: receipt.lastReadAt });
+    }
+  }
+
+  return anchors;
 }

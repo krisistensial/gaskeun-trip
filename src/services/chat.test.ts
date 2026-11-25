@@ -1,16 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CHAT_QUICK_REACTIONS,
+  computeLatestSeenAnchors,
   CREW_STICKER_PACK,
   countUnreadMessages,
   createStickerChatMessage,
   createTextChatMessage,
   formatChatDayDivider,
+  getMessageSeenByMembers,
   isGroupedWithPrevious,
   isSafeStickerUrl,
   loadChatLastRead,
   MAX_CHAT_MESSAGES,
   mergeChatMessages,
+  mergeChatReadReceipts,
   saveChatLastRead,
   searchBuiltInStickers,
   toggleMessageReaction,
@@ -21,6 +24,7 @@ import {
   sanitizeStickerCaption,
   saveCustomSticker,
 } from './customStickers';
+import { searchEmojiCatalog } from './emojiCatalog';
 import { expandStickerSearchTerms } from './stickerSearch';
 
 function createMemoryStorage(): Storage {
@@ -251,5 +255,46 @@ describe('Crew Chat pure helpers (text, stickers, emoji reactions, unread)', () 
 
     const afterDelete = deleteCustomSticker('my-stk-1');
     expect(afterDelete).toHaveLength(0);
+  });
+
+  it('includes Moai (batu) in offline emoji search and resolves Seen By receipts', () => {
+    const batuHits = searchEmojiCatalog('batu');
+    expect(batuHits.some((e) => e.emoji === '🗿')).toBe(true);
+
+    const members = [
+      { id: 'm-kris', name: 'Kris', initials: 'KR', role: 'driver' as const, status: 'confirmed' as const, avatarBg: '#E3EDE6', avatarColor: '#2D4A42', isCreator: true },
+      { id: 'm-rani', name: 'Rani', initials: 'RN', role: 'passenger' as const, status: 'confirmed' as const, avatarBg: '#E3EDE6', avatarColor: '#2D4A42' },
+      { id: 'm-anggi', name: 'Anggi', initials: 'AG', role: 'passenger' as const, status: 'confirmed' as const, avatarBg: '#E3EDE6', avatarColor: '#2D4A42' },
+    ];
+
+    const m1 = createTextChatMessage({
+      tripCode: 'SOLO-27',
+      senderId: 'm-kris',
+      senderName: 'Kris',
+      text: 'Ketemuan jam 8',
+      nowIso: '2026-11-25T10:00:00.000Z',
+    })!;
+    const m2 = createTextChatMessage({
+      tripCode: 'SOLO-27',
+      senderId: 'm-kris',
+      senderName: 'Kris',
+      text: 'Jangan telat!',
+      nowIso: '2026-11-25T10:05:00.000Z',
+    })!;
+
+    const mergedReceipts = mergeChatReadReceipts(
+      { 'm-rani': { memberId: 'm-rani', lastReadAt: '2026-11-25T10:01:00.000Z' } },
+      {
+        'm-rani': { memberId: 'm-rani', lastReadAt: '2026-11-25T10:02:00.000Z' },
+        'm-anggi': { memberId: 'm-anggi', lastReadAt: '2026-11-25T10:06:00.000Z' },
+      },
+    );
+
+    expect(getMessageSeenByMembers(m1, mergedReceipts, members, 'm-kris')).toHaveLength(2);
+    expect(getMessageSeenByMembers(m2, mergedReceipts, members, 'm-kris')).toHaveLength(1);
+
+    const anchors = computeLatestSeenAnchors([m1, m2], mergedReceipts, members, 'm-kris');
+    expect(anchors[m1.id]?.map((x) => x.member.id)).toEqual(['m-rani']);
+    expect(anchors[m2.id]?.map((x) => x.member.id)).toEqual(['m-anggi']);
   });
 });

@@ -21,8 +21,8 @@ export const CUSTOM_STICKER_THEMES: readonly CustomStickerTheme[] = [
 ];
 
 export const CUSTOM_STICKER_EMOJIS = [
-  '🛵', '🔥', '😂', '❤️', '🫶', '🍜', '☕', '📸',
-  '🎉', '😎', '😭', '👀', '✨', '💯', '🚗', '🙌',
+  '🗿', '🛵', '🔥', '😂', '❤️', '🫶', '🍜', '☕',
+  '📸', '🎉', '😎', '😭', '👀', '✨', '💯', '💀',
 ] as const;
 
 export interface SavedCustomSticker {

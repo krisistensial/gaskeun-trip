@@ -38,13 +38,14 @@ import {
   createTextChatMessage,
   loadChatLastRead,
   mergeChatMessages,
+  mergeChatReadReceipts,
   saveChatLastRead,
   toggleMessageReaction,
 } from './services/chat';
 import {
   fetchRemoteChatMessages,
   loadLocalChatCache,
-  markRemoteChatDeleted,
+  markMultipleRemoteChatDeleted,
   patchRemoteChatReaction,
   saveLocalChatCache,
   subscribeToCrewChat,
@@ -84,6 +85,7 @@ import { buildInviteUrl } from './services/tripFactory';
 import type {
   AlbumPhoto,
   ChatMessage,
+  ChatReadReceipt,
   ChatReplyPreview,
   DockTabId,
   LocalPersonalData,
@@ -187,6 +189,9 @@ export default function App() {
   const [activeRouteTarget, setActiveRouteTarget] = useState<RouteTarget | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatReadReceipts, setChatReadReceipts] = useState<
+    Record<string, ChatReadReceipt>
+  >({});
   const [chatLastReadIso, setChatLastReadIso] = useState<string>('');
   const [chatTypingMap, setChatTypingMap] = useState<
     Record<string, { memberName: string; expiresAt: number }>
@@ -614,10 +619,11 @@ export default function App() {
     );
   }, [route, activeTrip.code, activeMemberId]);
 
-  // Seed Crew Chat from local cache + fallback SharedTrip.chatMessages whenever trip/member changes
+  // Seed Crew Chat & Read Receipts from local cache + SharedTrip whenever trip/member changes
   useEffect(() => {
     if (!activeTrip.code) {
       setChatMessages([]);
+      setChatReadReceipts({});
       setChatLastReadIso('');
       return;
     }
@@ -630,7 +636,10 @@ export default function App() {
         ...shared,
       ]);
     });
-  }, [activeTrip.code, activeTrip.chatMessages, activeMemberId]);
+    setChatReadReceipts((prev) =>
+      mergeChatReadReceipts(prev, activeTrip.chatReadReceipts),
+    );
+  }, [activeTrip.code, activeTrip.chatMessages, activeTrip.chatReadReceipts, activeMemberId]);
 
   // Live Supabase Realtime Crew Chat (`trip_messages` + Broadcast channel for <50ms typing/reactions/stickers)
   useEffect(() => {
@@ -674,10 +683,11 @@ export default function App() {
           return next;
         });
       },
-      onDelete: ({ id }) => {
+      onDelete: ({ ids }) => {
+        const idSet = new Set(ids);
         setChatMessages((prev) => {
           const next = prev.map((m) =>
-            m.id === id ? { ...m, deleted: true, text: '', reactions: {} } : m,
+            idSet.has(m.id) ? { ...m, deleted: true, text: '', reactions: {} } : m,
           );
           saveLocalChatCache(code, next);
           return next;
@@ -693,6 +703,11 @@ export default function App() {
           }
           return next;
         });
+      },
+      onSeen: (receipt) => {
+        setChatReadReceipts((prev) =>
+          mergeChatReadReceipts(prev, { [receipt.memberId]: receipt }),
+        );
       },
     });
     chatChannelRef.current = controller;
@@ -744,12 +759,44 @@ export default function App() {
   );
 
   const handleMarkChatRead = useCallback(() => {
-    if (!activeTrip.code) return;
-    const latestIso =
-      chatMessages[chatMessages.length - 1]?.createdAt ?? new Date().toISOString();
-    saveChatLastRead(activeTrip.code, activeMemberId ?? 'guest', latestIso);
+    const code = activeTripRef.current.code;
+    if (!code) return;
+    const latestMsg = chatMessages[chatMessages.length - 1];
+    const latestIso = latestMsg?.createdAt ?? new Date().toISOString();
+    const memberKey = activeMemberId ?? 'guest';
+
+    saveChatLastRead(code, memberKey, latestIso);
     setChatLastReadIso(latestIso);
-  }, [activeTrip.code, activeMemberId, chatMessages]);
+
+    if (activeMemberId && activeMemberId !== 'guest' && latestMsg) {
+      const prevReceipt = chatReadReceipts[activeMemberId];
+      const shouldAdvance =
+        !prevReceipt?.lastReadAt ||
+        Date.parse(latestIso) > Date.parse(prevReceipt.lastReadAt);
+
+      if (shouldAdvance) {
+        const nextReceipt: ChatReadReceipt = {
+          memberId: activeMemberId,
+          lastReadAt: latestIso,
+          lastMessageId: latestMsg.id,
+        };
+        setChatReadReceipts((prev) =>
+          mergeChatReadReceipts(prev, { [activeMemberId]: nextReceipt }),
+        );
+        chatChannelRef.current?.sendSeenReceipt(nextReceipt);
+        handleUpdateTrip(
+          (prev) => ({
+            ...prev,
+            chatReadReceipts: mergeChatReadReceipts(prev.chatReadReceipts, {
+              [activeMemberId]: nextReceipt,
+            }),
+          }),
+          undefined,
+          { skipLog: true },
+        );
+      }
+    }
+  }, [activeMemberId, chatMessages, chatReadReceipts]);
 
   const pinUnlocked = pinUnlockedCodes.includes(activeTrip.code.toUpperCase());
   const isHost = isHostMember(activeTrip, activeMemberId);
@@ -1153,16 +1200,33 @@ export default function App() {
     persistChatMutation(next, () => patchRemoteChatReaction(updatedMsg));
   };
 
-  const handleUnsendChatMessage = (messageId: string) => {
-    const target = chatMessages.find((m) => m.id === messageId);
-    if (!target || target.deleted) return;
-    if (target.senderId !== (activeMemberId ?? 'guest') && !isHost) return;
+  const handleUnsendMultipleChatMessages = (messageIds: string[]) => {
+    const actor = activeMemberId ?? 'guest';
+    const eligibleIds = messageIds.filter((id) => {
+      const m = chatMessages.find((item) => item.id === id);
+      return Boolean(m && !m.deleted && (m.senderId === actor || isHost));
+    });
+    if (eligibleIds.length === 0) return;
+
+    const idSet = new Set(eligibleIds);
     const next = chatMessages.map((m) =>
-      m.id === messageId ? { ...m, deleted: true, text: '', reactions: {} } : m,
+      idSet.has(m.id) ? { ...m, deleted: true, text: '', reactions: {} } : m,
     );
     setChatMessages(next);
-    chatChannelRef.current?.broadcastDelete(messageId);
-    persistChatMutation(next, () => markRemoteChatDeleted(messageId, activeTrip.code));
+    chatChannelRef.current?.broadcastDelete(eligibleIds);
+    persistChatMutation(next, () =>
+      markMultipleRemoteChatDeleted(eligibleIds, activeTrip.code),
+    );
+    showToast(
+      eligibleIds.length === 1
+        ? 'Message unsent'
+        : `${eligibleIds.length} messages unsent`,
+      'info',
+    );
+  };
+
+  const handleUnsendChatMessage = (messageId: string) => {
+    handleUnsendMultipleChatMessages([messageId]);
   };
 
   const handleChatTypingChange = useCallback((isTyping: boolean) => {
@@ -1265,6 +1329,7 @@ export default function App() {
               <CrewChatScreen
                 trip={activeTrip}
                 messages={chatMessages}
+                readReceipts={chatReadReceipts}
                 activeMemberId={activeMemberId}
                 activeMember={activeMember}
                 activeMemberName={activeMemberName}
@@ -1275,6 +1340,7 @@ export default function App() {
                 onSendSticker={handleSendChatSticker}
                 onToggleReaction={handleToggleChatReaction}
                 onUnsendMessage={handleUnsendChatMessage}
+                onUnsendMultiple={handleUnsendMultipleChatMessages}
                 onTypingChange={handleChatTypingChange}
                 onMarkRead={handleMarkChatRead}
                 onNotify={showToast}

@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatReplyPreview } from '../types/trip';
+import type { ChatMessage, ChatReadReceipt, ChatReplyPreview } from '../types/trip';
 import { MAX_CHAT_MESSAGES } from './chat';
 import { formatSupabaseError, getSupabaseClient } from './supabaseSync';
 
@@ -200,14 +200,21 @@ export async function markRemoteChatDeleted(
   msgId: string,
   tripCode: string,
 ): Promise<{ ok: boolean; tableMissing?: boolean; error?: string }> {
+  return markMultipleRemoteChatDeleted([msgId], tripCode);
+}
+
+export async function markMultipleRemoteChatDeleted(
+  msgIds: readonly string[],
+  tripCode: string,
+): Promise<{ ok: boolean; tableMissing?: boolean; error?: string }> {
   const client = getSupabaseClient();
-  if (!client) return { ok: false, error: 'Offline' };
+  if (!client || msgIds.length === 0) return { ok: false, error: 'Offline' };
 
   try {
     const { error } = await client
       .from('trip_messages')
       .update({ deleted: true, text: '', reactions: {} })
-      .eq('id', msgId)
+      .in('id', [...msgIds])
       .eq('trip_code', tripCode.trim().toUpperCase());
     if (error) {
       return {
@@ -229,16 +236,18 @@ export async function markRemoteChatDeleted(
 export interface CrewChatSubscriptionHandlers {
   onMessage: (message: ChatMessage) => void;
   onReaction: (payload: { id: string; reactions: Record<string, string[]> }) => void;
-  onDelete: (payload: { id: string }) => void;
+  onDelete: (payload: { ids: string[] }) => void;
   onTyping: (payload: { memberId: string; memberName: string; isTyping: boolean }) => void;
+  onSeen?: (receipt: ChatReadReceipt) => void;
 }
 
 export interface CrewChatChannelController {
   unsubscribe: () => void;
   broadcastMessage: (message: ChatMessage) => void;
   broadcastReaction: (id: string, reactions: Record<string, string[]>) => void;
-  broadcastDelete: (id: string) => void;
+  broadcastDelete: (ids: string[]) => void;
   sendTypingPing: (isTyping: boolean) => void;
+  sendSeenReceipt: (receipt: ChatReadReceipt) => void;
 }
 
 export function subscribeToCrewChat(
@@ -256,6 +265,7 @@ export function subscribeToCrewChat(
       broadcastReaction: () => {},
       broadcastDelete: () => {},
       sendTypingPing: () => {},
+      sendSeenReceipt: () => {},
     };
   }
 
@@ -275,8 +285,12 @@ export function subscribeToCrewChat(
       }
     })
     .on('broadcast', { event: 'chat:delete' }, ({ payload }) => {
-      if (payload && typeof payload === 'object' && 'id' in payload) {
-        handlers.onDelete(payload as { id: string });
+      if (payload && typeof payload === 'object') {
+        const p = payload as { id?: string; ids?: string[] };
+        const ids = Array.isArray(p.ids) ? p.ids : p.id ? [p.id] : [];
+        if (ids.length > 0) {
+          handlers.onDelete({ ids });
+        }
       }
     })
     .on('broadcast', { event: 'chat:typing' }, ({ payload }) => {
@@ -284,6 +298,11 @@ export function subscribeToCrewChat(
         handlers.onTyping(
           payload as { memberId: string; memberName: string; isTyping: boolean },
         );
+      }
+    })
+    .on('broadcast', { event: 'chat:seen' }, ({ payload }) => {
+      if (payload && typeof payload === 'object' && 'memberId' in payload) {
+        handlers.onSeen?.(payload as ChatReadReceipt);
       }
     })
     .on(
@@ -317,7 +336,7 @@ export function subscribeToCrewChat(
     },
     broadcastMessage: (message) => emit('chat:message', { ...message }),
     broadcastReaction: (id, reactions) => emit('chat:reaction', { id, reactions }),
-    broadcastDelete: (id) => emit('chat:delete', { id }),
+    broadcastDelete: (ids) => emit('chat:delete', { ids }),
     sendTypingPing: (isTyping) => {
       if (!sender?.memberId) return;
       emit('chat:typing', {
@@ -326,5 +345,6 @@ export function subscribeToCrewChat(
         isTyping,
       });
     },
+    sendSeenReceipt: (receipt) => emit('chat:seen', { ...receipt }),
   };
 }
