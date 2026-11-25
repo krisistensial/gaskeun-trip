@@ -24,7 +24,7 @@
   - **Layer 1 (`SharedTrip`):** Shared itinerary, crew (including optional 4-digit `passcode`), transport pods, stays, `pool`/`fundraise` transactions, `groupPrep`, `contentIdeas`, shared Home Hero `coverPhotoUrl`, and shared UI asset URLs. Synced across devices via Supabase RLS RPC, Realtime (`postgres_changes` on `shared_trips`), mount/focus/visibility auto-pull, manual `Sync` pill, and offline mutation queue (`src/services/supabaseSync.ts`) plus Layer-1 JSON backup.
   - **Layer 2 (`LocalPersonalData`):** Strictly local per-device `personalTransactions`, `personalPrep`, and pending local album photos. Never overwritten by shared sync or JSON import.
 - **Permissions (`src/services/permissions.ts`):** Host (`isCreator`), host-designated `editorMemberIds`, or 4-digit Crew PIN SHA-256 unlock grant shared edit access (`canEditTrip`). Personal Wallet & Personal Prep remain PIN-free for all crew.
-- **Unified Ledger (`src/services/ledger.ts`):** Single IN/OUT ledger across `pool`, `fundraise`, and `personal` pockets with anti-double-deduction for out-of-pocket reimbursements.
+- **Unified Fund-Accounting Ledger (`src/services/ledger.ts`, `WalletScreen.tsx`, `PocketSheet.tsx`, `AddTransactionSheet.tsx`):** Two-layer accounting across `pool`, `fundraise`, **Combined Treasury** (`pool + fundraise` inflow/net cash), and custom **Budget Pockets** (`SharedTrip.budgetPockets`) with explicit source splits (`allocatedFromPool` + `allocatedFromFundraise`), unallocated cash tracking (`poolUnallocated`, `fundraiseUnallocated`), pocket-targeted expenses (`Transaction.budgetPocketId`), plus Layer-2 `personal` spend and anti-double-deduction for out-of-pocket reimbursements.
 
 ---
 

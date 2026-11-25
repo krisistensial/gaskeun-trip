@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Check, ChevronRight, Lock, Plus, Wallet as WalletIcon } from 'lucide-react';
 import {
   Avatar,
@@ -9,21 +9,24 @@ import {
   GlassCard,
   LiquidBottomSheet,
 } from '../../components/atoms';
+import { useHorizontalScrollFade } from '../../hooks/useHorizontalScrollFade';
 import {
   calculateLedger,
   calculatePersonalTotal,
   formatCompactIDR,
   formatIDR,
   markTransactionSettled,
+  type BudgetPocketSummary,
   type MemberContributionSummary,
 } from '../../services/ledger';
 import { triggerFeedback } from '../../services/feedback';
-import type { SharedTrip, Transaction } from '../../types/trip';
+import type { BudgetPocket, SharedTrip, Transaction } from '../../types/trip';
 import { AddTransactionSheet, type TxComposerMode } from './AddTransactionSheet';
+import { PocketSheet } from './PocketSheet';
 import './wallet.css';
 
-type WalletTab = 'pool' | 'fundraise' | 'spent' | 'personal';
-type SpentFilter = 'all' | 'reimburse' | 'pool' | 'fundraise';
+type WalletTab = 'combined' | 'pool' | 'fundraise' | 'spent' | 'personal';
+type SpentFilter = 'all' | 'reimburse' | 'pockets' | 'pool' | 'fundraise';
 
 export interface WalletScreenProps {
   trip: SharedTrip;
@@ -48,14 +51,22 @@ export function WalletScreen({
   onUpsertPersonalTx,
   onDeletePersonalTx,
 }: WalletScreenProps) {
-  const [subTab, setSubTab] = useState<WalletTab>('pool');
+  const [subTab, setSubTab] = useState<WalletTab>('combined');
   const [spentFilter, setSpentFilter] = useState<SpentFilter>('all');
+  const subtabsRef = useRef<HTMLDivElement | null>(null);
+  const subtabsFade = useHorizontalScrollFade(subtabsRef, [subTab]);
+
   const [composer, setComposer] = useState<{
     open: boolean;
     mode: TxComposerMode;
     editing: Transaction | null;
     defaultMemberId?: string;
+    defaultBudgetPocketId?: string;
   }>({ open: false, mode: 'expense', editing: null });
+  const [pocketSheet, setPocketSheet] = useState<{
+    open: boolean;
+    editing: BudgetPocketSummary | null;
+  }>({ open: false, editing: null });
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
   const ledger = useMemo(() => calculateLedger(trip), [trip]);
@@ -66,6 +77,10 @@ export function WalletScreen({
   const memberById = useMemo(
     () => new Map(trip.members.map((m) => [m.id, m])),
     [trip.members],
+  );
+  const pocketById = useMemo(
+    () => new Map((trip.budgetPockets ?? []).map((p) => [p.id, p])),
+    [trip.budgetPockets],
   );
 
   const selectedMemberSummary: MemberContributionSummary | undefined = selectedMemberId
@@ -86,10 +101,11 @@ export function WalletScreen({
       .filter((tx) => {
         if (spentFilter === 'all') return true;
         if (spentFilter === 'reimburse') return Boolean(tx.paidOutOfPocket && !tx.reimbursed);
-        return tx.pocket === spentFilter;
+        if (spentFilter === 'pockets') return Boolean(tx.budgetPocketId && pocketById.has(tx.budgetPocketId));
+        return tx.pocket === spentFilter && !tx.budgetPocketId;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [trip.transactions, spentFilter]);
+  }, [trip.transactions, spentFilter, pocketById]);
 
   const guardSharedEdit = (fn: () => void) => {
     if (!canEdit) {
@@ -153,6 +169,33 @@ export function WalletScreen({
     });
   };
 
+  const handleSavePocket = (pocket: BudgetPocket, isNew: boolean) => {
+    onUpdateTrip(
+      (prev) => {
+        const current = prev.budgetPockets ?? [];
+        const nextPockets = isNew
+          ? [...current, pocket]
+          : current.map((p) => (p.id === pocket.id ? pocket : p));
+        return { ...prev, budgetPockets: nextPockets };
+      },
+      isNew ? `${pocket.name} pocket created` : `${pocket.name} pocket updated`,
+    );
+  };
+
+  const handleDeletePocket = (pocketId: string) => {
+    triggerFeedback('warning');
+    onUpdateTrip(
+      (prev) => ({
+        ...prev,
+        budgetPockets: (prev.budgetPockets ?? []).filter((p) => p.id !== pocketId),
+        transactions: prev.transactions.map((tx) =>
+          tx.budgetPocketId === pocketId ? { ...tx, budgetPocketId: undefined } : tx,
+        ),
+      }),
+      'Budget pocket removed — funds returned to Unallocated',
+    );
+  };
+
   const handleToggleTentative = () => {
     onUpdateTrip(
       (prev) => ({
@@ -176,10 +219,17 @@ export function WalletScreen({
         <CornerOrb kind="menu" ariaLabel="Trip menu" onClick={onOpenMenu} />
       </header>
 
-      {/* 4 Sub-Tab Pills */}
-      <div className="wallet-subtabs" role="tablist" aria-label="Wallet pockets">
+      {/* 5 Sub-Tab Pills (Combined Treasury · Pool · Fundraise · Spent · Personal) */}
+      <div
+        ref={subtabsRef}
+        className="wallet-subtabs"
+        data-fade={subtabsFade.dataFade}
+        role="tablist"
+        aria-label="Wallet pockets"
+      >
         {(
           [
+            { id: 'combined', label: 'Combined' },
             { id: 'pool', label: 'Pool' },
             { id: 'fundraise', label: 'Fundraise' },
             { id: 'spent', label: 'Spent' },
@@ -198,6 +248,191 @@ export function WalletScreen({
           </button>
         ))}
       </div>
+
+      {/* SUB-TAB 0: COMBINED TREASURY & BUDGET POCKETS */}
+      {subTab === 'combined' && (
+        <>
+          <GlassCard variant="spotlight" padding="lg">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="gk-field__label">COMBINED TREASURY · POOL + FUNDRAISE</span>
+              <Badge tone="matcha">{ledger.pockets.length} pockets</Badge>
+            </div>
+            <div className="wallet-hero-num">{formatIDR(ledger.combinedNetBalance)}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+              Total In: <strong>{formatCompactIDR(ledger.combinedCollected)}</strong> · Total Spent:{' '}
+              <strong>{formatCompactIDR(ledger.totalSpent)}</strong>
+            </div>
+
+            <div className="treasury-source-grid">
+              <div className="treasury-source-tile">
+                <span className="gk-field__label">CREW POOL</span>
+                <div className="treasury-source-tile__val">
+                  {formatCompactIDR(ledger.poolCollected)}
+                </div>
+                <div className="treasury-source-tile__sub">
+                  Free: {formatCompactIDR(ledger.poolUnallocated)} · Alloc:{' '}
+                  {formatCompactIDR(ledger.poolAllocated)}
+                </div>
+              </div>
+
+              <div className="treasury-source-tile">
+                <span className="gk-field__label">FUNDRAISE</span>
+                <div className="treasury-source-tile__val">
+                  {formatCompactIDR(ledger.fundraiseCollected)}
+                </div>
+                <div className="treasury-source-tile__sub">
+                  Free: {formatCompactIDR(ledger.fundraiseUnallocated)} · Alloc:{' '}
+                  {formatCompactIDR(ledger.fundraiseAllocated)}
+                </div>
+              </div>
+            </div>
+
+            <div className="treasury-unallocated-pill">
+              <span>Unallocated Cash (Ready to Assign)</span>
+              <strong>{formatIDR(ledger.combinedUnallocated)}</strong>
+            </div>
+          </GlassCard>
+
+          <div className="pocket-section-head">
+            <div>
+              <div className="gk-field__label">BUDGET POCKETS</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                Allocate Combined funds into custom purpose envelopes
+              </div>
+            </div>
+            {canEdit && (
+              <Button
+                variant="matcha"
+                size="sm"
+                leftIcon={<Plus size={14} strokeWidth={2.2} />}
+                onClick={() =>
+                  guardSharedEdit(() => setPocketSheet({ open: true, editing: null }))
+                }
+              >
+                New Pocket
+              </Button>
+            )}
+          </div>
+
+          {ledger.pockets.length === 0 ? (
+            <EmptyState
+              icon={<WalletIcon size={22} strokeWidth={1.8} />}
+              title="No budget pockets yet"
+              description="Create pockets like Transport, Stay, or Food and choose exactly how much comes from Pool vs Fundraise."
+              action={
+                canEdit ? (
+                  <Button
+                    variant="matcha"
+                    size="sm"
+                    leftIcon={<Plus size={14} strokeWidth={2.2} />}
+                    onClick={() =>
+                      guardSharedEdit(() => setPocketSheet({ open: true, editing: null }))
+                    }
+                  >
+                    Create First Pocket
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : (
+            <div className="tx-list">
+              {ledger.pockets.map((summary) => (
+                <GlassCard
+                  key={summary.pocket.id}
+                  variant="clear"
+                  padding="md"
+                  className="pocket-card"
+                >
+                  <div className="pocket-card__top">
+                    <div className="pocket-card__title-wrap">
+                      <span className="pocket-card__emoji">{summary.pocket.emoji}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="pocket-card__name">{summary.pocket.name}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                          Spent {formatCompactIDR(summary.spent)} of{' '}
+                          {formatCompactIDR(summary.allocatedTotal)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: 'right' }}>
+                      <div
+                        className={`tx-amt ${summary.isOverBudget ? 'tx-amt--out' : 'tx-amt--in'}`}
+                      >
+                        {formatCompactIDR(summary.remaining)}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600 }}>
+                        {summary.isOverBudget ? 'Overbudget' : 'Remaining'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Transparent Accounting Source Breakdown */}
+                  <div className="pocket-card__sources">
+                    {summary.allocatedFromPool > 0 && (
+                      <span className="pocket-origin-pill">
+                        Pool: {formatCompactIDR(summary.allocatedFromPool)}
+                      </span>
+                    )}
+                    {summary.allocatedFromFundraise > 0 && (
+                      <span className="pocket-origin-pill">
+                        Fundraise: {formatCompactIDR(summary.allocatedFromFundraise)}
+                      </span>
+                    )}
+                    <span className="pocket-origin-pill">
+                      Total: {formatCompactIDR(summary.allocatedTotal)}
+                    </span>
+                  </div>
+
+                  <div className="wallet-progress-track" style={{ margin: '2px 0' }}>
+                    <div
+                      className="wallet-progress-fill"
+                      style={{
+                        width: `${Math.min(100, summary.progressPct)}%`,
+                        background: summary.isOverBudget
+                          ? 'var(--accent-coral)'
+                          : 'var(--brand-matcha)',
+                      }}
+                    />
+                  </div>
+
+                  {canEdit && (
+                    <div className="pocket-card__actions">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          guardSharedEdit(() =>
+                            setPocketSheet({ open: true, editing: summary }),
+                          )
+                        }
+                      >
+                        Allocate
+                      </Button>
+                      <Button
+                        variant="matcha"
+                        size="sm"
+                        onClick={() =>
+                          guardSharedEdit(() =>
+                            setComposer({
+                              open: true,
+                              mode: 'expense',
+                              editing: null,
+                              defaultBudgetPocketId: summary.pocket.id,
+                            }),
+                          )
+                        }
+                      >
+                        Spend
+                      </Button>
+                    </div>
+                  )}
+                </GlassCard>
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
       {/* SUB-TAB 1: POOL (06_Wallet_Pool) */}
       {subTab === 'pool' && (
@@ -381,7 +616,10 @@ export function WalletScreen({
                   id: 'reimburse',
                   label: `Reimburse (${ledger.pendingReimburseItems.length})`,
                 },
-                { id: 'pool', label: 'Pool' },
+                ...(ledger.pockets.length > 0
+                  ? ([{ id: 'pockets', label: 'Pockets' }] as const)
+                  : []),
+                { id: 'pool', label: 'Pool Direct' },
                 { id: 'fundraise', label: 'Fundraise' },
               ] as const
             ).map((f) => (
@@ -409,6 +647,12 @@ export function WalletScreen({
             ) : (
               spentEntries.map((tx) => {
                 const payer = tx.paidByMemberId ? memberById.get(tx.paidByMemberId) : undefined;
+                const linkedPocket = tx.budgetPocketId ? pocketById.get(tx.budgetPocketId) : undefined;
+                const sourceLabel = linkedPocket
+                  ? `${linkedPocket.emoji} ${linkedPocket.name}`
+                  : tx.pocket === 'pool'
+                    ? 'Pool'
+                    : 'Fundraise';
                 const isUnpaid = Boolean(tx.paidOutOfPocket && !tx.reimbursed);
                 return (
                   <GlassCard
@@ -428,7 +672,7 @@ export function WalletScreen({
                         {tx.paidOutOfPocket
                           ? `Paid by ${payer?.name ?? 'Crew'}`
                           : 'Direct from fund'}{' '}
-                        · {tx.pocket === 'pool' ? 'Pool' : 'Fundraise'}
+                        · {sourceLabel}
                       </div>
                       {isUnpaid && canEdit && (
                         <div style={{ marginTop: 8 }}>
@@ -610,13 +854,17 @@ export function WalletScreen({
 
       {/* Smart Add / Edit Transaction Sheet (06e_Add_Transaction) */}
       <AddTransactionSheet
-        key={`tx-${composer.open ? `${composer.mode}-${composer.editing?.id ?? 'new'}-${composer.defaultMemberId ?? ''}` : 'closed'}`}
+        key={`tx-${composer.open ? `${composer.mode}-${composer.editing?.id ?? 'new'}-${composer.defaultMemberId ?? ''}-${composer.defaultBudgetPocketId ?? ''}` : 'closed'}`}
         open={composer.open}
         tripId={trip.id}
         members={trip.members}
+        pockets={ledger.pockets}
+        poolUnallocated={ledger.poolUnallocated}
+        fundraiseUnallocated={ledger.fundraiseUnallocated}
         initialMode={composer.mode}
         editingTx={composer.editing}
         defaultMemberId={composer.defaultMemberId}
+        defaultBudgetPocketId={composer.defaultBudgetPocketId}
         onSaveShared={handleSaveSharedTx}
         onSavePersonal={(tx, isNew) => {
           triggerFeedback('success');
@@ -628,6 +876,17 @@ export function WalletScreen({
           onDeletePersonalTx(id);
         }}
         onClose={() => setComposer((prev) => ({ ...prev, open: false }))}
+      />
+
+      <PocketSheet
+        key={`pkt-${pocketSheet.open ? pocketSheet.editing?.pocket.id ?? 'new' : 'closed'}`}
+        open={pocketSheet.open}
+        editingSummary={pocketSheet.editing}
+        poolUnallocated={ledger.poolUnallocated}
+        fundraiseUnallocated={ledger.fundraiseUnallocated}
+        onSave={handleSavePocket}
+        onDelete={handleDeletePocket}
+        onClose={() => setPocketSheet({ open: false, editing: null })}
       />
     </div>
   );

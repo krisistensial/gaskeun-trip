@@ -1,4 +1,9 @@
-import type { SharedTrip, Transaction, TripMember } from '../types/trip';
+import type {
+  BudgetPocket,
+  SharedTrip,
+  Transaction,
+  TripMember,
+} from '../types/trip';
 
 export interface MemberContributionSummary {
   member: TripMember;
@@ -15,19 +20,45 @@ export interface PendingReimburseItem {
   payerName: string;
 }
 
+export interface BudgetPocketSummary {
+  pocket: BudgetPocket;
+  allocatedFromPool: number;
+  allocatedFromFundraise: number;
+  allocatedTotal: number;
+  spent: number;
+  remaining: number;
+  progressPct: number;
+  isOverBudget: boolean;
+  transactions: Transaction[];
+}
+
 export interface LedgerSummary {
   activeMemberCount: number;
   poolTarget: number;
   poolCollected: number;
   poolSpent: number;
   poolLeft: number;
+  poolAllocated: number;
+  poolUnallocated: number;
   poolProgressPct: number;
 
   fundraiseTarget: number;
   fundraiseCollected: number;
   fundraiseSpent: number;
   fundraiseLeft: number;
+  fundraiseAllocated: number;
+  fundraiseUnallocated: number;
   fundraiseProgressPct: number;
+
+  /** Unified Combined Treasury metrics (Pool + Fundraise) */
+  combinedCollected: number;
+  combinedTarget: number;
+  combinedNetBalance: number;
+  combinedUnallocated: number;
+  totalAllocatedToPockets: number;
+  totalPocketSpent: number;
+  totalPocketRemaining: number;
+  pockets: BudgetPocketSummary[];
 
   totalSpent: number;
   pendingReimburseTotal: number;
@@ -38,13 +69,25 @@ export interface LedgerSummary {
 }
 
 /**
- * Pure financial calculator for the unified Transaction IN/OUT ledger.
+ * Pure two-layer fund-accounting calculator:
+ *
+ * Layer 1 (Funding Sources -> Combined Treasury):
+ *   - Real inflows enter `pool` (Crew Contributions) and `fundraise`.
+ *   - Combined Inflow = `poolCollected + fundraiseCollected`.
+ *
+ * Layer 2 (Virtual Budget Pockets / Envelopes):
+ *   - Allocating money from Pool/Fundraise into a `BudgetPocket` reserves internal funds
+ *     (`poolAllocated`, `fundraiseAllocated`) without recording an expense (`Spent`).
+ *   - Expenses (`direction: 'out'`) with `budgetPocketId` deduct that pocket's balance once.
+ *   - Direct expenses without `budgetPocketId` deduct unallocated Pool/Fundraise once.
+ *
+ * Accounting Equation Invariant (always exact):
+ *   `combinedNetBalance === combinedCollected - totalSpent`
+ *   `combinedNetBalance === combinedUnallocated + totalPocketRemaining`
  *
  * Anti-Double-Deduction Guarantee:
- * - An Expense OUT with `paidOutOfPocket: true` deducts `poolLeft` or `fundraiseLeft`
- *   EXACTLY ONCE (via its single `direction: 'out'` entry).
- * - Marking it settled (`reimbursed: true`) only clears it from `pendingReimburseItems`
- *   and NEVER deducts the pocket balance a second time.
+ *   - An Expense OUT with `paidOutOfPocket: true` deducts balance EXACTLY ONCE.
+ *   - Marking `reimbursed: true` clears `pendingReimburseItems` without deducting again.
  */
 export function calculateLedger(trip: SharedTrip): LedgerSummary {
   const { poolTargetPerPerson, fundraiseTarget, includeTentative } = trip.financeConfig;
@@ -53,19 +96,26 @@ export function calculateLedger(trip: SharedTrip): LedgerSummary {
     (m) => m.status === 'confirmed' || includeTentative,
   );
   const memberById = new Map(trip.members.map((m) => [m.id, m]));
+  const rawPockets = Array.isArray(trip.budgetPockets) ? trip.budgetPockets : [];
+  const validPocketIds = new Set(rawPockets.map((p) => p.id));
 
   const poolTarget = includedMembers.length * poolTargetPerPerson;
 
   let poolCollected = 0;
-  let poolSpent = 0;
+  let poolDirectSpent = 0;
   let fundraiseCollected = 0;
-  let fundraiseSpent = 0;
+  let fundraiseDirectSpent = 0;
 
   const depositsByMember = new Map<string, Transaction[]>();
+  const pocketTxById = new Map<string, Transaction[]>();
   const pendingReimburseItems: PendingReimburseItem[] = [];
 
   for (const tx of trip.transactions) {
     const amount = Math.max(0, Math.round(tx.amount));
+    const targetPocketId =
+      tx.direction === 'out' && tx.budgetPocketId && validPocketIds.has(tx.budgetPocketId)
+        ? tx.budgetPocketId
+        : undefined;
 
     if (tx.pocket === 'pool') {
       if (tx.direction === 'in') {
@@ -75,14 +125,22 @@ export function calculateLedger(trip: SharedTrip): LedgerSummary {
           list.push(tx);
           depositsByMember.set(tx.memberId, list);
         }
+      } else if (targetPocketId) {
+        const list = pocketTxById.get(targetPocketId) ?? [];
+        list.push(tx);
+        pocketTxById.set(targetPocketId, list);
       } else {
-        poolSpent += amount;
+        poolDirectSpent += amount;
       }
     } else if (tx.pocket === 'fundraise') {
       if (tx.direction === 'in') {
         fundraiseCollected += amount;
+      } else if (targetPocketId) {
+        const list = pocketTxById.get(targetPocketId) ?? [];
+        list.push(tx);
+        pocketTxById.set(targetPocketId, list);
       } else {
-        fundraiseSpent += amount;
+        fundraiseDirectSpent += amount;
       }
     }
 
@@ -100,9 +158,61 @@ export function calculateLedger(trip: SharedTrip): LedgerSummary {
     }
   }
 
-  const poolLeft = poolCollected - poolSpent;
-  const fundraiseLeft = fundraiseCollected - fundraiseSpent;
-  const totalSpent = poolSpent + fundraiseSpent;
+  let poolAllocated = 0;
+  let fundraiseAllocated = 0;
+  let totalPocketSpent = 0;
+
+  const pockets: BudgetPocketSummary[] = rawPockets.map((pocket) => {
+    let allocatedFromPool = 0;
+    let allocatedFromFundraise = 0;
+    for (const alloc of pocket.allocations ?? []) {
+      const val = Math.max(0, Math.round(alloc.amount));
+      if (alloc.source === 'pool') allocatedFromPool += val;
+      else if (alloc.source === 'fundraise') allocatedFromFundraise += val;
+    }
+
+    const allocatedTotal = allocatedFromPool + allocatedFromFundraise;
+    const txList = (pocketTxById.get(pocket.id) ?? []).sort((a, b) =>
+      b.date.localeCompare(a.date),
+    );
+    const spent = txList.reduce(
+      (sum, tx) => sum + Math.max(0, Math.round(tx.amount)),
+      0,
+    );
+    const remaining = allocatedTotal - spent;
+    const progressPct =
+      allocatedTotal > 0 ? Math.min(100, Math.round((spent / allocatedTotal) * 100)) : 0;
+
+    poolAllocated += allocatedFromPool;
+    fundraiseAllocated += allocatedFromFundraise;
+    totalPocketSpent += spent;
+
+    return {
+      pocket,
+      allocatedFromPool,
+      allocatedFromFundraise,
+      allocatedTotal,
+      spent,
+      remaining,
+      progressPct,
+      isOverBudget: remaining < 0,
+      transactions: txList,
+    };
+  });
+
+  const poolLeft = poolCollected - poolDirectSpent;
+  const fundraiseLeft = fundraiseCollected - fundraiseDirectSpent;
+  const poolUnallocated = poolCollected - poolDirectSpent - poolAllocated;
+  const fundraiseUnallocated = fundraiseCollected - fundraiseDirectSpent - fundraiseAllocated;
+
+  const combinedCollected = poolCollected + fundraiseCollected;
+  const combinedTarget = poolTarget + fundraiseTarget;
+  const totalAllocatedToPockets = poolAllocated + fundraiseAllocated;
+  const totalPocketRemaining = totalAllocatedToPockets - totalPocketSpent;
+  const totalSpent = poolDirectSpent + fundraiseDirectSpent + totalPocketSpent;
+  const combinedNetBalance = combinedCollected - totalSpent;
+  const combinedUnallocated = poolUnallocated + fundraiseUnallocated;
+
   const pendingReimburseTotal = pendingReimburseItems.reduce(
     (sum, item) => sum + Math.max(0, Math.round(item.transaction.amount)),
     0,
@@ -145,15 +255,28 @@ export function calculateLedger(trip: SharedTrip): LedgerSummary {
     activeMemberCount: includedMembers.length,
     poolTarget,
     poolCollected,
-    poolSpent,
+    poolSpent: poolDirectSpent,
     poolLeft,
+    poolAllocated,
+    poolUnallocated,
     poolProgressPct,
 
     fundraiseTarget,
     fundraiseCollected,
-    fundraiseSpent,
+    fundraiseSpent: fundraiseDirectSpent,
     fundraiseLeft,
+    fundraiseAllocated,
+    fundraiseUnallocated,
     fundraiseProgressPct,
+
+    combinedCollected,
+    combinedTarget,
+    combinedNetBalance,
+    combinedUnallocated,
+    totalAllocatedToPockets,
+    totalPocketSpent,
+    totalPocketRemaining,
+    pockets,
 
     totalSpent,
     pendingReimburseTotal,

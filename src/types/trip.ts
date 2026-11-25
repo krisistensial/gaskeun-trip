@@ -145,12 +145,34 @@ export interface StayLodging {
 
 export type TransactionDirection = 'in' | 'out';
 export type TransactionPocket = 'pool' | 'fundraise' | 'personal';
+export type FundSourceKind = 'pool' | 'fundraise';
+
+export interface PocketAllocation {
+  id: string;
+  source: FundSourceKind;
+  /** Positive integer in IDR sourced from Pool or Fundraise */
+  amount: number;
+  note?: string;
+  createdAt: string;
+}
+
+export interface BudgetPocket {
+  id: string;
+  name: string;
+  emoji: string;
+  targetAmount?: number;
+  allocations: PocketAllocation[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Transaction {
   id: string;
   tripId: string;
   direction: TransactionDirection;
   pocket: TransactionPocket;
+  /** Optional custom BudgetPocket ID when an Expense OUT spends from an allocated pocket */
+  budgetPocketId?: string;
   title: string;
   /** Positive integer in IDR */
   amount: number;
@@ -325,6 +347,8 @@ export interface SharedTrip {
   stays: StayLodging[];
   /** Only 'pool' and 'fundraise' transactions belong in Layer 1 */
   transactions: Transaction[];
+  /** Virtual fund-accounting envelopes funded by Pool and/or Fundraise allocations */
+  budgetPockets?: BudgetPocket[];
   groupPrep: PrepTask[];
   /** Shared trip content inspiration board (IG Reels, TikTok, Shorts, etc.) */
   contentIdeas?: ContentIdea[];

@@ -25,13 +25,21 @@
 }
 
 .wallet-subtabs {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
   gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.wallet-subtabs::-webkit-scrollbar {
+  display: none;
 }
 
 .wallet-subtab {
   height: 34px;
+  padding: 0 14px;
+  flex-shrink: 0;
   border-radius: 17px;
   font-size: 11.5px;
   font-weight: 600;
@@ -312,4 +320,239 @@
   background: var(--brand-matcha);
   border-color: var(--brand-matcha);
   color: var(--text-inverse);
+}
+
+/* --- Combined Treasury & Custom Budget Pockets --- */
+.treasury-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.treasury-source-tile {
+  padding: 10px 11px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.treasury-source-tile__val {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.treasury-source-tile__sub {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.treasury-unallocated-pill {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(227, 237, 230, 0.72);
+  border: 1px solid rgba(74, 116, 104, 0.16);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--brand-forest);
+}
+
+.pocket-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pocket-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pocket-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pocket-card__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.pocket-card__emoji {
+  width: 36px;
+  height: 36px;
+  border-radius: 13px;
+  background: rgba(227, 237, 230, 0.75);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.pocket-card__name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.pocket-card__sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pocket-origin-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(246, 248, 245, 0.92);
+  border: 1px solid rgba(45, 74, 66, 0.12);
+  color: var(--text-secondary);
+}
+
+.pocket-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.pocket-emoji-pill {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1.4px solid rgba(45, 74, 66, 0.12);
+}
+
+.pocket-emoji-pill--active {
+  background: var(--brand-matcha-soft);
+  border-color: var(--brand-matcha);
+}
+
+.pocket-source-box {
+  padding: 12px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1.3px solid rgba(255, 255, 255, 0.95);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pocket-source-box__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pocket-source-box__avail {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--brand-matcha);
+}
+
+.pocket-source-box__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pocket-source-box__rp {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--brand-forest);
+}
+
+.pocket-source-box__input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+}
+
+.pocket-max-btn {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--brand-matcha-soft);
+  color: var(--brand-forest);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pocket-quick-adds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pocket-add-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(246, 248, 245, 0.92);
+  border: 1px solid rgba(45, 74, 66, 0.12);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pocket-error-text {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent-coral);
+}
+
+.pocket-total-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: var(--brand-matcha-soft);
+  border: 1px solid rgba(74, 116, 104, 0.22);
+}
+
+.pocket-total-summary__sub {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.pocket-total-summary__val {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--brand-forest);
 }

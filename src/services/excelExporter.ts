@@ -107,48 +107,70 @@ export async function buildTripWorkbook(trip: SharedTrip): Promise<XlsxType.Work
   XLSX.utils.book_append_sheet(wb, wsItinerary, 'Itinerary');
 
   /* --- Sheet 2: Wallet --- */
+  const pocketById = new Map((trip.budgetPockets ?? []).map((p) => [p.id, p]));
   const walletAoA: (string | number)[][] = [
-    ['WALLET SUMMARY', '', '', ''],
-    ['Metric', 'Amount (IDR)', 'Notes', ''],
-    ['Pool Target', ledger.poolTarget, `${ledger.activeMemberCount} active riders`, ''],
-    ['Pool Collected (IN)', ledger.poolCollected, `${ledger.poolProgressPct}% of target`, ''],
-    ['Pool Spent (OUT)', ledger.poolSpent, '', ''],
-    ['Pool Left', ledger.poolLeft, '', ''],
-    ['Fundraise Target', ledger.fundraiseTarget, '', ''],
-    ['Fundraise Collected (IN)', ledger.fundraiseCollected, `${ledger.fundraiseProgressPct}% of goal`, ''],
-    ['Fundraise Left', ledger.fundraiseLeft, '', ''],
-    ['Pending Reimburse', ledger.pendingReimburseTotal, `${ledger.pendingReimburseItems.length} unpaid`, ''],
+    ['WALLET SUMMARY', '', '', '', ''],
+    ['Metric', 'Amount (IDR)', 'Notes', '', ''],
+    ['Combined Collected (Pool + Fundraise)', ledger.combinedCollected, '', '', ''],
+    ['Combined Net Cash Balance', ledger.combinedNetBalance, 'Inflows minus all expenses', '', ''],
+    ['Unallocated Cash (Ready to Assign)', ledger.combinedUnallocated, `Pool ${ledger.poolUnallocated.toLocaleString('en-US')} + Fundraise ${ledger.fundraiseUnallocated.toLocaleString('en-US')}`, '', ''],
+    ['Pool Target', ledger.poolTarget, `${ledger.activeMemberCount} active riders`, '', ''],
+    ['Pool Collected (IN)', ledger.poolCollected, `${ledger.poolProgressPct}% of target`, '', ''],
+    ['Pool Allocated to Pockets', ledger.poolAllocated, `Free: ${ledger.poolUnallocated.toLocaleString('en-US')}`, '', ''],
+    ['Pool Direct Spent (OUT)', ledger.poolSpent, '', '', ''],
+    ['Fundraise Target', ledger.fundraiseTarget, '', '', ''],
+    ['Fundraise Collected (IN)', ledger.fundraiseCollected, `${ledger.fundraiseProgressPct}% of goal`, '', ''],
+    ['Fundraise Allocated to Pockets', ledger.fundraiseAllocated, `Free: ${ledger.fundraiseUnallocated.toLocaleString('en-US')}`, '', ''],
+    ['Total Spent (Direct + Pockets)', ledger.totalSpent, '', '', ''],
+    ['Pending Reimburse', ledger.pendingReimburseTotal, `${ledger.pendingReimburseItems.length} unpaid`, '', ''],
     [],
-    ['MEMBER POOL CONTRIBUTIONS', '', '', ''],
-    ['Member', 'Status', 'Paid (IDR)', 'Remaining (IDR)'],
+    ['BUDGET POCKETS (ALLOCATED ENVELOPES)', '', '', '', ''],
+    ['Pocket', 'From Pool (IDR)', 'From Fundraise (IDR)', 'Spent (IDR)', 'Remaining (IDR)'],
+    ...(ledger.pockets.length > 0
+      ? ledger.pockets.map((p) => [
+          `${p.pocket.emoji} ${p.pocket.name}`,
+          p.allocatedFromPool,
+          p.allocatedFromFundraise,
+          p.spent,
+          p.remaining,
+        ])
+      : [['No custom pockets created yet', 0, 0, 0, 0]]),
+    [],
+    ['MEMBER POOL CONTRIBUTIONS', '', '', '', ''],
+    ['Member', 'Status', 'Paid (IDR)', 'Remaining (IDR)', ''],
     ...ledger.memberContributions.map((c) => [
       c.member.name,
       c.member.status,
       c.paidPool,
       c.remainingPool,
+      '',
     ]),
     [],
-    ['FUNDRAISE LOG (IN)', '', '', ''],
-    ['Date', 'Title', 'Amount (IDR)', 'Note'],
+    ['FUNDRAISE LOG (IN)', '', '', '', ''],
+    ['Date', 'Title', 'Amount (IDR)', 'Note', ''],
     ...trip.transactions
       .filter((tx) => tx.pocket === 'fundraise' && tx.direction === 'in')
-      .map((tx) => [tx.date, tx.title, tx.amount, tx.note || '']),
+      .map((tx) => [tx.date, tx.title, tx.amount, tx.note || '', '']),
     [],
-    ['EXPENSES & REIMBURSEMENTS (OUT)', '', '', ''],
-    ['Date', 'Title', 'Amount (IDR)', 'Pocket / Status'],
+    ['EXPENSES & REIMBURSEMENTS (OUT)', '', '', '', ''],
+    ['Date', 'Title', 'Amount (IDR)', 'Pocket / Status', ''],
     ...trip.transactions
       .filter((tx) => tx.direction === 'out' && (tx.pocket === 'pool' || tx.pocket === 'fundraise'))
       .map((tx) => {
         const payer = tx.paidByMemberId ? memberById.get(tx.paidByMemberId)?.name : undefined;
+        const customPocket = tx.budgetPocketId ? pocketById.get(tx.budgetPocketId) : undefined;
+        const sourceLabel = customPocket
+          ? `${customPocket.emoji} ${customPocket.name}`
+          : tx.pocket.toUpperCase();
         const status = tx.paidOutOfPocket
-          ? `${tx.pocket.toUpperCase()} · Paid by ${payer ?? 'Crew'} (${tx.reimbursed ? 'Settled' : 'Unpaid'})`
-          : `${tx.pocket.toUpperCase()} · Direct`;
-        return [tx.date, tx.title, tx.amount, status];
+          ? `${sourceLabel} · Paid by ${payer ?? 'Crew'} (${tx.reimbursed ? 'Settled' : 'Unpaid'})`
+          : `${sourceLabel} · Direct`;
+        return [tx.date, tx.title, tx.amount, status, ''];
       }),
   ];
 
   const wsWallet = XLSX.utils.aoa_to_sheet(walletAoA);
-  wsWallet['!cols'] = [{ wch: 26 }, { wch: 26 }, { wch: 16 }, { wch: 36 }];
+  wsWallet['!cols'] = [{ wch: 28 }, { wch: 22 }, { wch: 22 }, { wch: 24 }, { wch: 18 }];
   XLSX.utils.book_append_sheet(wb, wsWallet, 'Wallet');
 
   /* --- Sheet 3: Crew & Stay --- */

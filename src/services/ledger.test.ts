@@ -107,4 +107,62 @@ describe('Ledger Calculator — Solo–Jogja Pilot & Anti-Double-Deduction', () 
     expect(formatCompactIDR(555_000)).toBe('Rp 555k');
     expect(formatCompactIDR(33_500)).toBe('Rp 33.5k');
   });
+
+  it('reconciles Combined Treasury & multi-source Budget Pockets with zero double counting', () => {
+    const withPockets: SharedTrip = {
+      ...pilotTrip,
+      budgetPockets: [
+        {
+          id: 'pkt-transport',
+          name: 'Transport & Fuel',
+          emoji: '🛵',
+          allocations: [
+            { id: 'a1', source: 'pool', amount: 800_000, createdAt: '2026-11-25T08:00:00Z' },
+            { id: 'a2', source: 'fundraise', amount: 25_000, createdAt: '2026-11-25T08:00:00Z' },
+          ],
+          createdAt: '2026-11-25T08:00:00Z',
+          updatedAt: '2026-11-25T08:00:00Z',
+        },
+      ],
+      transactions: [
+        ...pilotTrip.transactions,
+        {
+          id: 'tx-pocket-rent',
+          tripId: pilotTrip.id,
+          direction: 'out',
+          pocket: 'pool',
+          budgetPocketId: 'pkt-transport',
+          title: 'Motorbike Deposit',
+          amount: 300_000,
+          date: '2026-11-25',
+          createdAt: '2026-11-25T09:00:00Z',
+          updatedAt: '2026-11-25T09:00:00Z',
+        },
+      ],
+    };
+
+    const s = calculateLedger(withPockets);
+
+    // Combined inflow = Pool (2,480,000) + Fundraise (33,500) = 2,513,500
+    expect(s.combinedCollected).toBe(2_513_500);
+
+    // Direct pool spent = 125,000, Pocket spent = 300,000 -> Total spent = 425,000
+    expect(s.poolSpent).toBe(125_000);
+    expect(s.totalPocketSpent).toBe(300_000);
+    expect(s.totalSpent).toBe(425_000);
+    expect(s.combinedNetBalance).toBe(2_088_500);
+
+    // Allocations: Pool gave 800,000, Fundraise gave 25,000 -> Free unallocated drops cleanly
+    expect(s.poolAllocated).toBe(800_000);
+    expect(s.poolUnallocated).toBe(2_480_000 - 125_000 - 800_000);
+    expect(s.fundraiseAllocated).toBe(25_000);
+    expect(s.fundraiseUnallocated).toBe(33_500 - 25_000);
+
+    // Pocket breakdown & Accounting Equation Invariant:
+    // combinedNetBalance === combinedUnallocated + totalPocketRemaining
+    expect(s.pockets[0].allocatedTotal).toBe(825_000);
+    expect(s.pockets[0].spent).toBe(300_000);
+    expect(s.pockets[0].remaining).toBe(525_000);
+    expect(s.combinedUnallocated + s.totalPocketRemaining).toBe(s.combinedNetBalance);
+  });
 });

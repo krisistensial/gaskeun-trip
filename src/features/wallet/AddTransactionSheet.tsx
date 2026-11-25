@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Lock, Trash2 } from 'lucide-react';
 import { Avatar, Button, ConfirmDialog, Input, LiquidBottomSheet } from '../../components/atoms';
+import { formatCompactIDR, type BudgetPocketSummary } from '../../services/ledger';
 import type { Transaction, TransactionPocket, TripMember } from '../../types/trip';
 import './wallet.css';
 
@@ -10,9 +11,13 @@ export interface AddTransactionSheetProps {
   open: boolean;
   tripId: string;
   members: TripMember[];
+  pockets?: BudgetPocketSummary[];
+  poolUnallocated?: number;
+  fundraiseUnallocated?: number;
   initialMode: TxComposerMode;
   editingTx: Transaction | null;
   defaultMemberId?: string;
+  defaultBudgetPocketId?: string;
   onSaveShared: (tx: Transaction, isNew: boolean) => void;
   onSavePersonal: (tx: Transaction, isNew: boolean) => void;
   onDeleteShared: (txId: string) => void;
@@ -31,9 +36,13 @@ export function AddTransactionSheet({
   open,
   tripId,
   members,
+  pockets = [],
+  poolUnallocated = 0,
+  fundraiseUnallocated = 0,
   initialMode,
   editingTx,
   defaultMemberId,
+  defaultBudgetPocketId,
   onSaveShared,
   onSavePersonal,
   onDeleteShared,
@@ -54,6 +63,9 @@ export function AddTransactionSheet({
   );
   const [expenseSource, setExpenseSource] = useState<'pool' | 'fundraise'>(() =>
     editingTx?.pocket === 'fundraise' ? 'fundraise' : 'pool',
+  );
+  const [budgetPocketId, setBudgetPocketId] = useState<string | undefined>(
+    () => editingTx?.budgetPocketId ?? defaultBudgetPocketId,
   );
   const [paidOutOfPocket, setPaidOutOfPocket] = useState<boolean>(() =>
     Boolean(editingTx?.paidOutOfPocket),
@@ -94,8 +106,17 @@ export function AddTransactionSheet({
       return;
     }
 
+    const selectedPocket = budgetPocketId
+      ? pockets.find((p) => p.pocket.id === budgetPocketId)
+      : undefined;
+    const resolvedExpenseSource: 'pool' | 'fundraise' = selectedPocket
+      ? selectedPocket.allocatedFromFundraise > selectedPocket.allocatedFromPool
+        ? 'fundraise'
+        : 'pool'
+      : expenseSource;
+
     const pocket: TransactionPocket =
-      mode === 'pool' ? 'pool' : mode === 'fundraise' ? 'fundraise' : expenseSource;
+      mode === 'pool' ? 'pool' : mode === 'fundraise' ? 'fundraise' : resolvedExpenseSource;
     const direction = mode === 'expense' ? 'out' : 'in';
 
     const selectedMember = members.find((m) => m.id === memberId);
@@ -104,13 +125,16 @@ export function AddTransactionSheet({
         ? `Pool Deposit (${selectedMember?.name ?? 'Crew'})`
         : mode === 'fundraise'
           ? 'Fundraise Entry'
-          : 'Group Expense';
+          : selectedPocket
+            ? `${selectedPocket.pocket.name} Expense`
+            : 'Group Expense';
 
     const tx: Transaction = {
       id,
       tripId,
       direction,
       pocket,
+      budgetPocketId: mode === 'expense' ? selectedPocket?.pocket.id : undefined,
       title: title.trim() || defaultTitle,
       amount: numericAmount,
       date,
@@ -252,24 +276,44 @@ export function AddTransactionSheet({
             <>
               <div>
                 <div className="gk-field__label" style={{ marginBottom: 6 }}>
-                  FUND SOURCE
+                  DEDUCT FROM
                 </div>
-                <div className="create-two-col">
+                <div className="payer-strip">
+                  {pockets.map((p) => {
+                    const active = budgetPocketId === p.pocket.id;
+                    return (
+                      <button
+                        key={p.pocket.id}
+                        type="button"
+                        className={`payer-chip tactile ${active ? 'payer-chip--active' : ''}`}
+                        onClick={() => setBudgetPocketId(p.pocket.id)}
+                      >
+                        <span>{p.pocket.emoji}</span>
+                        <span>
+                          {p.pocket.name} ({formatCompactIDR(p.remaining)})
+                        </span>
+                      </button>
+                    );
+                  })}
                   <button
                     type="button"
-                    className={`wallet-subtab tactile ${expenseSource === 'pool' ? 'wallet-subtab--active' : ''}`}
-                    style={{ height: 38 }}
-                    onClick={() => setExpenseSource('pool')}
+                    className={`payer-chip tactile ${!budgetPocketId && expenseSource === 'pool' ? 'payer-chip--active' : ''}`}
+                    onClick={() => {
+                      setBudgetPocketId(undefined);
+                      setExpenseSource('pool');
+                    }}
                   >
-                    Pool
+                    <span>Pool ({formatCompactIDR(poolUnallocated)} free)</span>
                   </button>
                   <button
                     type="button"
-                    className={`wallet-subtab tactile ${expenseSource === 'fundraise' ? 'wallet-subtab--active' : ''}`}
-                    style={{ height: 38 }}
-                    onClick={() => setExpenseSource('fundraise')}
+                    className={`payer-chip tactile ${!budgetPocketId && expenseSource === 'fundraise' ? 'payer-chip--active' : ''}`}
+                    onClick={() => {
+                      setBudgetPocketId(undefined);
+                      setExpenseSource('fundraise');
+                    }}
                   >
-                    Fundraise
+                    <span>Fundraise ({formatCompactIDR(fundraiseUnallocated)} free)</span>
                   </button>
                 </div>
               </div>
