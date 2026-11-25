@@ -29,7 +29,6 @@ import {
 import { exportTripToExcel } from '../../services/excelExporter';
 import { primeFeedbackAudio, triggerFeedback } from '../../services/feedback';
 import { formatCompactIDR } from '../../services/ledger';
-import { toggleStopDoneStatus } from '../../services/permissions';
 import {
   getGoogleMapsRouteUrl,
   hasGoogleMapsRoute,
@@ -669,21 +668,6 @@ export function PlanScreen({
     setEditingStopId(null);
   };
 
-  const handleToggleStopDone = (stop: PlanItem) => {
-    if (!canEdit) return;
-    const nextStatus = toggleStopDoneStatus(stop.status);
-    triggerFeedback(nextStatus === 'done' ? 'check' : 'uncheck');
-    onUpdateTrip(
-      (prev) => ({
-        ...prev,
-        itinerary: prev.itinerary.map((i) =>
-          i.id === stop.id ? { ...i, status: nextStatus } : i,
-        ),
-      }),
-      nextStatus === 'done' ? `Marked "${stop.title}" done` : `Marked "${stop.title}" upcoming`,
-    );
-  };
-
   const handleQuickPersistNotesHtml = (itemId: string, notesHtml: string) => {
     onUpdateTrip((prev) => ({
       ...prev,
@@ -1019,18 +1003,15 @@ export function PlanScreen({
                       }}
                       className="trail-item"
                     >
-                      <button
+                      <div
                         ref={(el) => {
                           if (el) dotRefs.current.set(idea.id, el);
                           else dotRefs.current.delete(idea.id);
                         }}
-                        type="button"
-                        className="trail-item__dot trail-item__dot--btn"
-                        aria-label={isShot ? `Mark ${idea.title} to shoot` : `Mark ${idea.title} shot`}
-                        onClick={() => handleToggleIdeaShot(idea)}
+                        className="trail-item__dot"
                       >
                         <TrailDot status={isShot ? 'content-done' : 'content'} />
-                      </button>
+                      </div>
 
                       <div
                         ref={(el) => {
@@ -1135,34 +1116,15 @@ export function PlanScreen({
                     }}
                     className="trail-item"
                   >
-                    {canEdit ? (
-                      <button
-                        ref={(el) => {
-                          if (el) dotRefs.current.set(stop.id, el);
-                          else dotRefs.current.delete(stop.id);
-                        }}
-                        type="button"
-                        className="trail-item__dot trail-item__dot--btn"
-                        aria-label={
-                          effStatus === 'done'
-                            ? `Mark ${stop.title} upcoming`
-                            : `Mark ${stop.title} done`
-                        }
-                        onClick={() => handleToggleStopDone(stop)}
-                      >
-                        <TrailDot status={dotStatus} />
-                      </button>
-                    ) : (
-                      <div
-                        ref={(el) => {
-                          if (el) dotRefs.current.set(stop.id, el);
-                          else dotRefs.current.delete(stop.id);
-                        }}
-                        className="trail-item__dot"
-                      >
-                        <TrailDot status={dotStatus} />
-                      </div>
-                    )}
+                    <div
+                      ref={(el) => {
+                        if (el) dotRefs.current.set(stop.id, el);
+                        else dotRefs.current.delete(stop.id);
+                      }}
+                      className="trail-item__dot"
+                    >
+                      <TrailDot status={dotStatus} />
+                    </div>
 
                     <div
                       ref={(el) => {

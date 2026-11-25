@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type PointerEvent } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   Check,
   ChevronRight,
@@ -59,6 +60,23 @@ export interface WalletScreenProps {
   onDeletePersonalTx: (txId: string) => void;
 }
 
+const walletTabVariants = {
+  enter: (dir: 'left' | 'right' | 'none') => ({
+    x: dir === 'left' ? 44 : dir === 'right' ? -44 : 0,
+    opacity: dir === 'none' ? 1 : 0,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+    transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] as const },
+  },
+  exit: (dir: 'left' | 'right' | 'none') => ({
+    x: dir === 'left' ? -44 : dir === 'right' ? 44 : 0,
+    opacity: 0,
+    transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] as const },
+  }),
+};
+
 export function WalletScreen({
   trip,
   personalTransactions,
@@ -73,24 +91,23 @@ export function WalletScreen({
 }: WalletScreenProps) {
   const [subTab, setSubTab] = useState<WalletTab>('combined');
   const [slideDir, setSlideDir] = useState<'left' | 'right' | 'none'>('none');
-  const [swipeUi, setSwipeUi] = useState<{ offsetX: number; snapping: boolean }>({
-    offsetX: 0,
-    snapping: false,
-  });
   const [spentFilter, setSpentFilter] = useState<SpentFilter>('all');
   const subtabsRef = useRef<HTMLDivElement | null>(null);
   const subtabBtnRefs = useRef<Partial<Record<WalletTab, HTMLButtonElement | null>>>({});
+  const swipeFollowRef = useRef<HTMLDivElement | null>(null);
   const subtabsFade = useHorizontalScrollFade(subtabsRef, [subTab]);
   const swipeRef = useRef<{
     pointerId: number;
     startX: number;
     startY: number;
+    startAt: number;
     locked: boolean;
     offsetX: number;
   }>({
     pointerId: -1,
     startX: 0,
     startY: 0,
+    startAt: 0,
     locked: false,
     offsetX: 0,
   });
@@ -238,6 +255,16 @@ export function WalletScreen({
     );
   };
 
+  const resetSwipeFollow = (animateBack: boolean) => {
+    const el = swipeFollowRef.current;
+    if (!el) return;
+    el.style.transition = animateBack
+      ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease'
+      : 'none';
+    el.style.transform = 'translate3d(0, 0, 0)';
+    el.style.opacity = '1';
+  };
+
   const selectWalletTab = (next: WalletTab, explicitDir?: 'left' | 'right') => {
     if (next === subTab) return;
     const prevIdx = WALLET_TABS.findIndex((t) => t.id === subTab);
@@ -245,11 +272,12 @@ export function WalletScreen({
     setSlideDir(explicitDir ?? (nextIdx > prevIdx ? 'left' : 'right'));
     setSubTab(next);
     requestAnimationFrame(() => {
-      subtabBtnRefs.current[next]?.scrollIntoView({
-        inline: 'center',
-        block: 'nearest',
-        behavior: 'smooth',
-      });
+      const container = subtabsRef.current;
+      const btn = subtabBtnRefs.current[next];
+      if (container && btn) {
+        const targetLeft = btn.offsetLeft - container.clientWidth / 2 + btn.clientWidth / 2;
+        container.scrollTo({ left: Math.max(0, targetLeft), behavior: 'smooth' });
+      }
     });
   };
 
@@ -261,10 +289,12 @@ export function WalletScreen({
     ) {
       return;
     }
+    resetSwipeFollow(false);
     swipeRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
+      startAt: performance.now(),
       locked: false,
       offsetX: 0,
     };
@@ -282,7 +312,7 @@ export function WalletScreen({
         s.pointerId = -1;
         return;
       }
-      if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.45) {
+      if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.35) {
         s.locked = true;
       } else {
         return;
@@ -292,10 +322,17 @@ export function WalletScreen({
     const idx = WALLET_TABS.findIndex((t) => t.id === subTab);
     const atLeftEdge = idx === 0 && dx > 0;
     const atRightEdge = idx === WALLET_TABS.length - 1 && dx < 0;
-    const factor = atLeftEdge || atRightEdge ? 0.16 : 0.42;
-    const offset = Math.max(-54, Math.min(54, dx * factor));
+    const atEdge = atLeftEdge || atRightEdge;
+    const raw = dx * (atEdge ? 0.14 : 0.36);
+    const offset = atEdge ? Math.max(-18, Math.min(18, raw)) : Math.max(-44, Math.min(44, raw));
     s.offsetX = offset;
-    setSwipeUi({ offsetX: offset, snapping: false });
+
+    const el = swipeFollowRef.current;
+    if (el) {
+      el.style.transition = 'none';
+      el.style.transform = `translate3d(${offset}px, 0, 0)`;
+      el.style.opacity = atEdge ? '1' : String(Math.max(0.88, 1 - Math.abs(offset) / 360));
+    }
   };
 
   const handleStagePointerEnd = (e: PointerEvent<HTMLDivElement>) => {
@@ -303,22 +340,30 @@ export function WalletScreen({
     if (s.pointerId !== e.pointerId) return;
     const wasLocked = s.locked;
     const dx = e.clientX - s.startX;
+    const elapsed = Math.max(16, performance.now() - s.startAt);
+    const vx = Math.abs(dx) / elapsed;
     s.pointerId = -1;
     s.locked = false;
 
     if (!wasLocked) return;
 
-    setSwipeUi({ offsetX: 0, snapping: true });
-    window.setTimeout(() => setSwipeUi({ offsetX: 0, snapping: false }), 220);
-
     const idx = WALLET_TABS.findIndex((t) => t.id === subTab);
-    if (dx <= -48 && idx < WALLET_TABS.length - 1) {
+    const passed = Math.abs(dx) >= 44 || (Math.abs(dx) >= 24 && vx >= 0.35);
+
+    if (passed && dx < 0 && idx < WALLET_TABS.length - 1) {
+      resetSwipeFollow(false);
       triggerFeedback('tick');
       selectWalletTab(WALLET_TABS[idx + 1].id, 'left');
-    } else if (dx >= 48 && idx > 0) {
+      return;
+    }
+    if (passed && dx > 0 && idx > 0) {
+      resetSwipeFollow(false);
       triggerFeedback('tick');
       selectWalletTab(WALLET_TABS[idx - 1].id, 'right');
+      return;
     }
+
+    resetSwipeFollow(true);
   };
 
   const handleToggleTentative = () => {
@@ -387,27 +432,23 @@ export function WalletScreen({
 
       {/* Horizontally Swipeable Tab Content Stage */}
       <div
-        className={`wallet-swipe-stage ${swipeUi.snapping ? 'wallet-swipe-stage--snap' : ''}`}
-        style={
-          swipeUi.offsetX !== 0
-            ? { transform: `translate3d(${swipeUi.offsetX}px, 0, 0)` }
-            : undefined
-        }
+        className="wallet-swipe-stage"
         onPointerDown={handleStagePointerDown}
         onPointerMove={handleStagePointerMove}
         onPointerUp={handleStagePointerEnd}
         onPointerCancel={handleStagePointerEnd}
       >
-        <div
-          key={subTab}
-          className={`wallet-tab-panel ${
-            slideDir === 'left'
-              ? 'wallet-tab-panel--from-right'
-              : slideDir === 'right'
-                ? 'wallet-tab-panel--from-left'
-                : ''
-          }`}
-        >
+        <div ref={swipeFollowRef} className="wallet-swipe-follow">
+          <AnimatePresence mode="popLayout" custom={slideDir} initial={false}>
+            <motion.div
+              key={subTab}
+              custom={slideDir}
+              variants={walletTabVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              className="wallet-tab-panel"
+            >
       {/* SUB-TAB 0: COMBINED TREASURY & BUDGET POCKETS */}
       {subTab === 'combined' && (
         <>
@@ -1005,6 +1046,8 @@ export function WalletScreen({
           </div>
         </>
       )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 
