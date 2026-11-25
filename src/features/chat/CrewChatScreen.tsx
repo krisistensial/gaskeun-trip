@@ -10,6 +10,8 @@ import {
 import { createPortal } from 'react-dom';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
+  Bell,
+  BellOff,
   Check,
   CheckCheck,
   CheckSquare,
@@ -37,7 +39,6 @@ import { useRegisterOverlay } from '../../context/OverlayContext';
 import {
   buildReplyPreview,
   CHAT_QUICK_REACTIONS,
-  computeLatestSeenAnchors,
   countTotalReactions,
   CREW_STICKER_PACK,
   formatChatDayDivider,
@@ -50,16 +51,18 @@ import {
 } from '../../services/chat';
 import { FULL_EMOJI_GROUPS, searchEmojiCatalog } from '../../services/emojiCatalog';
 import {
-  CUSTOM_STICKER_EMOJIS,
-  CUSTOM_STICKER_THEMES,
   deleteCustomSticker,
   loadCustomStickers,
-  renderCustomTransparentSticker,
-  sanitizeStickerCaption,
   saveCustomSticker,
-  type CustomStickerThemeId,
   type SavedCustomSticker,
 } from '../../services/customStickers';
+import {
+  getDeviceNotificationPermission,
+  getDeviceNotificationsEnabled,
+  requestDeviceNotificationPermission,
+  setDeviceNotificationsEnabled,
+  tryShowDeviceNotification,
+} from '../../services/notifications';
 import {
   expandStickerSearchTerms,
   processPastedStickerBlob,
@@ -68,6 +71,7 @@ import {
 } from '../../services/stickerSearch';
 import { primeFeedbackAudio, triggerFeedback } from '../../services/feedback';
 import { useBackHandler } from '../../services/pwaHistory';
+import { CreateStickerSheet } from './CreateStickerSheet';
 import type {
   ChatMessage,
   ChatReadReceipt,
@@ -165,7 +169,7 @@ function TransparentStickerGraphic({
 }
 
 type DrawerMode = 'none' | 'emoji' | 'sticker';
-type StickerTabMode = 'browse' | 'mine' | 'create';
+type StickerTabMode = 'browse' | 'mine';
 
 const SPRING_BUBBLE = {
   type: 'spring' as const,
@@ -205,7 +209,7 @@ export function CrewChatScreen({
   const [emojiCategory, setEmojiCategory] = useState(FULL_EMOJI_GROUPS[0].id);
   const [emojiQuery, setEmojiQuery] = useState('');
 
-  // Sticker Drawer + Search + Custom Die-Cut Maker
+  // Sticker Drawer + Search + Dedicated Sticker Studio Popup
   const [stickerTab, setStickerTab] = useState<StickerTabMode>('browse');
   const [stickerQuery, setStickerQuery] = useState('');
   const [externalStickers, setExternalStickers] = useState<ExternalStickerResult[]>([]);
@@ -213,9 +217,11 @@ export function CrewChatScreen({
   const [customStickers, setCustomStickers] = useState<SavedCustomSticker[]>(() =>
     loadCustomStickers(),
   );
-  const [creatorEmoji, setCreatorEmoji] = useState<string>(CUSTOM_STICKER_EMOJIS[0]);
-  const [creatorCaption, setCreatorCaption] = useState('GASKEUN!');
-  const [creatorTheme, setCreatorTheme] = useState<CustomStickerThemeId>('matcha');
+  const [createStickerOpen, setCreateStickerOpen] = useState(false);
+
+  // Device notification shortcut state in Chat header
+  const [notifPerm, setNotifPerm] = useState(() => getDeviceNotificationPermission());
+  const [notifOn, setNotifOn] = useState(() => getDeviceNotificationsEnabled());
 
   const [replyTarget, setReplyTarget] = useState<ChatReplyPreview | null>(null);
 
@@ -387,17 +393,6 @@ export function CrewChatScreen({
   );
   const visibleOnlineStack = onlineOthers.slice(0, 3);
 
-  const seenAnchors = useMemo(
-    () =>
-      computeLatestSeenAnchors(
-        messages,
-        readReceipts,
-        trip.members,
-        activeMemberId,
-      ),
-    [messages, readReceipts, trip.members, activeMemberId],
-  );
-
   const builtInFilteredStickers = useMemo(() => {
     const q = stickerQuery.trim();
     if (!q) return [...CREW_STICKER_PACK];
@@ -439,15 +434,6 @@ export function CrewChatScreen({
       window.clearTimeout(timer);
     };
   }, [drawerMode, stickerTab, stickerQuery]);
-
-  const creatorPreviewUrl = useMemo(() => {
-    if (drawerMode !== 'sticker' || stickerTab !== 'create') return null;
-    return renderCustomTransparentSticker({
-      emoji: creatorEmoji,
-      caption: creatorCaption,
-      themeId: creatorTheme,
-    });
-  }, [drawerMode, stickerTab, creatorEmoji, creatorCaption, creatorTheme]);
 
   // Mark read on entry and whenever messages arrive while chat is open
   useEffect(() => {
@@ -582,34 +568,6 @@ export function CrewChatScreen({
     setDrawerMode('none');
     isNearBottomRef.current = true;
     requestAnimationFrame(() => scrollToBottom(true));
-  };
-
-  const handleCreateAndSendCustomSticker = () => {
-    const dataUrl = renderCustomTransparentSticker({
-      emoji: creatorEmoji,
-      caption: creatorCaption,
-      themeId: creatorTheme,
-    });
-    if (!dataUrl) {
-      onNotify?.('Could not generate sticker', 'error');
-      return;
-    }
-    const cleanCaption = sanitizeStickerCaption(creatorCaption) || 'Sticker';
-    const created: SavedCustomSticker = {
-      id: `my-stk-${Date.now().toString(36)}`,
-      caption: cleanCaption,
-      emoji: creatorEmoji,
-      themeId: creatorTheme,
-      dataUrl,
-      createdAt: new Date().toISOString(),
-    };
-    setCustomStickers(saveCustomSticker(created));
-    handleSendSticker({
-      stickerId: created.id,
-      stickerUrl: dataUrl,
-      stickerCaption: cleanCaption,
-    });
-    setStickerTab('mine');
   };
 
   // Support pasting keyboard stickers (Gboard / Samsung / iOS) without allowing photo uploads
@@ -812,8 +770,8 @@ export function CrewChatScreen({
   const headerSubText = typingText
     ? typingText
     : onlineOthers.length > 0
-      ? `${onlineOthers.length + 1} online · ${trip.code}`
-      : `${trip.code} · Text & stickers only`;
+      ? `${trip.title} · ${onlineOthers.length + 1} online`
+      : trip.title;
 
   const canSendText = sanitizeChatText(draft).length > 0;
   const activeEmojiItems = useMemo(() => {
@@ -870,10 +828,49 @@ export function CrewChatScreen({
     setHoldTarget({ message: msg, isOwn });
   };
 
+  const renderWhatsAppTicks = (msg: ChatMessage, isOwn: boolean) => {
+    if (!isOwn || msg.deleted) return null;
+    const seenByCount = getMessageSeenByMembers(
+      msg,
+      readReceipts,
+      trip.members,
+      activeMemberId,
+    ).length;
+    if (seenByCount > 0) {
+      return (
+        <CheckCheck
+          size={13}
+          strokeWidth={2.3}
+          className="crew-chat-tick crew-chat-tick--read"
+          aria-label="Read"
+        />
+      );
+    }
+    if (onlineOthers.length > 0 || (typeof navigator !== 'undefined' && navigator.onLine !== false)) {
+      return (
+        <CheckCheck
+          size={13}
+          strokeWidth={2.1}
+          className="crew-chat-tick"
+          aria-label="Delivered"
+        />
+      );
+    }
+    return (
+      <Check
+        size={12}
+        strokeWidth={2.2}
+        className="crew-chat-tick"
+        aria-label="Sent"
+      />
+    );
+  };
+
   const renderStickerMessage = (msg: ChatMessage, inHoldOverlay = false) => {
     const builtIn = getStickerById(msg.stickerId);
     const primaryUrl = msg.stickerUrl ?? builtIn?.url;
     const fallbackUrl = builtIn?.fallbackUrl ?? builtIn?.url;
+    const isOwn = Boolean(activeMemberId && msg.senderId === activeMemberId);
 
     return (
       <div
@@ -884,10 +881,7 @@ export function CrewChatScreen({
             ? undefined
             : (e) => {
                 e.preventDefault();
-                openHoldViaContextMenu(
-                  msg,
-                  Boolean(activeMemberId && msg.senderId === activeMemberId),
-                );
+                openHoldViaContextMenu(msg, isOwn);
               }
         }
       >
@@ -915,7 +909,10 @@ export function CrewChatScreen({
           alt={msg.text || 'Sticker'}
           className="crew-chat-sticker-img"
         />
-        <span className="crew-chat-sticker-meta">{formatChatTime(msg.createdAt)}</span>
+        <span className="crew-chat-sticker-meta">
+          <span>{formatChatTime(msg.createdAt)}</span>
+          {renderWhatsAppTicks(msg, isOwn)}
+        </span>
         {!inHoldOverlay && heartPopId === msg.id && (
           <span className="crew-chat-heart-pop" aria-hidden="true">
             ❤️
@@ -966,6 +963,7 @@ export function CrewChatScreen({
       <p className="crew-chat-text">{msg.text}</p>
       <div className="crew-chat-meta">
         <span>{formatChatTime(msg.createdAt)}</span>
+        {renderWhatsAppTicks(msg, isOwn)}
       </div>
       {!inHoldOverlay && heartPopId === msg.id && (
         <span className="crew-chat-heart-pop" aria-hidden="true">
@@ -974,14 +972,6 @@ export function CrewChatScreen({
       )}
     </div>
   );
-
-  const formatSeenSummary = (seenList: Array<{ member: TripMember; seenAt: string }>) => {
-    if (seenList.length === 1) return `Seen by ${seenList[0].member.name}`;
-    if (seenList.length === 2) {
-      return `Seen by ${seenList[0].member.name}, ${seenList[1].member.name}`;
-    }
-    return `Seen by ${seenList[0].member.name} +${seenList.length - 1}`;
-  };
 
   return (
     <MotionConfig reducedMotion="user">
@@ -1069,6 +1059,65 @@ export function CrewChatScreen({
                   {headerSubText}
                 </div>
               </div>
+
+              <button
+                type="button"
+                className={`crew-chat-bell-orb tactile ${
+                  notifPerm === 'granted' && notifOn ? 'crew-chat-bell-orb--on' : ''
+                }`}
+                aria-label="Phone chat notifications"
+                title="Phone chat alerts"
+                onClick={() => {
+                  if (notifPerm === 'default') {
+                    triggerFeedback('tap');
+                    void requestDeviceNotificationPermission().then((res) => {
+                      setNotifPerm(res.permission);
+                      setNotifOn(res.granted);
+                      onNotify?.(
+                        res.granted
+                          ? res.shown
+                            ? 'Phone notifications enabled!'
+                            : res.error || 'Permission granted — check device notifications'
+                          : res.error || 'Notification permission declined',
+                        res.granted ? 'success' : 'info',
+                      );
+                    });
+                    return;
+                  }
+                  if (notifPerm !== 'granted') {
+                    triggerFeedback('warning');
+                    void tryShowDeviceNotification({ title: 'Test', body: 'Test' }).then((r) => {
+                      onNotify?.(r.error || 'Notifications unavailable on this browser', 'info');
+                    });
+                    return;
+                  }
+                  const next = !notifOn;
+                  setDeviceNotificationsEnabled(next);
+                  setNotifOn(next);
+                  if (next) {
+                    triggerFeedback('toggle');
+                    void tryShowDeviceNotification({
+                      title: 'GASKEUN! Chat Alerts Active',
+                      body: `Notifications enabled for ${trip.title}.`,
+                      tag: `chat-test-${Date.now()}`,
+                    }).then((r) => {
+                      onNotify?.(
+                        r.ok ? 'Test alert sent to this phone!' : r.error || 'Blocked by OS',
+                        r.ok ? 'success' : 'info',
+                      );
+                    });
+                  } else {
+                    triggerFeedback('tap');
+                    onNotify?.('Phone notifications paused on this device', 'info');
+                  }
+                }}
+              >
+                {notifPerm === 'granted' && notifOn ? (
+                  <Bell size={15} strokeWidth={2} />
+                ) : (
+                  <BellOff size={15} strokeWidth={1.9} />
+                )}
+              </button>
 
               {visibleOnlineStack.length > 0 && (
                 <button
@@ -1159,7 +1208,6 @@ export function CrewChatScreen({
                   const isOwn = Boolean(activeMemberId && msg.senderId === activeMemberId);
                   const senderMember = memberById.get(msg.senderId);
                   const reactionEntries = countTotalReactions(msg.reactions);
-                  const seenByAtAnchor = seenAnchors[msg.id] ?? [];
 
                   const isNewMessage = !initialIdsRef.current?.has(msg.id);
                   const isBeingSwiped = swipeUi.id === msg.id;
@@ -1330,40 +1378,6 @@ export function CrewChatScreen({
                           </AnimatePresence>
                         </div>
                       </div>
-
-                      {!msg.deleted && seenByAtAnchor.length > 0 && (
-                        <button
-                          type="button"
-                          className={`crew-chat-seen-row ${
-                            isOwn ? 'crew-chat-seen-row--own' : 'crew-chat-seen-row--other'
-                          }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (selectMode) return;
-                            triggerFeedback('tap');
-                            setSeenSheetMsg(msg);
-                          }}
-                        >
-                          <span className="crew-chat-seen-avatars">
-                            {seenByAtAnchor.slice(0, 3).map((entry) => (
-                              <span key={entry.member.id} className="crew-chat-seen-avatar">
-                                <Avatar
-                                  initials={entry.member.initials}
-                                  name={entry.member.name}
-                                  src={entry.member.avatarDataUrl}
-                                  size="sm"
-                                  bg={entry.member.avatarBg}
-                                  color={entry.member.avatarColor}
-                                  variant="solid"
-                                />
-                              </span>
-                            ))}
-                          </span>
-                          <span className="crew-chat-seen-label">
-                            {formatSeenSummary(seenByAtAnchor)}
-                          </span>
-                        </button>
-                      )}
                     </motion.div>
                   );
                 })}
@@ -1570,12 +1584,11 @@ export function CrewChatScreen({
                       </button>
                       <button
                         type="button"
-                        className={`crew-chat-drawer__pill ${
-                          stickerTab === 'create' ? 'crew-chat-drawer__pill--active' : ''
-                        }`}
+                        className="crew-chat-drawer__pill"
                         onClick={() => {
                           triggerFeedback('tap');
-                          setStickerTab('create');
+                          setDrawerMode('none');
+                          setCreateStickerOpen(true);
                         }}
                       >
                         <Plus size={12} strokeWidth={2.5} />
@@ -1726,76 +1739,6 @@ export function CrewChatScreen({
                         </div>
                       )}
                     </>
-                  )}
-
-                  {stickerTab === 'create' && (
-                    <div className="crew-chat-creator">
-                      <div className="crew-chat-creator__preview-stage">
-                        {creatorPreviewUrl ? (
-                          <img
-                            src={creatorPreviewUrl}
-                            alt={creatorCaption || 'Custom sticker preview'}
-                            className="crew-chat-creator__preview-img"
-                          />
-                        ) : (
-                          <span style={{ fontSize: '2.5rem' }}>{creatorEmoji}</span>
-                        )}
-                      </div>
-
-                      <div className="crew-chat-creator__emoji-strip">
-                        {CUSTOM_STICKER_EMOJIS.map((em) => (
-                          <button
-                            key={em}
-                            type="button"
-                            className={`crew-chat-creator__emoji-chip ${
-                              creatorEmoji === em ? 'crew-chat-creator__emoji-chip--active' : ''
-                            }`}
-                            onClick={() => {
-                              triggerFeedback('tap');
-                              setCreatorEmoji(em);
-                            }}
-                          >
-                            {em}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="crew-chat-drawer__pills">
-                        {CUSTOM_STICKER_THEMES.map((theme) => (
-                          <button
-                            key={theme.id}
-                            type="button"
-                            className={`crew-chat-drawer__pill ${
-                              creatorTheme === theme.id ? 'crew-chat-drawer__pill--active' : ''
-                            }`}
-                            onClick={() => {
-                              triggerFeedback('tap');
-                              setCreatorTheme(theme.id);
-                            }}
-                          >
-                            {theme.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="crew-chat-creator__controls">
-                        <input
-                          type="text"
-                          className="crew-chat-creator__input"
-                          placeholder="Sticker text (max 22 chars)..."
-                          value={creatorCaption}
-                          maxLength={22}
-                          onChange={(e) => setCreatorCaption(e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          className="crew-chat-creator__save-btn tactile"
-                          onClick={handleCreateAndSendCustomSticker}
-                        >
-                          Save &amp; Send
-                        </button>
-                      </div>
-                    </div>
                   )}
                 </motion.div>
               )}
@@ -2241,6 +2184,21 @@ export function CrewChatScreen({
             })}
           </div>
         </LiquidBottomSheet>
+
+        {/* Dedicated Popup Sticker Maker Studio (Gallery -> Crop -> Text) */}
+        <CreateStickerSheet
+          open={createStickerOpen}
+          onSaveAndSend={(created) => {
+            setCustomStickers(saveCustomSticker(created));
+            setStickerTab('mine');
+            handleSendSticker({
+              stickerId: created.id,
+              stickerUrl: created.dataUrl,
+              stickerCaption: created.caption,
+            });
+          }}
+          onClose={() => setCreateStickerOpen(false)}
+        />
       </motion.div>
     </MotionConfig>
   );

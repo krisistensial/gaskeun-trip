@@ -2,6 +2,17 @@ export const NOTIFICATIONS_STORAGE_KEY = 'gaskeun_notifications_enabled';
 
 export type DeviceNotificationPermission = 'unsupported' | 'default' | 'granted' | 'denied';
 
+export interface DeviceNotificationResult {
+  ok: boolean;
+  error?: string;
+}
+
+export interface DeviceNotificationPayload {
+  title: string;
+  body: string;
+  tag?: string;
+}
+
 export function isDeviceNotificationSupported(): boolean {
   return typeof window !== 'undefined' && 'Notification' in window;
 }
@@ -29,64 +40,108 @@ export function setDeviceNotificationsEnabled(enabled: boolean): void {
   }
 }
 
-export interface DeviceNotificationPayload {
-  title: string;
-  body: string;
-  tag?: string;
+function resolveAssetUrl(file: string): string {
+  try {
+    const base = import.meta.env.BASE_URL || '/';
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      return new URL(`${base}${file}`, window.location.origin).href;
+    }
+    return `${base}${file}`;
+  } catch {
+    return `./${file}`;
+  }
 }
 
 /**
  * Displays an OS / Android PWA tray notification when permission is granted
- * and the user has notifications enabled on this device.
+ * and returns a clear result object so manual tests can surface diagnostics.
  */
-export async function showDeviceNotification(
+export async function tryShowDeviceNotification(
   payload: DeviceNotificationPayload,
-): Promise<boolean> {
-  if (!isDeviceNotificationSupported()) return false;
-  if (window.Notification.permission !== 'granted') return false;
-  if (!getDeviceNotificationsEnabled()) return false;
+): Promise<DeviceNotificationResult> {
+  if (!isDeviceNotificationSupported()) {
+    return {
+      ok: false,
+      error: 'On iPhone/iPad, install GASKEUN via Share -> Add to Home Screen to enable alerts.',
+    };
+  }
+  if (window.Notification.permission === 'denied') {
+    return {
+      ok: false,
+      error: 'Notifications are blocked in your browser/phone site settings.',
+    };
+  }
+  if (window.Notification.permission !== 'granted') {
+    return {
+      ok: false,
+      error: 'Notification permission not granted yet.',
+    };
+  }
+  if (!getDeviceNotificationsEnabled()) {
+    return {
+      ok: false,
+      error: 'Phone notifications are paused on this device.',
+    };
+  }
 
-  const icon = `${import.meta.env.BASE_URL}pwa-192x192.png`;
-  const badge = `${import.meta.env.BASE_URL}favicon-32x32.png`;
+  const icon = resolveAssetUrl('pwa-192x192.png');
+  const badge = resolveAssetUrl('favicon-32x32.png');
 
   try {
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       const reg = await Promise.race([
         navigator.serviceWorker.ready,
-        new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 650)),
+        new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 900)),
       ]);
       if (reg && typeof reg.showNotification === 'function') {
         await reg.showNotification(payload.title, {
           body: payload.body,
           icon,
           badge,
-          tag: payload.tag || 'gaskeun-alert',
+          tag: payload.tag || `gaskeun-${Date.now()}`,
         });
-        return true;
+        return { ok: true };
       }
     }
   } catch {
-    // fall through to window.Notification
+    // fall through cleanly to window.Notification
   }
 
   try {
     new window.Notification(payload.title, {
       body: payload.body,
       icon,
-      tag: payload.tag || 'gaskeun-alert',
+      tag: payload.tag || `gaskeun-${Date.now()}`,
     });
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Browser declined showing notification.',
+    };
   }
+}
+
+export async function showDeviceNotification(
+  payload: DeviceNotificationPayload,
+): Promise<boolean> {
+  const res = await tryShowDeviceNotification(payload);
+  return res.ok;
 }
 
 export async function requestDeviceNotificationPermission(): Promise<{
   permission: DeviceNotificationPermission;
   granted: boolean;
+  shown?: boolean;
+  error?: string;
 }> {
   if (!isDeviceNotificationSupported()) {
-    return { permission: 'unsupported', granted: false };
+    return {
+      permission: 'unsupported',
+      granted: false,
+      error:
+        'Notifications require Safari -> Share -> Add to Home Screen on iOS, or a supported browser.',
+    };
   }
 
   try {
@@ -94,14 +149,31 @@ export async function requestDeviceNotificationPermission(): Promise<{
     const granted = result === 'granted';
     if (granted) {
       setDeviceNotificationsEnabled(true);
-      void showDeviceNotification({
+      const testRes = await tryShowDeviceNotification({
         title: 'GASKEUN! Notifications On',
         body: 'Crew Chat messages and trip updates will now alert this phone.',
-        tag: 'gaskeun-welcome',
+        tag: `gaskeun-welcome-${Date.now()}`,
       });
+      return {
+        permission: result,
+        granted: true,
+        shown: testRes.ok,
+        error: testRes.error,
+      };
     }
-    return { permission: result, granted };
-  } catch {
-    return { permission: getDeviceNotificationPermission(), granted: false };
+    return {
+      permission: result,
+      granted: false,
+      error:
+        result === 'denied'
+          ? 'Notifications blocked — allow alerts in browser site settings.'
+          : 'Notification prompt dismissed.',
+    };
+  } catch (err) {
+    return {
+      permission: getDeviceNotificationPermission(),
+      granted: false,
+      error: err instanceof Error ? err.message : 'Could not request notifications.',
+    };
   }
 }

@@ -8,8 +8,9 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import seedData from './data/seed-solo-jogja-2027.json';
-import { ConfirmDialog, Toast, type ToastTone } from './components/atoms';
+import { Avatar, ConfirmDialog, Toast, type ToastTone } from './components/atoms';
 import { ExpandingGlassDock } from './components/organisms/ExpandingGlassDock';
 import { PinUnlockSheet } from './components/organisms/PinUnlockSheet';
 import { TripMenuSheet, type HomePhase } from './components/organisms/TripMenuSheet';
@@ -207,6 +208,15 @@ export default function App() {
     message: '',
     tone: 'success',
   });
+  const [chatHeadsUp, setChatHeadsUp] = useState<{
+    id: string;
+    senderName: string;
+    body: string;
+    initials: string;
+    avatarDataUrl?: string;
+    avatarBg: string;
+    avatarColor: string;
+  } | null>(null);
 
   const activeTripRef = useRef<SharedTrip>(activeTrip);
   activeTripRef.current = activeTrip;
@@ -659,6 +669,56 @@ export default function App() {
     );
   }, [activeTrip.code, activeTrip.chatMessages, activeTrip.chatReadReceipts, activeMemberId]);
 
+  const notifyIncomingChat = useCallback(
+    (incoming: ChatMessage, currentCode: string) => {
+      const msgAgeMs = Date.now() - Date.parse(incoming.createdAt);
+      const isHidden =
+        typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      if (
+        incoming.deleted ||
+        incoming.senderId === (activeMemberId ?? 'guest') ||
+        !Number.isFinite(msgAgeMs) ||
+        msgAgeMs > 180_000
+      ) {
+        return;
+      }
+
+      const body =
+        incoming.kind === 'sticker' ? `Sent sticker: ${incoming.text}` : incoming.text;
+
+      if (!chatOpenRef.current || isHidden) {
+        void showDeviceNotification({
+          title: `${incoming.senderName} · ${activeTripRef.current.title || currentCode}`,
+          body,
+          tag: `chat-${currentCode}`,
+        });
+      }
+
+      if (!chatOpenRef.current) {
+        const sender = activeTripRef.current.members.find(
+          (m) => m.id === incoming.senderId,
+        );
+        triggerFeedback('success');
+        setChatHeadsUp({
+          id: incoming.id,
+          senderName: incoming.senderName,
+          body,
+          initials: sender?.initials ?? incoming.senderName.slice(0, 2).toUpperCase(),
+          avatarDataUrl: sender?.avatarDataUrl,
+          avatarBg: sender?.avatarBg ?? '#E3EDE6',
+          avatarColor: sender?.avatarColor ?? '#2D4A42',
+        });
+      }
+    },
+    [activeMemberId],
+  );
+
+  useEffect(() => {
+    if (!chatHeadsUp) return;
+    const t = window.setTimeout(() => setChatHeadsUp(null), 4400);
+    return () => window.clearTimeout(t);
+  }, [chatHeadsUp]);
+
   // Live Supabase Realtime Crew Chat (`trip_messages` + Broadcast channel for <50ms typing/reactions/stickers)
   useEffect(() => {
     if (route !== 'hub' || !activeTrip.code) {
@@ -673,8 +733,12 @@ export default function App() {
       if (res.ok) {
         useSharedTripChatFallbackRef.current = false;
         setChatMessages((prev) => {
+          const prevIds = new Set(prev.map((m) => m.id));
           const merged = mergeChatMessages(prev, res.messages);
           saveLocalChatCache(code, merged);
+          const freshIncoming = res.messages.filter((m) => !prevIds.has(m.id));
+          const newest = freshIncoming[freshIncoming.length - 1];
+          if (newest) notifyIncomingChat(newest, code);
           return merged;
         });
       } else if (res.tableMissing) {
@@ -692,25 +756,8 @@ export default function App() {
           const alreadyKnown = prev.some((m) => m.id === incoming.id);
           const next = mergeChatMessages(prev, [incoming]);
           saveLocalChatCache(code, next);
-          const msgAgeMs = Date.now() - Date.parse(incoming.createdAt);
-          const isHidden =
-            typeof document !== 'undefined' && document.visibilityState === 'hidden';
-          if (
-            !alreadyKnown &&
-            !incoming.deleted &&
-            incoming.senderId !== (activeMemberId ?? 'guest') &&
-            (!chatOpenRef.current || isHidden) &&
-            Number.isFinite(msgAgeMs) &&
-            msgAgeMs < 120_000
-          ) {
-            void showDeviceNotification({
-              title: `${incoming.senderName} · Crew Chat`,
-              body:
-                incoming.kind === 'sticker'
-                  ? `Sent sticker: ${incoming.text}`
-                  : incoming.text,
-              tag: `chat-${code}`,
-            });
+          if (!alreadyKnown) {
+            notifyIncomingChat(incoming, code);
           }
           return next;
         });
@@ -1545,6 +1592,7 @@ export default function App() {
           onExportExcel={() => void handleExportExcel()}
           onExportJson={handleExportJson}
           onImportJson={handleImportJsonFile}
+          onNotify={showToast}
           onClose={() => setMenuOpen(false)}
         />
 
@@ -1623,6 +1671,57 @@ export default function App() {
           tone={toast.tone}
           onClose={() => setToast((prev) => ({ ...prev, open: false }))}
         />
+
+        {chatHeadsUp &&
+          typeof document !== 'undefined' &&
+          createPortal(
+            <button
+              type="button"
+              className="gk-chat-heads-up tactile"
+              onClick={() => {
+                triggerFeedback('tap');
+                setChatHeadsUp(null);
+                setChatOpen(true);
+              }}
+            >
+              <Avatar
+                initials={chatHeadsUp.initials}
+                name={chatHeadsUp.senderName}
+                src={chatHeadsUp.avatarDataUrl}
+                size="sm"
+                bg={chatHeadsUp.avatarBg}
+                color={chatHeadsUp.avatarColor}
+                variant="solid"
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {chatHeadsUp.senderName}
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--text-secondary)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {chatHeadsUp.body}
+                </div>
+              </div>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: 'var(--brand-matcha)',
+                  flexShrink: 0,
+                }}
+              >
+                Reply
+              </span>
+            </button>,
+            document.body,
+          )}
       </div>
     </OverlayProvider>
   );

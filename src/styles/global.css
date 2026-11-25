@@ -199,6 +199,29 @@ select:active,
   }
 }
 
+/* Top In-App Heads-Up Chat Notification Banner */
+.gk-chat-heads-up {
+  position: fixed;
+  top: calc(10px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100vw - 24px), 400px);
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(22px) saturate(1.6);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 14px 36px rgba(20, 35, 29, 0.22);
+  text-align: left;
+  cursor: pointer;
+  animation: gaskeun-fade-up 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

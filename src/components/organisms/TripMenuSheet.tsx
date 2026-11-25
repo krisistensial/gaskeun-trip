@@ -44,7 +44,7 @@ import {
   getDeviceNotificationsEnabled,
   requestDeviceNotificationPermission,
   setDeviceNotificationsEnabled,
-  showDeviceNotification,
+  tryShowDeviceNotification,
 } from '../../services/notifications';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import {
@@ -96,6 +96,7 @@ export interface TripMenuSheetProps {
   onExportExcel: () => void;
   onExportJson: () => void;
   onImportJson: (file: File) => void;
+  onNotify?: (message: string, tone?: 'success' | 'info' | 'error') => void;
   onClose: () => void;
 }
 
@@ -133,6 +134,7 @@ export function TripMenuSheet({
   onExportExcel,
   onExportJson,
   onImportJson,
+  onNotify,
   onClose,
 }: TripMenuSheetProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -515,9 +517,20 @@ export function TripMenuSheet({
           aria-checked={notifPermission === 'granted' && notifEnabled}
           className="gk-menu-item"
           onClick={() => {
-            if (notifPermission === 'unsupported') return;
+            if (notifPermission === 'unsupported') {
+              triggerFeedback('warning');
+              onNotify?.(
+                'On iPhone/iPad, open via Safari -> Share -> Add to Home Screen first for alerts.',
+                'info',
+              );
+              return;
+            }
             if (notifPermission === 'denied') {
               triggerFeedback('warning');
+              onNotify?.(
+                'Blocked in browser — allow Notifications in your site settings.',
+                'error',
+              );
               return;
             }
             if (notifPermission === 'default') {
@@ -525,6 +538,16 @@ export function TripMenuSheet({
               void requestDeviceNotificationPermission().then((res) => {
                 setNotifPermission(res.permission);
                 setNotifEnabled(res.granted);
+                if (res.granted) {
+                  onNotify?.(
+                    res.shown
+                      ? 'Phone notifications active! Check your notification shade.'
+                      : res.error || 'Permission granted',
+                    'success',
+                  );
+                } else {
+                  onNotify?.(res.error || 'Notification permission declined', 'info');
+                }
               });
               return;
             }
@@ -533,13 +556,21 @@ export function TripMenuSheet({
             setNotifEnabled(next);
             if (next) {
               triggerFeedback('toggle', { forceHaptic: true });
-              void showDeviceNotification({
+              void tryShowDeviceNotification({
                 title: 'GASKEUN! Notifications On',
                 body: 'Live Crew Chat & trip alerts are enabled on this device.',
-                tag: 'gaskeun-test',
+                tag: `gaskeun-test-${Date.now()}`,
+              }).then((r) => {
+                onNotify?.(
+                  r.ok
+                    ? 'Test alert sent! Check your phone notification shade.'
+                    : r.error || 'Could not display notification',
+                  r.ok ? 'success' : 'info',
+                );
               });
             } else {
               triggerFeedback('tap');
+              onNotify?.('Phone notifications paused', 'info');
             }
           }}
         >
@@ -555,9 +586,9 @@ export function TripMenuSheet({
               <div className="gk-menu-item__title">Phone Notifications</div>
               <div className="gk-menu-item__sub">
                 {notifPermission === 'unsupported'
-                  ? 'Not supported on this browser'
+                  ? 'iOS Safari: add to Home Screen first'
                   : notifPermission === 'denied'
-                    ? 'Blocked — enable alerts in browser site settings'
+                    ? 'Blocked — allow in browser site settings'
                     : notifPermission === 'granted'
                       ? notifEnabled
                         ? 'Alerting for Crew Chat & shared updates'
@@ -575,6 +606,40 @@ export function TripMenuSheet({
             <span className="menu-toggle-switch__knob" />
           </span>
         </button>
+
+        {notifPermission === 'granted' && notifEnabled && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: -4, paddingRight: 4 }}>
+            <button
+              type="button"
+              className="crew-chat-drawer__pill tactile"
+              style={{
+                padding: '4px 11px',
+                borderRadius: 999,
+                background: 'var(--brand-matcha-soft)',
+                color: 'var(--brand-forest)',
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+              onClick={() => {
+                triggerFeedback('tap');
+                void tryShowDeviceNotification({
+                  title: 'GASKEUN! Test Notification',
+                  body: `Live alert test for ${trip.title}`,
+                  tag: `gaskeun-manual-${Date.now()}`,
+                }).then((r) => {
+                  onNotify?.(
+                    r.ok
+                      ? 'Test alert sent to your notification bar!'
+                      : r.error || 'Blocked by OS/browser',
+                    r.ok ? 'success' : 'error',
+                  );
+                });
+              }}
+            >
+              Send Test Notification
+            </button>
+          </div>
+        )}
 
         {onOpenChat && (
           <button

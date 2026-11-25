@@ -531,13 +531,164 @@
 }
 
 .crew-chat-sticker-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.72);
   color: var(--text-muted, #52665e);
   font-size: 0.6rem;
   font-weight: 700;
   line-height: 1.2;
+}
+
+.crew-chat-tick {
+  flex-shrink: 0;
+  opacity: 0.78;
+}
+
+.crew-chat-tick--read {
+  opacity: 1;
+  color: #38bdf8;
+}
+
+.crew-chat-sticker-meta .crew-chat-tick--read {
+  color: #0284c7;
+}
+
+.crew-chat-bell-orb {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 74, 66, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--text-muted, #52665e);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.crew-chat-bell-orb--on {
+  background: var(--brand-matcha-soft, #e3ede6);
+  color: var(--brand-forest, #2d4a42);
+  border-color: rgba(74, 116, 104, 0.25);
+}
+
+/* Dedicated Sticker Studio Popup */
+.sticker-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.sticker-studio__tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border-radius: 16px;
+  background: rgba(227, 237, 230, 0.68);
+}
+
+.sticker-studio__tab {
+  height: 36px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-secondary, #52665e);
+}
+
+.sticker-studio__tab--active {
+  background: var(--brand-matcha, #4a7468);
+  color: #ffffff;
+}
+
+.sticker-studio__stage {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  border-radius: 22px;
+  border: 1.5px solid rgba(45, 74, 66, 0.12);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  touch-action: none;
+  background-image:
+    linear-gradient(45deg, rgba(45, 74, 66, 0.06) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(45, 74, 66, 0.06) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(45, 74, 66, 0.06) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(45, 74, 66, 0.06) 75%);
+  background-size: 18px 18px;
+  background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+}
+
+.sticker-studio__pick-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px 24px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px dashed rgba(74, 116, 104, 0.35);
+  color: var(--brand-forest, #2d4a42);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sticker-studio__pick-cta small {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted, #52665e);
+}
+
+.sticker-studio__preview-img {
+  width: 196px;
+  height: 196px;
+  object-fit: contain;
+  background: transparent;
+  pointer-events: none;
+}
+
+.sticker-studio__photo-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sticker-studio__slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Top In-App Heads-Up Chat Notification Banner */
+.gk-chat-heads-up {
+  position: fixed;
+  top: calc(10px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100vw - 24px), 400px);
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 13px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(22px) saturate(1.6);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  border: 1.5px solid rgba(255, 255, 255, 1);
+  box-shadow: 0 14px 36px rgba(20, 35, 29, 0.2);
+  text-align: left;
+  cursor: pointer;
 }
 
 /* Double-tap heart pop */
