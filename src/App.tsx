@@ -43,7 +43,9 @@ import {
   toggleMessageReaction,
 } from './services/chat';
 import {
+  appendClearedChatIds,
   fetchRemoteChatMessages,
+  loadClearedChatIds,
   loadLocalChatCache,
   markMultipleRemoteChatDeleted,
   patchRemoteChatReaction,
@@ -187,6 +189,9 @@ export default function App() {
   const [activeRouteTarget, setActiveRouteTarget] = useState<RouteTarget | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [clearedChatIds, setClearedChatIds] = useState<string[]>(() =>
+    loadClearedChatIds(pilotSeed.code, null),
+  );
   const [chatReadReceipts, setChatReadReceipts] = useState<
     Record<string, ChatReadReceipt>
   >({});
@@ -644,10 +649,12 @@ export default function App() {
   useEffect(() => {
     if (!activeTrip.code) {
       setChatMessages([]);
+      setClearedChatIds([]);
       setChatReadReceipts({});
       setChatLastReadIso('');
       return;
     }
+    setClearedChatIds(loadClearedChatIds(activeTrip.code, activeMemberId));
     setChatLastReadIso(loadChatLastRead(activeTrip.code, activeMemberId ?? 'guest'));
     setChatMessages((prev) => {
       const cached = loadLocalChatCache(activeTrip.code);
@@ -831,10 +838,17 @@ export default function App() {
     [chatTypingMap],
   );
 
+  const clearedChatSet = useMemo(() => new Set(clearedChatIds), [clearedChatIds]);
+
+  const visibleChatMessages = useMemo(
+    () => chatMessages.filter((m) => !clearedChatSet.has(m.id)),
+    [chatMessages, clearedChatSet],
+  );
+
   const unreadChatCount = useMemo(
     () =>
-      chatOpen ? 0 : countUnreadMessages(chatMessages, chatLastReadIso, activeMemberId),
-    [chatOpen, chatMessages, chatLastReadIso, activeMemberId],
+      chatOpen ? 0 : countUnreadMessages(visibleChatMessages, chatLastReadIso, activeMemberId),
+    [chatOpen, visibleChatMessages, chatLastReadIso, activeMemberId],
   );
 
   const handleMarkChatRead = useCallback(() => {
@@ -1290,6 +1304,18 @@ export default function App() {
     handleUnsendMultipleChatMessages([messageId]);
   };
 
+  const handleDeleteSelectedChatMessages = (messageIds: string[]) => {
+    if (messageIds.length === 0 || !activeTrip.code) return;
+    const next = appendClearedChatIds(activeTrip.code, activeMemberId, messageIds);
+    setClearedChatIds(next);
+    showToast(
+      messageIds.length === 1
+        ? 'Message cleared from chat'
+        : `${messageIds.length} messages cleared from chat`,
+      'info',
+    );
+  };
+
   const handleChatTypingChange = useCallback((isTyping: boolean) => {
     chatChannelRef.current?.sendTypingPing(isTyping);
   }, []);
@@ -1387,7 +1413,7 @@ export default function App() {
             {route === 'hub' && !activeRouteTarget && chatOpen && (
               <CrewChatScreen
                 trip={activeTrip}
-                messages={chatMessages}
+                messages={visibleChatMessages}
                 readReceipts={chatReadReceipts}
                 activeMemberId={activeMemberId}
                 activeMember={activeMember}
@@ -1400,6 +1426,7 @@ export default function App() {
                 onToggleReaction={handleToggleChatReaction}
                 onUnsendMessage={handleUnsendChatMessage}
                 onUnsendMultiple={handleUnsendMultipleChatMessages}
+                onDeleteSelected={handleDeleteSelectedChatMessages}
                 onTypingChange={handleChatTypingChange}
                 onMarkRead={handleMarkChatRead}
                 onNotify={showToast}

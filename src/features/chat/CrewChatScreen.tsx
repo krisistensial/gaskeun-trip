@@ -103,6 +103,7 @@ export interface CrewChatScreenProps {
   onToggleReaction: (messageId: string, emoji: string) => void;
   onUnsendMessage: (messageId: string) => void;
   onUnsendMultiple?: (messageIds: string[]) => void;
+  onDeleteSelected?: (messageIds: string[]) => void;
   onTypingChange: (isTyping: boolean) => void;
   onMarkRead: () => void;
   onNotify?: (message: string, tone?: ToastTone) => void;
@@ -199,6 +200,7 @@ export function CrewChatScreen({
   onToggleReaction,
   onUnsendMessage,
   onUnsendMultiple,
+  onDeleteSelected,
   onTypingChange,
   onMarkRead,
   onNotify,
@@ -281,9 +283,6 @@ export function CrewChatScreen({
     offset: 0,
     thresholdHit: false,
   });
-
-  const canDeleteMessage = (msg: ChatMessage) =>
-    !msg.deleted && (isHost || msg.senderId === (activeMemberId ?? 'guest'));
 
   const exitSelectMode = () => {
     setSelectMode(false);
@@ -624,11 +623,6 @@ export function CrewChatScreen({
   };
 
   const toggleSelectMessage = (msg: ChatMessage) => {
-    if (!canDeleteMessage(msg)) {
-      triggerFeedback('warning');
-      onNotify?.('Only sender or Host can select others’ messages to unsend', 'info');
-      return;
-    }
     triggerFeedback('tap');
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -646,7 +640,7 @@ export function CrewChatScreen({
     isOwn: boolean,
     e: PointerEvent<HTMLDivElement>,
   ) => {
-    if (msg.deleted || e.button > 0 || selectMode) return;
+    if (e.button > 0 || selectMode) return;
     clearLongPress();
 
     gestureRef.current = {
@@ -669,7 +663,7 @@ export function CrewChatScreen({
   };
 
   const handleRowPointerMove = (msg: ChatMessage, e: PointerEvent<HTMLDivElement>) => {
-    if (selectMode) return;
+    if (selectMode || msg.deleted) return;
     const g = gestureRef.current;
     if (g.msg?.id !== msg.id || g.pointerId !== e.pointerId) return;
 
@@ -783,11 +777,6 @@ export function CrewChatScreen({
       FULL_EMOJI_GROUPS[0].emojis
     );
   }, [emojiQuery, emojiCategory]);
-
-  const eligibleDeleteMessages = useMemo(
-    () => messages.filter(canDeleteMessage),
-    [messages, isHost, activeMemberId],
-  );
 
   const holdCanUnsend =
     holdTarget &&
@@ -1001,30 +990,23 @@ export function CrewChatScreen({
                   {selectedIds.size} selected
                 </h1>
                 <div className="crew-chat-header__sub">
-                  {isHost
-                    ? 'Tap messages to unsend'
-                    : 'Tap your messages to unsend'}
+                  Tap messages to delete from chat view
                 </div>
               </div>
               <div className="crew-chat-header-actions">
-                {eligibleDeleteMessages.length > 0 && (
+                {messages.length > 0 && (
                   <button
                     type="button"
                     className="crew-chat-header-btn tactile"
                     onClick={() => {
                       triggerFeedback('tap');
-                      const allSelected =
-                        selectedIds.size === eligibleDeleteMessages.length;
+                      const allSelected = selectedIds.size === messages.length;
                       setSelectedIds(
-                        allSelected
-                          ? new Set()
-                          : new Set(eligibleDeleteMessages.map((m) => m.id)),
+                        allSelected ? new Set() : new Set(messages.map((m) => m.id)),
                       );
                     }}
                   >
-                    {selectedIds.size === eligibleDeleteMessages.length
-                      ? 'Clear'
-                      : 'All'}
+                    {selectedIds.size === messages.length ? 'None' : 'All'}
                   </button>
                 )}
                 <button
@@ -1215,7 +1197,6 @@ export function CrewChatScreen({
                   const swipeProgress = Math.min(1, offset / 46);
                   const swipeReady = offset >= 46;
                   const isSelected = selectedIds.has(msg.id);
-                  const deletable = canDeleteMessage(msg);
 
                   return (
                     <motion.div
@@ -1232,13 +1213,13 @@ export function CrewChatScreen({
                       className={[
                         'crew-chat-swipe-stage',
                         groupedWithPrev && !showDayDivider ? 'crew-chat-swipe-stage--grouped' : '',
-                        selectMode && !msg.deleted ? 'crew-chat-swipe-stage--selectable' : '',
+                        selectMode ? 'crew-chat-swipe-stage--selectable' : '',
                         selectMode && isSelected ? 'crew-chat-swipe-stage--selected' : '',
                       ]
                         .filter(Boolean)
                         .join(' ')}
                       onClick={
-                        selectMode && !msg.deleted
+                        selectMode
                           ? () => toggleSelectMessage(msg)
                           : undefined
                       }
@@ -1283,14 +1264,10 @@ export function CrewChatScreen({
                         onPointerUp={(e) => handleRowPointerEnd(msg, e)}
                         onPointerCancel={(e) => handleRowPointerEnd(msg, e)}
                       >
-                        {selectMode && !msg.deleted && (
+                        {selectMode && (
                           <span
                             className={`crew-chat-select-check ${
-                              isSelected
-                                ? 'crew-chat-select-check--on'
-                                : !deletable
-                                  ? 'crew-chat-select-check--locked'
-                                  : ''
+                              isSelected ? 'crew-chat-select-check--on' : ''
                             }`}
                             aria-hidden="true"
                           >
@@ -1838,42 +1815,44 @@ export function CrewChatScreen({
                     }`}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {/* Emoji Reaction Bar ABOVE held message */}
-                    <motion.div
-                      className="crew-chat-reaction-bar"
-                      role="group"
-                      aria-label="Quick emoji reactions"
-                      initial={{ opacity: 0, y: 10, scale: 0.88 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.9 }}
-                      transition={SPRING_BUBBLE}
-                    >
-                      {CHAT_QUICK_REACTIONS.map((emoji) => {
-                        const list = holdTarget.message.reactions?.[emoji] ?? [];
-                        const active = Boolean(activeMemberId && list.includes(activeMemberId));
-                        return (
-                          <motion.button
-                            key={emoji}
-                            type="button"
-                            whileTap={{ scale: 0.85 }}
-                            className={`crew-chat-reaction-pick ${
-                              active ? 'crew-chat-reaction-pick--active' : ''
-                            }`}
-                            aria-label={`React with ${emoji}`}
-                            aria-pressed={active}
-                            onClick={() => {
-                              if (!holdInteractable) return;
-                              primeFeedbackAudio();
-                              triggerFeedback('check');
-                              onToggleReaction(holdTarget.message.id, emoji);
-                              setHoldTarget(null);
-                            }}
-                          >
-                            {emoji}
-                          </motion.button>
-                        );
-                      })}
-                    </motion.div>
+                    {/* Emoji Reaction Bar ABOVE held message (normal messages only) */}
+                    {!holdTarget.message.deleted && (
+                      <motion.div
+                        className="crew-chat-reaction-bar"
+                        role="group"
+                        aria-label="Quick emoji reactions"
+                        initial={{ opacity: 0, y: 10, scale: 0.88 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.9 }}
+                        transition={SPRING_BUBBLE}
+                      >
+                        {CHAT_QUICK_REACTIONS.map((emoji) => {
+                          const list = holdTarget.message.reactions?.[emoji] ?? [];
+                          const active = Boolean(activeMemberId && list.includes(activeMemberId));
+                          return (
+                            <motion.button
+                              key={emoji}
+                              type="button"
+                              whileTap={{ scale: 0.85 }}
+                              className={`crew-chat-reaction-pick ${
+                                active ? 'crew-chat-reaction-pick--active' : ''
+                              }`}
+                              aria-label={`React with ${emoji}`}
+                              aria-pressed={active}
+                              onClick={() => {
+                                if (!holdInteractable) return;
+                                primeFeedbackAudio();
+                                triggerFeedback('check');
+                                onToggleReaction(holdTarget.message.id, emoji);
+                                setHoldTarget(null);
+                              }}
+                            >
+                              {emoji}
+                            </motion.button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
 
                     {/* Highlighted Message Preview */}
                     <motion.div
@@ -1883,9 +1862,15 @@ export function CrewChatScreen({
                       exit={{ opacity: 0, scale: 0.94 }}
                       transition={SPRING_BUBBLE}
                     >
-                      {holdTarget.message.kind === 'sticker'
-                        ? renderStickerMessage(holdTarget.message, true)
-                        : renderTextMessage(holdTarget.message, holdTarget.isOwn, true)}
+                      {holdTarget.message.deleted ? (
+                        <div className="crew-chat-bubble crew-chat-bubble--deleted">
+                          Message unsent
+                        </div>
+                      ) : holdTarget.message.kind === 'sticker' ? (
+                        renderStickerMessage(holdTarget.message, true)
+                      ) : (
+                        renderTextMessage(holdTarget.message, holdTarget.isOwn, true)
+                      )}
                     </motion.div>
 
                     {/* Action Menu BELOW held message */}
@@ -1896,24 +1881,26 @@ export function CrewChatScreen({
                       exit={{ opacity: 0, y: -8, scale: 0.94 }}
                       transition={{ ...SPRING_BUBBLE, delay: 0.03 }}
                     >
-                      <button
-                        type="button"
-                        className="crew-chat-action-item"
-                        onClick={() => {
-                          if (!holdInteractable) return;
-                          triggerFeedback('tap');
-                          setReplyTarget(buildReplyPreview(holdTarget.message));
-                          setHoldTarget(null);
-                          requestAnimationFrame(() =>
-                            textareaRef.current?.focus({ preventScroll: true }),
-                          );
-                        }}
-                      >
-                        <span>Reply</span>
-                        <Reply size={16} strokeWidth={2} />
-                      </button>
+                      {!holdTarget.message.deleted && (
+                        <button
+                          type="button"
+                          className="crew-chat-action-item"
+                          onClick={() => {
+                            if (!holdInteractable) return;
+                            triggerFeedback('tap');
+                            setReplyTarget(buildReplyPreview(holdTarget.message));
+                            setHoldTarget(null);
+                            requestAnimationFrame(() =>
+                              textareaRef.current?.focus({ preventScroll: true }),
+                            );
+                          }}
+                        >
+                          <span>Reply</span>
+                          <Reply size={16} strokeWidth={2} />
+                        </button>
+                      )}
 
-                      {holdTarget.message.kind === 'text' && (
+                      {!holdTarget.message.deleted && holdTarget.message.kind === 'text' && (
                         <button
                           type="button"
                           className="crew-chat-action-item"
@@ -1937,41 +1924,49 @@ export function CrewChatScreen({
                         className="crew-chat-action-item"
                         onClick={() => {
                           if (!holdInteractable) return;
+                          triggerFeedback('tap');
                           const target = holdTarget.message;
                           setHoldTarget(null);
                           setSelectMode(true);
-                          if (canDeleteMessage(target)) {
-                            triggerFeedback('tap');
-                            setSelectedIds(new Set([target.id]));
-                          } else {
-                            triggerFeedback('warning');
-                            setSelectedIds(new Set());
-                            onNotify?.(
-                              'Select Mode — tap your own messages to unsend',
-                              'info',
-                            );
-                          }
+                          setSelectedIds(new Set([target.id]));
                         }}
                       >
                         <span>Select</span>
                         <CheckSquare size={16} strokeWidth={2} />
                       </button>
 
+                      {!holdTarget.message.deleted && (
+                        <button
+                          type="button"
+                          className="crew-chat-action-item"
+                          onClick={() => {
+                            if (!holdInteractable) return;
+                            triggerFeedback('tap');
+                            const target = holdTarget.message;
+                            setHoldTarget(null);
+                            setSeenSheetMsg(target);
+                          }}
+                        >
+                          <span>
+                            Seen by {holdSeenList.length > 0 ? `(${holdSeenList.length})` : ''}
+                          </span>
+                          <Eye size={16} strokeWidth={2} />
+                        </button>
+                      )}
+
                       <button
                         type="button"
-                        className="crew-chat-action-item"
+                        className="crew-chat-action-item crew-chat-action-item--danger"
                         onClick={() => {
                           if (!holdInteractable) return;
-                          triggerFeedback('tap');
-                          const target = holdTarget.message;
+                          triggerFeedback('warning');
+                          const id = holdTarget.message.id;
                           setHoldTarget(null);
-                          setSeenSheetMsg(target);
+                          onDeleteSelected?.([id]);
                         }}
                       >
-                        <span>
-                          Seen by {holdSeenList.length > 0 ? `(${holdSeenList.length})` : ''}
-                        </span>
-                        <Eye size={16} strokeWidth={2} />
+                        <span>Delete</span>
+                        <Trash2 size={16} strokeWidth={2} />
                       </button>
 
                       {holdCanUnsend && (
@@ -1997,18 +1992,20 @@ export function CrewChatScreen({
             document.body,
           )}
 
-        {/* Batch Delete Confirmation */}
+        {/* Batch Delete Confirmation (Clean removal from chat view, never leaves "Message unsent") */}
         <ConfirmDialog
           open={confirmBatchDelete}
-          title={`Unsend ${selectedIds.size} ${selectedIds.size === 1 ? 'message' : 'messages'}?`}
-          description="Selected messages will be removed from the crew chat for everyone."
-          confirmLabel="Unsend"
+          title={`Delete ${selectedIds.size} ${selectedIds.size === 1 ? 'message' : 'messages'}?`}
+          description='Clears selected messages cleanly from your chat view without leaving "Message unsent" notices.'
+          confirmLabel="Delete"
           destructive
           onCancel={() => setConfirmBatchDelete(false)}
           onConfirm={() => {
             const ids = Array.from(selectedIds);
             setConfirmBatchDelete(false);
-            if (onUnsendMultiple) {
+            if (onDeleteSelected) {
+              onDeleteSelected(ids);
+            } else if (onUnsendMultiple) {
               onUnsendMultiple(ids);
             } else {
               for (const id of ids) onUnsendMessage(id);

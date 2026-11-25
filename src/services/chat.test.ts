@@ -26,6 +26,7 @@ import {
 } from './customStickers';
 import { searchEmojiCatalog } from './emojiCatalog';
 import { expandStickerSearchTerms } from './stickerSearch';
+import { appendClearedChatIds, loadClearedChatIds } from './chatSync';
 
 function createMemoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -296,5 +297,20 @@ describe('Crew Chat pure helpers (text, stickers, emoji reactions, unread)', () 
     const anchors = computeLatestSeenAnchors([m1, m2], mergedReceipts, members, 'm-kris');
     expect(anchors[m1.id]?.map((x) => x.member.id)).toEqual(['m-rani']);
     expect(anchors[m2.id]?.map((x) => x.member.id)).toEqual(['m-anggi']);
+  });
+
+  it('persists clean-deleted message IDs per trip and member so cleared chats disappear without unsent tombstones', () => {
+    expect(loadClearedChatIds('SOLO-27', 'm-kris')).toEqual([]);
+
+    const cleared = appendClearedChatIds('solo-27', 'm-kris', ['msg-1', 'msg-2', 'msg-1']);
+    expect(cleared).toEqual(['msg-1', 'msg-2']);
+    expect(loadClearedChatIds('SOLO-27', 'm-kris')).toEqual(['msg-1', 'msg-2']);
+
+    // Isolated per member and trip code
+    expect(loadClearedChatIds('SOLO-27', 'm-rani')).toEqual([]);
+    expect(loadClearedChatIds('OTHER-1', 'm-kris')).toEqual([]);
+
+    const appended = appendClearedChatIds('SOLO-27', 'm-kris', ['msg-3']);
+    expect(appended).toEqual(['msg-1', 'msg-2', 'msg-3']);
   });
 });

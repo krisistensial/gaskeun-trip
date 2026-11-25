@@ -3,6 +3,61 @@ import { MAX_CHAT_MESSAGES } from './chat';
 import { formatSupabaseError, getSupabaseClient } from './supabaseSync';
 
 const CHAT_CACHE_KEY_PREFIX = 'gaskeun_chat_cache_v1_';
+const CHAT_CLEARED_KEY_PREFIX = 'gaskeun_chat_cleared_v1_';
+const MAX_CLEARED_CHAT_IDS = 400;
+
+function getClearedChatKey(tripCode: string, memberId: string | null): string {
+  const normCode = tripCode.trim().toUpperCase();
+  const actor = (memberId || 'guest').trim();
+  return `${CHAT_CLEARED_KEY_PREFIX}${normCode}_${actor}`;
+}
+
+export function loadClearedChatIds(tripCode: string, memberId: string | null): string[] {
+  try {
+    if (typeof localStorage === 'undefined' || !tripCode.trim()) return [];
+    const raw = localStorage.getItem(getClearedChatKey(tripCode, memberId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveClearedChatIds(
+  tripCode: string,
+  memberId: string | null,
+  ids: readonly string[],
+): void {
+  try {
+    if (typeof localStorage === 'undefined' || !tripCode.trim()) return;
+    const unique = Array.from(new Set(ids.filter(Boolean)));
+    const bounded =
+      unique.length > MAX_CLEARED_CHAT_IDS
+        ? unique.slice(unique.length - MAX_CLEARED_CHAT_IDS)
+        : unique;
+    localStorage.setItem(getClearedChatKey(tripCode, memberId), JSON.stringify(bounded));
+  } catch {
+    // ignore storage quota limits
+  }
+}
+
+export function appendClearedChatIds(
+  tripCode: string,
+  memberId: string | null,
+  idsToClear: readonly string[],
+): string[] {
+  const existing = loadClearedChatIds(tripCode, memberId);
+  const next = Array.from(new Set([...existing, ...idsToClear.filter(Boolean)]));
+  const bounded =
+    next.length > MAX_CLEARED_CHAT_IDS
+      ? next.slice(next.length - MAX_CLEARED_CHAT_IDS)
+      : next;
+  saveClearedChatIds(tripCode, memberId, bounded);
+  return bounded;
+}
 
 interface TripMessageRow {
   id: string;
