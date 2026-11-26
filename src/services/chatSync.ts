@@ -1,4 +1,9 @@
-import type { ChatMessage, ChatReadReceipt, ChatReplyPreview } from '../types/trip';
+import type {
+  ChatMessage,
+  ChatPoll,
+  ChatReadReceipt,
+  ChatReplyPreview,
+} from '../types/trip';
 import { MAX_CHAT_MESSAGES } from './chat';
 import { formatSupabaseError, getSupabaseClient } from './supabaseSync';
 
@@ -294,6 +299,8 @@ export interface CrewChatSubscriptionHandlers {
   onDelete: (payload: { ids: string[] }) => void;
   onTyping: (payload: { memberId: string; memberName: string; isTyping: boolean }) => void;
   onSeen?: (receipt: ChatReadReceipt) => void;
+  onPoll?: (poll: ChatPoll) => void;
+  onPin?: (payload: { messageId: string | null }) => void;
 }
 
 export interface CrewChatChannelController {
@@ -303,6 +310,8 @@ export interface CrewChatChannelController {
   broadcastDelete: (ids: string[]) => void;
   sendTypingPing: (isTyping: boolean) => void;
   sendSeenReceipt: (receipt: ChatReadReceipt) => void;
+  broadcastPoll: (poll: ChatPoll) => void;
+  broadcastPin: (messageId: string | null) => void;
 }
 
 export function subscribeToCrewChat(
@@ -321,6 +330,8 @@ export function subscribeToCrewChat(
       broadcastDelete: () => {},
       sendTypingPing: () => {},
       sendSeenReceipt: () => {},
+      broadcastPoll: () => {},
+      broadcastPin: () => {},
     };
   }
 
@@ -358,6 +369,18 @@ export function subscribeToCrewChat(
     .on('broadcast', { event: 'chat:seen' }, ({ payload }) => {
       if (payload && typeof payload === 'object' && 'memberId' in payload) {
         handlers.onSeen?.(payload as ChatReadReceipt);
+      }
+    })
+    .on('broadcast', { event: 'chat:poll' }, ({ payload }) => {
+      if (payload && typeof payload === 'object' && 'id' in payload) {
+        handlers.onPoll?.(payload as ChatPoll);
+      }
+    })
+    .on('broadcast', { event: 'chat:pin' }, ({ payload }) => {
+      if (payload && typeof payload === 'object') {
+        handlers.onPin?.({
+          messageId: (payload as { messageId?: string | null }).messageId ?? null,
+        });
       }
     })
     .on(
@@ -401,5 +424,7 @@ export function subscribeToCrewChat(
       });
     },
     sendSeenReceipt: (receipt) => emit('chat:seen', { ...receipt }),
+    broadcastPoll: (poll) => emit('chat:poll', { ...poll }),
+    broadcastPin: (messageId) => emit('chat:pin', { messageId }),
   };
 }

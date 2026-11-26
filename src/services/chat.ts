@@ -1,11 +1,14 @@
 import type {
   ChatMessage,
+  ChatPoll,
   ChatReadReceipt,
   ChatReplyPreview,
   TripMember,
 } from '../types/trip';
 
 export const MAX_CHAT_MESSAGES = 150;
+export const MAX_CHAT_POLLS = 30;
+export const MAX_POLL_OPTIONS = 6;
 export const MAX_CHAT_TEXT_LENGTH = 1000;
 export const CHAT_LAST_READ_KEY_PREFIX = 'gaskeun_chat_last_read_v1_';
 
@@ -754,4 +757,287 @@ export function computeLatestSeenAnchors(
   }
 
   return anchors;
+}
+
+/* ==========================================================================
+   @Mentions, Quick Polls, Chronological Timeline & Search Helpers
+   ========================================================================== */
+
+export interface ActiveMentionQuery {
+  query: string;
+  startIndex: number;
+}
+
+/**
+ * Detects an active `@query` mention token immediately before `cursorIndex` in the composer.
+ */
+export function getActiveMentionQuery(
+  text: string,
+  cursorIndex: number,
+): ActiveMentionQuery | null {
+  const safeCursor = Math.max(0, Math.min(text.length, cursorIndex));
+  const before = text.slice(0, safeCursor);
+  const match = before.match(/(?:^|\s)@([A-Za-z0-9_.-]{0,24})$/);
+  if (!match) return null;
+  const startIndex = before.lastIndexOf('@');
+  if (startIndex < 0) return null;
+  return {
+    query: match[1].toLowerCase(),
+    startIndex,
+  };
+}
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildMentionRegex(members: readonly TripMember[]): RegExp | null {
+  const names = members
+    .map((m) => m.name.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  const tokens = ['everyone', 'all', ...names.map(escapeRegExp)];
+  if (tokens.length === 0) return null;
+  return new RegExp(`(@(?:${tokens.join('|')}))(?=$|[\\s.,!?:;])`, 'gi');
+}
+
+export interface MentionSegment {
+  text: string;
+  memberId?: string;
+  isEveryone?: boolean;
+}
+
+/**
+ * Splits a message string into plain text and highlighted `@Member` / `@all` segments.
+ */
+export function splitTextWithMentions(
+  text: string,
+  members: readonly TripMember[],
+): MentionSegment[] {
+  if (!text || !text.includes('@')) return [{ text }];
+  const re = buildMentionRegex(members);
+  if (!re) return [{ text }];
+
+  const memberByLowerName = new Map<string, TripMember>();
+  for (const m of members) {
+    memberByLowerName.set(m.name.trim().toLowerCase(), m);
+  }
+
+  const segments: MentionSegment[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ text: text.slice(lastIndex, match.index) });
+    }
+    const rawToken = match[1];
+    const cleanName = rawToken.slice(1).toLowerCase();
+    if (cleanName === 'all' || cleanName === 'everyone') {
+      segments.push({ text: rawToken, isEveryone: true });
+    } else {
+      const m = memberByLowerName.get(cleanName);
+      segments.push(m ? { text: rawToken, memberId: m.id } : { text: rawToken });
+    }
+    lastIndex = match.index + rawToken.length;
+  }
+  if (lastIndex < text.length) {
+    segments.push({ text: text.slice(lastIndex) });
+  }
+  return segments.length > 0 ? segments : [{ text }];
+}
+
+/**
+ * Returns unique member IDs referenced via `@Name` or `@all`/`@everyone`.
+ */
+export function extractMentionedMemberIds(
+  text: string,
+  members: readonly TripMember[],
+): string[] {
+  const segments = splitTextWithMentions(text, members);
+  const ids = new Set<string>();
+  for (const seg of segments) {
+    if (seg.isEveryone) {
+      for (const m of members) ids.add(m.id);
+    } else if (seg.memberId) {
+      ids.add(seg.memberId);
+    }
+  }
+  return Array.from(ids);
+}
+
+/**
+ * Creates a validated Quick Poll object for Crew Chat.
+ * Requires a non-empty question and at least 2 distinct non-empty options.
+ */
+export function createChatPoll(params: {
+  tripCode: string;
+  question: string;
+  optionLabels: readonly string[];
+  allowMultiple?: boolean;
+  createdBy: string;
+  createdByName: string;
+  nowIso?: string;
+}): ChatPoll | null {
+  const question = params.question.replace(/\s+/g, ' ').trim().slice(0, 140);
+  if (!question || !params.tripCode.trim()) return null;
+
+  const uniqueLabels: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of params.optionLabels) {
+    const clean = raw.replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueLabels.push(clean);
+    if (uniqueLabels.length >= MAX_POLL_OPTIONS) break;
+  }
+  if (uniqueLabels.length < 2) return null;
+
+  return {
+    id: `poll-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    tripCode: params.tripCode.trim().toUpperCase(),
+    question,
+    options: uniqueLabels.map((label, idx) => ({
+      id: `opt-${idx + 1}-${Math.random().toString(36).slice(2, 5)}`,
+      label,
+      voterIds: [],
+    })),
+    allowMultiple: Boolean(params.allowMultiple),
+    createdBy: params.createdBy || 'guest',
+    createdByName: params.createdByName.trim() || 'Guest',
+    createdAt: params.nowIso ?? new Date().toISOString(),
+  };
+}
+
+/**
+ * Toggles a crew member's vote on a Quick Poll option cleanly.
+ * Single-choice polls automatically switch the member's vote to the tapped option
+ * (or remove it if tapping their already-selected option).
+ */
+export function togglePollVote(
+  poll: ChatPoll,
+  optionId: string,
+  memberId: string,
+): ChatPoll {
+  if (poll.closed || !memberId || memberId === 'guest') return poll;
+  const target = poll.options.find((o) => o.id === optionId);
+  if (!target) return poll;
+
+  const alreadySelected = target.voterIds.includes(memberId);
+  const nextOptions = poll.options.map((opt) => {
+    const withoutMember = opt.voterIds.filter((id) => id !== memberId);
+    if (poll.allowMultiple) {
+      if (opt.id !== optionId) return opt;
+      return {
+        ...opt,
+        voterIds: alreadySelected ? withoutMember : [...withoutMember, memberId],
+      };
+    }
+    if (opt.id !== optionId) {
+      return { ...opt, voterIds: withoutMember };
+    }
+    return {
+      ...opt,
+      voterIds: alreadySelected ? withoutMember : [...withoutMember, memberId],
+    };
+  });
+
+  return { ...poll, options: nextOptions };
+}
+
+/**
+ * Deterministically merges Crew Chat polls by ID, preserving newest votes and closed state.
+ */
+export function mergeChatPolls(
+  existing: readonly ChatPoll[],
+  incoming: readonly ChatPoll[],
+): ChatPoll[] {
+  const byId = new Map<string, ChatPoll>();
+  for (const p of existing) {
+    if (p?.id) byId.set(p.id, p);
+  }
+  for (const p of incoming) {
+    if (!p?.id) continue;
+    const prev = byId.get(p.id);
+    if (!prev) {
+      byId.set(p.id, p);
+      continue;
+    }
+    byId.set(p.id, {
+      ...prev,
+      ...p,
+      closed: Boolean(prev.closed || p.closed),
+    });
+  }
+  const sorted = Array.from(byId.values()).sort((a, b) =>
+    a.createdAt.localeCompare(b.createdAt),
+  );
+  return sorted.length > MAX_CHAT_POLLS
+    ? sorted.slice(sorted.length - MAX_CHAT_POLLS)
+    : sorted;
+}
+
+export type ChatTimelineEntry =
+  | { kind: 'message'; id: string; createdAt: string; message: ChatMessage }
+  | { kind: 'poll'; id: string; createdAt: string; poll: ChatPoll };
+
+/**
+ * Merges messages and inline polls into one chronological stream (oldest -> newest).
+ */
+export function buildChatTimeline(
+  messages: readonly ChatMessage[],
+  polls: readonly ChatPoll[] = [],
+): ChatTimelineEntry[] {
+  const entries: ChatTimelineEntry[] = [
+    ...messages.map((message) => ({
+      kind: 'message' as const,
+      id: message.id,
+      createdAt: message.createdAt,
+      message,
+    })),
+    ...polls.map((poll) => ({
+      kind: 'poll' as const,
+      id: poll.id,
+      createdAt: poll.createdAt,
+      poll,
+    })),
+  ];
+  return entries.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/**
+ * Returns IDs (oldest -> newest) of non-deleted messages and polls matching `query`.
+ */
+export function searchChatTimelineIds(
+  messages: readonly ChatMessage[],
+  polls: readonly ChatPoll[],
+  rawQuery: string,
+): string[] {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return [];
+  const timeline = buildChatTimeline(messages, polls);
+  const hits: string[] = [];
+  for (const entry of timeline) {
+    if (entry.kind === 'message') {
+      const m = entry.message;
+      if (m.deleted) continue;
+      if (
+        m.text.toLowerCase().includes(q) ||
+        m.senderName.toLowerCase().includes(q)
+      ) {
+        hits.push(m.id);
+      }
+    } else {
+      const p = entry.poll;
+      if (
+        p.question.toLowerCase().includes(q) ||
+        p.createdByName.toLowerCase().includes(q) ||
+        p.options.some((o) => o.label.toLowerCase().includes(q))
+      ) {
+        hits.push(p.id);
+      }
+    }
+  }
+  return hits;
 }

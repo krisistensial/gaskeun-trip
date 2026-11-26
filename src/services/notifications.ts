@@ -11,6 +11,68 @@ export interface DeviceNotificationPayload {
   title: string;
   body: string;
   tag?: string;
+  renotify?: boolean;
+}
+
+function truncateNotificationText(raw: string, maxLen = 72): string {
+  const clean = raw.replace(/\s+/g, ' ').trim();
+  if (clean.length <= maxLen) return clean;
+  return `${clean.slice(0, maxLen - 1).trimEnd()}…`;
+}
+
+/**
+ * Formats compact, non-stacked notification copy for Crew Chat messages & polls.
+ */
+export function formatChatNotificationCopy(params: {
+  tripTitle: string;
+  senderName: string;
+  kind: 'text' | 'sticker' | 'poll';
+  text: string;
+  unreadFromOthers?: number;
+  isMentioned?: boolean;
+}): { title: string; body: string } {
+  const title = truncateNotificationText(params.tripTitle || 'Crew Chat', 36);
+  const sender = params.senderName.trim() || 'Crew';
+  const unread = Math.max(1, params.unreadFromOthers ?? 1);
+  const mentionPrefix = params.isMentioned ? 'Mentioned you · ' : '';
+
+  let preview = '';
+  if (params.kind === 'sticker') {
+    preview = `${sender} sent a sticker ✨`;
+  } else if (params.kind === 'poll') {
+    preview = `Poll · ${sender}: ${params.text}`;
+  } else if (unread > 1) {
+    preview = `(${unread} unread) ${sender}: ${params.text}`;
+  } else {
+    preview = `${sender}: ${params.text}`;
+  }
+
+  return {
+    title,
+    body: truncateNotificationText(`${mentionPrefix}${preview}`, 80),
+  };
+}
+
+/**
+ * Formats compact, single-line trip update copy for background sync notifications.
+ */
+export function formatTripUpdateNotificationCopy(params: {
+  tripTitle: string;
+  actorName: string;
+  action: string;
+}): { title: string; body: string } {
+  return {
+    title: truncateNotificationText(params.tripTitle || 'Trip Updated', 36),
+    body: truncateNotificationText(`${params.actorName}: ${params.action}`, 76),
+  };
+}
+
+/**
+ * Only dispatch OS tray notifications when the app is backgrounded/hidden
+ * so active foreground sessions rely solely on the sleek in-app heads-up pill.
+ */
+export function shouldFireOsNotification(isDocumentHidden: boolean): boolean {
+  return Boolean(isDocumentHidden);
 }
 
 export function isDeviceNotificationSupported(): boolean {
@@ -99,7 +161,8 @@ export async function tryShowDeviceNotification(
           icon,
           badge,
           tag: payload.tag || `gaskeun-${Date.now()}`,
-        });
+          ...(payload.renotify ? { renotify: true } : {}),
+        } as NotificationOptions);
         return { ok: true };
       }
     }

@@ -317,6 +317,24 @@ export interface ChatReadReceipt {
   lastMessageId?: string;
 }
 
+export interface ChatPollOption {
+  id: string;
+  label: string;
+  voterIds: string[];
+}
+
+export interface ChatPoll {
+  id: string;
+  tripCode: string;
+  question: string;
+  options: ChatPollOption[];
+  allowMultiple?: boolean;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string; // ISO
+  closed?: boolean;
+}
+
 export interface SharedTrip {
   schemaVersion: number;
   /** Internal seed revision for non-destructive pilot demo upgrades */
@@ -360,6 +378,10 @@ export interface SharedTrip {
   editLog?: EditLogEntry[];
   /** Fallback synced crew chat cache (primary durable table is `trip_messages` when deployed) */
   chatMessages?: ChatMessage[];
+  /** Quick Crew Polls synced via Realtime Broadcast + Layer 1 */
+  chatPolls?: ChatPoll[];
+  /** Currently pinned message ID in Crew Chat */
+  pinnedChatMessageId?: string;
   /** Per-member read receipts (`Seen by`) synced via Realtime Broadcast + Layer 1 */
   chatReadReceipts?: Record<string, ChatReadReceipt>;
   updatedAt: string;

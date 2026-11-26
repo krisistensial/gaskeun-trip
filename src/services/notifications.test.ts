@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  formatChatNotificationCopy,
+  formatTripUpdateNotificationCopy,
   getDeviceNotificationPermission,
   getDeviceNotificationsEnabled,
   NOTIFICATIONS_STORAGE_KEY,
   setDeviceNotificationsEnabled,
+  shouldFireOsNotification,
   showDeviceNotification,
 } from './notifications';
 
@@ -74,5 +77,43 @@ describe('Device / Phone Notification service', () => {
         tag: 'chat-SOLO-27',
       }),
     );
+  });
+
+  it('formats compact anti-stacking chat/trip notifications and restricts OS tray alerts to background', () => {
+    expect(shouldFireOsNotification(false)).toBe(false);
+    expect(shouldFireOsNotification(true)).toBe(true);
+
+    const stickerAlert = formatChatNotificationCopy({
+      tripTitle: 'Solo – Jogja',
+      senderName: 'Rani',
+      kind: 'sticker',
+      text: 'Gaskeun',
+    });
+    expect(stickerAlert).toEqual({
+      title: 'Solo – Jogja',
+      body: 'Rani sent a sticker ✨',
+    });
+
+    const groupedMentionAlert = formatChatNotificationCopy({
+      tripTitle: 'Solo – Jogja',
+      senderName: 'Kris',
+      kind: 'text',
+      text: '@Rani meet at Gate 2 now!',
+      unreadFromOthers: 4,
+      isMentioned: true,
+    });
+    expect(groupedMentionAlert.title).toBe('Solo – Jogja');
+    expect(groupedMentionAlert.body).toContain('Mentioned you ·');
+    expect(groupedMentionAlert.body).toContain('(4 unread)');
+
+    const tripAlert = formatTripUpdateNotificationCopy({
+      tripTitle: 'Solo – Jogja',
+      actorName: 'Dora',
+      action: 'Updated Hotel Check-in',
+    });
+    expect(tripAlert).toEqual({
+      title: 'Solo – Jogja',
+      body: 'Dora: Updated Hotel Check-in',
+    });
   });
 });

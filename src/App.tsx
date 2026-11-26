@@ -34,13 +34,17 @@ import { fetchDriveAlbumWithStatus, isAssetFileName } from './services/gdriveAlb
 import { appendEditLog } from './services/activityLog';
 import {
   countUnreadMessages,
+  createChatPoll,
   createStickerChatMessage,
   createTextChatMessage,
+  extractMentionedMemberIds,
   loadChatLastRead,
   mergeChatMessages,
+  mergeChatPolls,
   mergeChatReadReceipts,
   saveChatLastRead,
   toggleMessageReaction,
+  togglePollVote,
 } from './services/chat';
 import {
   appendClearedChatIds,
@@ -55,7 +59,12 @@ import {
   type CrewChatChannelController,
 } from './services/chatSync';
 import { triggerFeedback } from './services/feedback';
-import { showDeviceNotification } from './services/notifications';
+import {
+  formatChatNotificationCopy,
+  formatTripUpdateNotificationCopy,
+  shouldFireOsNotification,
+  showDeviceNotification,
+} from './services/notifications';
 import { uploadSharedImage } from './services/mediaUploader';
 import {
   getMemberEditScopes,
@@ -226,6 +235,7 @@ export default function App() {
   const chatChannelRef = useRef<CrewChatChannelController | null>(null);
   const useSharedTripChatFallbackRef = useRef(false);
   const lastAutoPullMsRef = useRef<number>(0);
+  const lastTripNotifMsRef = useRef<number>(0);
   const shellRef = useRef<HTMLElement | null>(null);
 
   // Initialize root history marker (`depth: 0`) so Android/PWA hardware Back exits cleanly only at root
@@ -464,11 +474,18 @@ export default function App() {
           nextTopLog.id !== prevTopLogId &&
           nextTopLog.actorId !== activeMemberId &&
           typeof document !== 'undefined' &&
-          document.visibilityState === 'hidden'
+          shouldFireOsNotification(document.visibilityState === 'hidden') &&
+          Date.now() - lastTripNotifMsRef.current >= 15_000
         ) {
+          lastTripNotifMsRef.current = Date.now();
+          const copy = formatTripUpdateNotificationCopy({
+            tripTitle: remoteTrip.title,
+            actorName: nextTopLog.actorName,
+            action: nextTopLog.action,
+          });
           void showDeviceNotification({
-            title: remoteTrip.title || 'Trip Updated',
-            body: `${nextTopLog.actorName}: ${nextTopLog.action}`,
+            title: copy.title,
+            body: copy.body,
             tag: `trip-${remoteTrip.code}`,
           });
         }
@@ -683,26 +700,41 @@ export default function App() {
         return;
       }
 
-      const body =
-        incoming.kind === 'sticker' ? `Sent sticker: ${incoming.text}` : incoming.text;
+      const tripSnapshot = activeTripRef.current;
+      const isMentioned = Boolean(
+        activeMemberId &&
+          activeMemberId !== 'guest' &&
+          incoming.kind === 'text' &&
+          extractMentionedMemberIds(incoming.text, tripSnapshot.members).includes(activeMemberId),
+      );
+      const copy = formatChatNotificationCopy({
+        tripTitle: tripSnapshot.title || currentCode,
+        senderName: incoming.senderName,
+        kind: incoming.kind,
+        text: incoming.text,
+        unreadFromOthers: Math.max(1, unreadChatCountRef.current + 1),
+        isMentioned,
+      });
 
-      if (!chatOpenRef.current || isHidden) {
+      // Only alert OS tray when backgrounded/hidden — foreground uses the single in-app banner
+      if (shouldFireOsNotification(isHidden)) {
         void showDeviceNotification({
-          title: `${incoming.senderName} · ${activeTripRef.current.title || currentCode}`,
-          body,
+          title: copy.title,
+          body: copy.body,
           tag: `chat-${currentCode}`,
+          renotify: isMentioned,
         });
       }
 
       if (!chatOpenRef.current) {
-        const sender = activeTripRef.current.members.find(
+        const sender = tripSnapshot.members.find(
           (m) => m.id === incoming.senderId,
         );
-        triggerFeedback('success');
+        triggerFeedback(isMentioned ? 'complete' : 'success');
         setChatHeadsUp({
           id: incoming.id,
           senderName: incoming.senderName,
-          body,
+          body: isMentioned ? `Mentioned you: ${incoming.text}` : incoming.kind === 'sticker' ? 'Sent a sticker ✨' : incoming.text,
           initials: sender?.initials ?? incoming.senderName.slice(0, 2).toUpperCase(),
           avatarDataUrl: sender?.avatarDataUrl,
           avatarBg: sender?.avatarBg ?? '#E3EDE6',
@@ -795,6 +827,18 @@ export default function App() {
           mergeChatReadReceipts(prev, { [receipt.memberId]: receipt }),
         );
       },
+      onPoll: (incomingPoll) => {
+        setActiveTrip((prev) => ({
+          ...prev,
+          chatPolls: mergeChatPolls(prev.chatPolls ?? [], [incomingPoll]),
+        }));
+      },
+      onPin: ({ messageId }) => {
+        setActiveTrip((prev) => ({
+          ...prev,
+          pinnedChatMessageId: messageId ?? undefined,
+        }));
+      },
     });
     chatChannelRef.current = controller;
 
@@ -850,6 +894,8 @@ export default function App() {
       chatOpen ? 0 : countUnreadMessages(visibleChatMessages, chatLastReadIso, activeMemberId),
     [chatOpen, visibleChatMessages, chatLastReadIso, activeMemberId],
   );
+  const unreadChatCountRef = useRef<number>(unreadChatCount);
+  unreadChatCountRef.current = unreadChatCount;
 
   const handleMarkChatRead = useCallback(() => {
     const code = activeTripRef.current.code;
@@ -1316,6 +1362,78 @@ export default function App() {
     );
   };
 
+  const handleCreateChatPoll = (payload: {
+    question: string;
+    options: string[];
+    allowMultiple: boolean;
+  }) => {
+    const poll = createChatPoll({
+      tripCode: activeTrip.code,
+      question: payload.question,
+      optionLabels: payload.options,
+      allowMultiple: payload.allowMultiple,
+      createdBy: activeMemberId ?? 'guest',
+      createdByName: activeMemberName,
+    });
+    if (!poll) return;
+    chatChannelRef.current?.broadcastPoll(poll);
+    handleUpdateTrip(
+      (prev) => ({
+        ...prev,
+        chatPolls: mergeChatPolls(prev.chatPolls ?? [], [poll]),
+      }),
+      'Poll posted',
+      { skipLog: true },
+    );
+  };
+
+  const handleVoteChatPoll = (pollId: string, optionId: string) => {
+    const voterId = activeMemberId ?? 'guest';
+    if (voterId === 'guest') {
+      showToast('Select a crew profile to vote', 'info');
+      return;
+    }
+    const existing = (activeTrip.chatPolls ?? []).find((p) => p.id === pollId);
+    if (!existing) return;
+    const nextPoll = togglePollVote(existing, optionId, voterId);
+    chatChannelRef.current?.broadcastPoll(nextPoll);
+    handleUpdateTrip(
+      (prev) => ({
+        ...prev,
+        chatPolls: mergeChatPolls(prev.chatPolls ?? [], [nextPoll]),
+      }),
+      undefined,
+      { skipLog: true },
+    );
+  };
+
+  const handleToggleCloseChatPoll = (pollId: string) => {
+    const existing = (activeTrip.chatPolls ?? []).find((p) => p.id === pollId);
+    if (!existing) return;
+    const nextPoll = { ...existing, closed: !existing.closed };
+    chatChannelRef.current?.broadcastPoll(nextPoll);
+    handleUpdateTrip(
+      (prev) => ({
+        ...prev,
+        chatPolls: mergeChatPolls(prev.chatPolls ?? [], [nextPoll]),
+      }),
+      nextPoll.closed ? 'Poll closed' : 'Poll reopened',
+      { skipLog: true },
+    );
+  };
+
+  const handleTogglePinChatMessage = (messageId: string | null) => {
+    chatChannelRef.current?.broadcastPin(messageId);
+    handleUpdateTrip(
+      (prev) => ({
+        ...prev,
+        pinnedChatMessageId: messageId ?? undefined,
+      }),
+      messageId ? 'Message pinned' : 'Pin removed',
+      { skipLog: true },
+    );
+  };
+
   const handleChatTypingChange = useCallback((isTyping: boolean) => {
     chatChannelRef.current?.sendTypingPing(isTyping);
   }, []);
@@ -1414,6 +1532,8 @@ export default function App() {
               <CrewChatScreen
                 trip={activeTrip}
                 messages={visibleChatMessages}
+                polls={activeTrip.chatPolls ?? []}
+                pinnedMessageId={activeTrip.pinnedChatMessageId}
                 readReceipts={chatReadReceipts}
                 activeMemberId={activeMemberId}
                 activeMember={activeMember}
@@ -1427,6 +1547,10 @@ export default function App() {
                 onUnsendMessage={handleUnsendChatMessage}
                 onUnsendMultiple={handleUnsendMultipleChatMessages}
                 onDeleteSelected={handleDeleteSelectedChatMessages}
+                onCreatePoll={handleCreateChatPoll}
+                onVotePoll={handleVoteChatPoll}
+                onToggleClosePoll={handleToggleCloseChatPoll}
+                onTogglePinMessage={handleTogglePinChatMessage}
                 onTypingChange={handleChatTypingChange}
                 onMarkRead={handleMarkChatRead}
                 onNotify={showToast}

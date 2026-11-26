@@ -1,22 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildChatTimeline,
   CHAT_QUICK_REACTIONS,
   computeLatestSeenAnchors,
+  createChatPoll,
   CREW_STICKER_PACK,
   countUnreadMessages,
   createStickerChatMessage,
   createTextChatMessage,
+  extractMentionedMemberIds,
   formatChatDayDivider,
+  getActiveMentionQuery,
   getMessageSeenByMembers,
   isGroupedWithPrevious,
   isSafeStickerUrl,
   loadChatLastRead,
   MAX_CHAT_MESSAGES,
   mergeChatMessages,
+  mergeChatPolls,
   mergeChatReadReceipts,
   saveChatLastRead,
   searchBuiltInStickers,
+  searchChatTimelineIds,
+  splitTextWithMentions,
   toggleMessageReaction,
+  togglePollVote,
 } from './chat';
 import {
   deleteCustomSticker,
@@ -312,5 +320,60 @@ describe('Crew Chat pure helpers (text, stickers, emoji reactions, unread)', () 
 
     const appended = appendClearedChatIds('SOLO-27', 'm-kris', ['msg-3']);
     expect(appended).toEqual(['msg-1', 'msg-2', 'msg-3']);
+  });
+
+  it('parses @mentions, runs single/multi-choice Quick Polls, and searches chronological chat timeline', () => {
+    const members = [
+      { id: 'm-kris', name: 'Kris', initials: 'KR', role: 'driver' as const, status: 'confirmed' as const, avatarBg: '#E3EDE6', avatarColor: '#2D4A42', isCreator: true },
+      { id: 'm-rani', name: 'Rani', initials: 'RN', role: 'passenger' as const, status: 'confirmed' as const, avatarBg: '#E3EDE6', avatarColor: '#2D4A42' },
+    ];
+
+    expect(getActiveMentionQuery('Hai @ra', 7)).toEqual({ query: 'ra', startIndex: 4 });
+    expect(getActiveMentionQuery('Hai @ra ', 8)).toBeNull();
+    expect(extractMentionedMemberIds('Gas @Rani sama @Kris ya', members)).toEqual(['m-rani', 'm-kris']);
+    expect(extractMentionedMemberIds('Kumpul @all sekarang', members)).toEqual(['m-kris', 'm-rani']);
+
+    const segments = splitTextWithMentions('Halo @Rani!', members);
+    expect(segments).toEqual([
+      { text: 'Halo ' },
+      { text: '@Rani', memberId: 'm-rani' },
+      { text: '!' },
+    ]);
+
+    const poll = createChatPoll({
+      tripCode: 'solo-27',
+      question: 'Makan siang di mana?',
+      optionLabels: ['Gudeg', 'Soto', 'Gudeg'],
+      allowMultiple: false,
+      createdBy: 'm-kris',
+      createdByName: 'Kris',
+      nowIso: '2026-11-26T09:00:00.000Z',
+    })!;
+    expect(poll.options).toHaveLength(2);
+
+    const opt0 = poll.options[0].id;
+    const opt1 = poll.options[1].id;
+    const voted1 = togglePollVote(poll, opt0, 'm-rani');
+    expect(voted1.options[0].voterIds).toEqual(['m-rani']);
+
+    // Single-choice switches vote automatically
+    const switched = togglePollVote(voted1, opt1, 'm-rani');
+    expect(switched.options[0].voterIds).toEqual([]);
+    expect(switched.options[1].voterIds).toEqual(['m-rani']);
+
+    const merged = mergeChatPolls([poll], [switched]);
+    expect(merged[0].options[1].voterIds).toEqual(['m-rani']);
+
+    const m1 = createTextChatMessage({
+      tripCode: 'SOLO-27',
+      senderId: 'm-kris',
+      senderName: 'Kris',
+      text: 'Berangkat jam 8 pagi',
+      nowIso: '2026-11-26T08:55:00.000Z',
+    })!;
+    const timeline = buildChatTimeline([m1], merged);
+    expect(timeline.map((t) => t.kind)).toEqual(['message', 'poll']);
+    expect(searchChatTimelineIds([m1], merged, 'gudeg')).toEqual([poll.id]);
+    expect(searchChatTimelineIds([m1], merged, 'jam 8')).toEqual([m1.id]);
   });
 });

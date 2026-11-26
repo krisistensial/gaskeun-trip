@@ -10,15 +10,19 @@ import {
 import { createPortal } from 'react-dom';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
+  BarChart2,
   Bell,
   BellOff,
   Check,
   CheckCheck,
   CheckSquare,
   ChevronDown,
+  ChevronUp,
   Copy,
   Eye,
   MessageCircle,
+  Pin,
+  PinOff,
   Plus,
   Reply,
   Search,
@@ -30,6 +34,7 @@ import {
 } from 'lucide-react';
 import {
   Avatar,
+  Button,
   ConfirmDialog,
   CornerOrb,
   LiquidBottomSheet,
@@ -37,17 +42,21 @@ import {
 } from '../../components/atoms';
 import { useRegisterOverlay } from '../../context/OverlayContext';
 import {
+  buildChatTimeline,
   buildReplyPreview,
   CHAT_QUICK_REACTIONS,
   countTotalReactions,
   CREW_STICKER_PACK,
   formatChatDayDivider,
   formatChatTime,
+  getActiveMentionQuery,
   getChatDateKey,
   getMessageSeenByMembers,
   getStickerById,
   isGroupedWithPrevious,
   sanitizeChatText,
+  searchChatTimelineIds,
+  splitTextWithMentions,
 } from '../../services/chat';
 import { FULL_EMOJI_GROUPS, searchEmojiCatalog } from '../../services/emojiCatalog';
 import {
@@ -74,6 +83,7 @@ import { useBackHandler } from '../../services/pwaHistory';
 import { CreateStickerSheet } from './CreateStickerSheet';
 import type {
   ChatMessage,
+  ChatPoll,
   ChatReadReceipt,
   ChatReplyPreview,
   OnlinePresenceUser,
@@ -91,6 +101,8 @@ export interface StickerSendPayload {
 export interface CrewChatScreenProps {
   trip: SharedTrip;
   messages: ChatMessage[];
+  polls?: ChatPoll[];
+  pinnedMessageId?: string;
   readReceipts?: Record<string, ChatReadReceipt>;
   activeMemberId: string | null;
   activeMember?: TripMember;
@@ -104,6 +116,14 @@ export interface CrewChatScreenProps {
   onUnsendMessage: (messageId: string) => void;
   onUnsendMultiple?: (messageIds: string[]) => void;
   onDeleteSelected?: (messageIds: string[]) => void;
+  onCreatePoll?: (payload: {
+    question: string;
+    options: string[];
+    allowMultiple: boolean;
+  }) => void;
+  onVotePoll?: (pollId: string, optionId: string) => void;
+  onToggleClosePoll?: (pollId: string) => void;
+  onTogglePinMessage?: (messageId: string | null) => void;
   onTypingChange: (isTyping: boolean) => void;
   onMarkRead: () => void;
   onNotify?: (message: string, tone?: ToastTone) => void;
@@ -189,6 +209,8 @@ const SPRING_PANEL = {
 export function CrewChatScreen({
   trip,
   messages,
+  polls = [],
+  pinnedMessageId,
   readReceipts,
   activeMemberId,
   activeMemberName,
@@ -201,15 +223,31 @@ export function CrewChatScreen({
   onUnsendMessage,
   onUnsendMultiple,
   onDeleteSelected,
+  onCreatePoll,
+  onVotePoll,
+  onToggleClosePoll,
+  onTogglePinMessage,
   onTypingChange,
   onMarkRead,
   onNotify,
   onBack,
 }: CrewChatScreenProps) {
   const [draft, setDraft] = useState('');
+  const [cursorIndex, setCursorIndex] = useState(0);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>('none');
   const [emojiCategory, setEmojiCategory] = useState(FULL_EMOJI_GROUPS[0].id);
   const [emojiQuery, setEmojiQuery] = useState('');
+
+  // Search Chat state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchHitIdx, setSearchHitIdx] = useState(0);
+
+  // Quick Poll Sheet state
+  const [pollSheetOpen, setPollSheetOpen] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
 
   // Sticker Drawer + Search + Dedicated Sticker Studio Popup
   const [stickerTab, setStickerTab] = useState<StickerTabMode>('browse');
@@ -302,6 +340,15 @@ export function CrewChatScreen({
     exitSelectMode,
     'sheet',
     'crew-chat-select',
+  );
+  useBackHandler(
+    searchOpen && !selectMode && !holdTarget && !pollSheetOpen && !onlineSheetOpen,
+    () => {
+      setSearchOpen(false);
+      setSearchQuery('');
+    },
+    'sheet',
+    'crew-chat-search',
   );
   useBackHandler(
     drawerMode !== 'none' && !holdTarget && !onlineSheetOpen && !selectMode,
@@ -499,8 +546,9 @@ export function CrewChatScreen({
     setShowScrollBottom(distanceFromBottom > 160);
   };
 
-  const handleDraftChange = (val: string) => {
+  const handleDraftChange = (val: string, nextCursor?: number) => {
     setDraft(val);
+    setCursorIndex(nextCursor ?? val.length);
     const ta = textareaRef.current;
     if (ta) {
       ta.style.height = 'auto';
@@ -529,7 +577,7 @@ export function CrewChatScreen({
     const start = ta.selectionStart ?? draft.length;
     const end = ta.selectionEnd ?? draft.length;
     const nextVal = draft.slice(0, start) + emoji + draft.slice(end);
-    handleDraftChange(nextVal);
+    handleDraftChange(nextVal, start + emoji.length);
     requestAnimationFrame(() => {
       if (textareaRef.current) {
         textareaRef.current.focus({ preventScroll: true });
@@ -778,6 +826,96 @@ export function CrewChatScreen({
     );
   }, [emojiQuery, emojiCategory]);
 
+  const activeMention = useMemo(
+    () => getActiveMentionQuery(draft, cursorIndex),
+    [draft, cursorIndex],
+  );
+
+  const mentionCandidates = useMemo(() => {
+    if (!activeMention) return [];
+    const q = activeMention.query;
+    const list: Array<{ id: string; label: string; member?: TripMember }> = [];
+    if ('all'.startsWith(q) || 'everyone'.startsWith(q) || !q) {
+      list.push({ id: '__all__', label: 'all' });
+    }
+    for (const m of trip.members) {
+      if (m.name.toLowerCase().includes(q)) {
+        list.push({ id: m.id, label: m.name, member: m });
+      }
+    }
+    return list.slice(0, 7);
+  }, [activeMention, trip.members]);
+
+  const insertMention = (tokenName: string) => {
+    if (!activeMention) return;
+    triggerFeedback('tap');
+    const before = draft.slice(0, activeMention.startIndex);
+    const after = draft.slice(cursorIndex);
+    const insertion = `@${tokenName} `;
+    const nextVal = `${before}${insertion}${after}`;
+    const nextPos = before.length + insertion.length;
+    handleDraftChange(nextVal, nextPos);
+    requestAnimationFrame(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus({ preventScroll: true });
+        textareaRef.current.setSelectionRange(nextPos, nextPos);
+      }
+    });
+  };
+
+  const timelineEntries = useMemo(
+    () => buildChatTimeline(messages, polls),
+    [messages, polls],
+  );
+
+  const pinnedMessage = useMemo(
+    () =>
+      pinnedMessageId
+        ? messages.find((m) => m.id === pinnedMessageId && !m.deleted) ?? null
+        : null,
+    [messages, pinnedMessageId],
+  );
+
+  const searchHits = useMemo(
+    () => (searchOpen ? searchChatTimelineIds(messages, polls, searchQuery) : []),
+    [searchOpen, messages, polls, searchQuery],
+  );
+
+  const safeSearchHitIdx =
+    searchHits.length === 0 ? 0 : Math.min(searchHitIdx, searchHits.length - 1);
+
+  const stepSearchHit = (delta: number) => {
+    if (searchHits.length === 0) return;
+    const nextIdx = (safeSearchHitIdx + delta + searchHits.length) % searchHits.length;
+    setSearchHitIdx(nextIdx);
+    jumpToQuotedMessage(searchHits[nextIdx]);
+  };
+
+  useEffect(() => {
+    if (!searchOpen || searchHits.length === 0) return;
+    setSearchHitIdx(searchHits.length - 1);
+    jumpToQuotedMessage(searchHits[searchHits.length - 1]);
+  }, [searchOpen, searchHits.length, searchQuery]);
+
+  const handleCreatePollSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onCreatePoll) return;
+    const cleanOpts = pollOptions.map((o) => o.trim()).filter(Boolean);
+    if (!pollQuestion.trim() || cleanOpts.length < 2) return;
+    triggerFeedback('success');
+    onCreatePoll({
+      question: pollQuestion.trim(),
+      options: cleanOpts,
+      allowMultiple: pollAllowMultiple,
+    });
+    setPollQuestion('');
+    setPollOptions(['', '']);
+    setPollAllowMultiple(false);
+    setPollSheetOpen(false);
+    isNearBottomRef.current = true;
+    requestAnimationFrame(() => scrollToBottom(true));
+  };
+
   const holdCanUnsend =
     holdTarget &&
     !holdTarget.message.deleted &&
@@ -949,7 +1087,24 @@ export function CrewChatScreen({
           <span className="crew-chat-reply-quote__text">{msg.replyTo.text}</span>
         </button>
       )}
-      <p className="crew-chat-text">{msg.text}</p>
+      <p className="crew-chat-text">
+        {splitTextWithMentions(msg.text, trip.members).map((seg, idx) =>
+          seg.isEveryone || seg.memberId ? (
+            <span
+              key={idx}
+              className={`crew-chat-mention ${
+                seg.isEveryone || (activeMemberId && seg.memberId === activeMemberId)
+                  ? 'crew-chat-mention--me'
+                  : ''
+              }`}
+            >
+              {seg.text}
+            </span>
+          ) : (
+            seg.text
+          ),
+        )}
+      </p>
       <div className="crew-chat-meta">
         <span>{formatChatTime(msg.createdAt)}</span>
         {renderWhatsAppTicks(msg, isOwn)}
@@ -1041,6 +1196,28 @@ export function CrewChatScreen({
                   {headerSubText}
                 </div>
               </div>
+
+              <button
+                type="button"
+                className={`crew-chat-bell-orb tactile ${
+                  searchOpen ? 'crew-chat-bell-orb--on' : ''
+                }`}
+                aria-label="Search chat messages"
+                title="Search chat"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setSearchOpen((prev) => {
+                    const next = !prev;
+                    if (!next) {
+                      setSearchQuery('');
+                      setSearchHitIdx(0);
+                    }
+                    return next;
+                  });
+                }}
+              >
+                <Search size={15} strokeWidth={2} />
+              </button>
 
               <button
                 type="button"
@@ -1137,6 +1314,87 @@ export function CrewChatScreen({
           )}
         </header>
 
+        {searchOpen && !selectMode && (
+          <div className="crew-chat-search-bar" role="search">
+            <Search size={15} strokeWidth={2} color="var(--brand-matcha)" />
+            <input
+              type="text"
+              autoFocus
+              inputMode="search"
+              enterKeyHint="search"
+              className="crew-chat-search-bar__input"
+              placeholder="Search messages or polls..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery.trim() && (
+              <span className="crew-chat-search-bar__count">
+                {searchHits.length > 0
+                  ? `${safeSearchHitIdx + 1}/${searchHits.length}`
+                  : '0'}
+              </span>
+            )}
+            <button
+              type="button"
+              className="crew-chat-search-nav-btn tactile"
+              aria-label="Previous search match"
+              disabled={searchHits.length === 0}
+              onClick={() => stepSearchHit(-1)}
+            >
+              <ChevronUp size={15} strokeWidth={2.2} />
+            </button>
+            <button
+              type="button"
+              className="crew-chat-search-nav-btn tactile"
+              aria-label="Next search match"
+              disabled={searchHits.length === 0}
+              onClick={() => stepSearchHit(1)}
+            >
+              <ChevronDown size={15} strokeWidth={2.2} />
+            </button>
+            <button
+              type="button"
+              className="crew-chat-search-nav-btn tactile"
+              aria-label="Close chat search"
+              onClick={() => {
+                setSearchOpen(false);
+                setSearchQuery('');
+              }}
+            >
+              <X size={14} strokeWidth={2.2} />
+            </button>
+          </div>
+        )}
+
+        {pinnedMessage && !selectMode && (
+          <div className="crew-chat-pin-bar">
+            <button
+              type="button"
+              className="crew-chat-pin-bar__main"
+              onClick={() => jumpToQuotedMessage(pinnedMessage.id)}
+            >
+              <Pin size={14} strokeWidth={2.1} color="var(--brand-matcha)" />
+              <span className="crew-chat-pin-bar__text">
+                <span className="crew-chat-pin-bar__label">{pinnedMessage.senderName}</span>
+                {pinnedMessage.kind === 'sticker' ? 'Sticker' : pinnedMessage.text}
+              </span>
+            </button>
+            {onTogglePinMessage && (
+              <button
+                type="button"
+                className="crew-chat-reply-banner__close"
+                aria-label="Unpin message"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  onTogglePinMessage(null);
+                }}
+              >
+                <X size={13} strokeWidth={2.2} />
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Bottom-Anchored Message Stream */}
         <div className="crew-chat-scroll-wrap">
           <div
@@ -1144,7 +1402,7 @@ export function CrewChatScreen({
             className="crew-chat-scroll"
             onScroll={handleScrollStream}
           >
-            {messages.length === 0 ? (
+            {timelineEntries.length === 0 ? (
               <motion.div
                 className="crew-chat-empty"
                 initial={{ opacity: 0, scale: 0.95, y: 12 }}
@@ -1180,11 +1438,129 @@ export function CrewChatScreen({
               </motion.div>
             ) : (
               <div className="crew-chat-stream-inner">
-                {messages.map((msg, idx) => {
-                  const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
-                  const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : undefined;
+                {timelineEntries.map((entry, idx) => {
+                  const prevEntry = idx > 0 ? timelineEntries[idx - 1] : undefined;
+                  const nextEntry =
+                    idx < timelineEntries.length - 1 ? timelineEntries[idx + 1] : undefined;
                   const showDayDivider =
-                    !prevMsg || getChatDateKey(prevMsg.createdAt) !== getChatDateKey(msg.createdAt);
+                    !prevEntry ||
+                    getChatDateKey(prevEntry.createdAt) !== getChatDateKey(entry.createdAt);
+
+                  if (entry.kind === 'poll') {
+                    const poll = entry.poll;
+                    const totalVotes = poll.options.reduce(
+                      (acc, o) => acc + o.voterIds.length,
+                      0,
+                    );
+                    const uniqueVoters = new Set(
+                      poll.options.flatMap((o) => o.voterIds),
+                    ).size;
+                    const canClose =
+                      !poll.closed &&
+                      (isHost || poll.createdBy === (activeMemberId ?? ''));
+
+                    return (
+                      <motion.div
+                        key={poll.id}
+                        data-chat-id={poll.id}
+                        layout="position"
+                        initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={SPRING_BUBBLE}
+                      >
+                        {showDayDivider && (
+                          <div className="crew-chat-day-divider">
+                            {formatChatDayDivider(poll.createdAt)}
+                          </div>
+                        )}
+                        <div
+                          className={`crew-chat-poll-wrap ${
+                            flashMessageId === poll.id ? 'crew-chat-row--flash' : ''
+                          }`}
+                        >
+                          <div className="crew-chat-poll-card">
+                            <div className="crew-chat-poll-head">
+                              <span>
+                                Poll · {poll.createdByName}
+                              </span>
+                              <span>
+                                {poll.closed
+                                  ? 'Closed'
+                                  : poll.allowMultiple
+                                    ? 'Multi-choice'
+                                    : '1 vote'}
+                              </span>
+                            </div>
+                            <p className="crew-chat-poll-question">{poll.question}</p>
+                            <div className="crew-chat-poll-options">
+                              {poll.options.map((opt) => {
+                                const picked = Boolean(
+                                  activeMemberId && opt.voterIds.includes(activeMemberId),
+                                );
+                                const pct =
+                                  totalVotes > 0
+                                    ? Math.round((opt.voterIds.length / totalVotes) * 100)
+                                    : 0;
+                                return (
+                                  <button
+                                    key={opt.id}
+                                    type="button"
+                                    disabled={poll.closed}
+                                    className={`crew-chat-poll-opt tactile ${
+                                      picked ? 'crew-chat-poll-opt--picked' : ''
+                                    }`}
+                                    onClick={() => {
+                                      triggerFeedback('check');
+                                      onVotePoll?.(poll.id, opt.id);
+                                    }}
+                                  >
+                                    <span
+                                      className="crew-chat-poll-opt__fill"
+                                      style={{ width: `${pct}%` }}
+                                      aria-hidden="true"
+                                    />
+                                    <span className="crew-chat-poll-opt__left">
+                                      {picked && (
+                                        <Check size={13} strokeWidth={2.6} color="var(--brand-matcha)" />
+                                      )}
+                                      <span>{opt.label}</span>
+                                    </span>
+                                    <span className="crew-chat-poll-opt__stat">
+                                      {opt.voterIds.length} ({pct}%)
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="crew-chat-poll-foot">
+                              <span>
+                                {uniqueVoters} {uniqueVoters === 1 ? 'voter' : 'voters'} ·{' '}
+                                {formatChatTime(poll.createdAt)}
+                              </span>
+                              {(canClose || (poll.closed && isHost)) && onToggleClosePoll && (
+                                <button
+                                  type="button"
+                                  className="crew-chat-poll-close-btn"
+                                  onClick={() => {
+                                    triggerFeedback('tap');
+                                    onToggleClosePoll(poll.id);
+                                  }}
+                                >
+                                  {poll.closed ? 'Reopen' : 'Close Poll'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  }
+
+                  const msg = entry.message;
+                  const prevMsg =
+                    prevEntry && prevEntry.kind === 'message' ? prevEntry.message : undefined;
+                  const nextMsg =
+                    nextEntry && nextEntry.kind === 'message' ? nextEntry.message : undefined;
                   const groupedWithPrev = isGroupedWithPrevious(prevMsg, msg);
                   const groupedWithNext = Boolean(nextMsg && isGroupedWithPrevious(msg, nextMsg));
                   const isOwn = Boolean(activeMemberId && msg.senderId === activeMemberId);
@@ -1721,6 +2097,57 @@ export function CrewChatScreen({
               )}
             </AnimatePresence>
 
+            <AnimatePresence initial={false}>
+              {mentionCandidates.length > 0 && (
+                <motion.div
+                  key="mention-tray"
+                  className="crew-chat-mention-tray"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={SPRING_BUBBLE}
+                >
+                  {mentionCandidates.map((cand) => (
+                    <button
+                      key={cand.id}
+                      type="button"
+                      className="crew-chat-mention-chip tactile"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => insertMention(cand.label)}
+                    >
+                      {cand.member ? (
+                        <Avatar
+                          initials={cand.member.initials}
+                          name={cand.member.name}
+                          src={cand.member.avatarDataUrl}
+                          size="sm"
+                          bg={cand.member.avatarBg}
+                          color={cand.member.avatarColor}
+                        />
+                      ) : (
+                        <span
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: 9,
+                            background: 'var(--brand-sage-tint)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 11,
+                          }}
+                        >
+                          @
+                        </span>
+                      )}
+                      <span>@{cand.label}</span>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div className="crew-chat-input-row">
               <motion.button
                 type="button"
@@ -1759,17 +2186,43 @@ export function CrewChatScreen({
                 )}
               </motion.button>
 
+              {onCreatePoll && (
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.9 }}
+                  className={`crew-chat-icon-btn ${
+                    pollSheetOpen ? 'crew-chat-icon-btn--active' : ''
+                  }`}
+                  aria-label="Create quick poll"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    triggerFeedback('tap');
+                    setDrawerMode('none');
+                    setPollSheetOpen(true);
+                  }}
+                >
+                  <BarChart2 size={18} strokeWidth={1.9} />
+                </motion.button>
+              )}
+
               <div className="crew-chat-input-box">
                 <textarea
                   ref={textareaRef}
                   rows={1}
                   className="crew-chat-textarea"
-                  placeholder={`Message as ${activeMemberName}...`}
+                  placeholder={`Message as ${activeMemberName}... (@ to mention)`}
                   value={draft}
                   maxLength={1000}
                   onFocus={() => setDrawerMode('none')}
                   onPaste={handlePaste}
-                  onChange={(e) => handleDraftChange(e.target.value)}
+                  onClick={(e) => setCursorIndex(e.currentTarget.selectionStart ?? draft.length)}
+                  onKeyUp={(e) => setCursorIndex(e.currentTarget.selectionStart ?? draft.length)}
+                  onChange={(e) =>
+                    handleDraftChange(
+                      e.target.value,
+                      e.target.selectionStart ?? e.target.value.length,
+                    )
+                  }
                   onKeyDown={handleKeyDown}
                 />
               </div>
@@ -1951,6 +2404,28 @@ export function CrewChatScreen({
                             Seen by {holdSeenList.length > 0 ? `(${holdSeenList.length})` : ''}
                           </span>
                           <Eye size={16} strokeWidth={2} />
+                        </button>
+                      )}
+
+                      {!holdTarget.message.deleted && onTogglePinMessage && (
+                        <button
+                          type="button"
+                          className="crew-chat-action-item"
+                          onClick={() => {
+                            if (!holdInteractable) return;
+                            triggerFeedback('tap');
+                            const targetId = holdTarget.message.id;
+                            const isPinned = pinnedMessageId === targetId;
+                            setHoldTarget(null);
+                            onTogglePinMessage(isPinned ? null : targetId);
+                          }}
+                        >
+                          <span>{pinnedMessageId === holdTarget.message.id ? 'Unpin' : 'Pin'}</span>
+                          {pinnedMessageId === holdTarget.message.id ? (
+                            <PinOff size={16} strokeWidth={2} />
+                          ) : (
+                            <Pin size={16} strokeWidth={2} />
+                          )}
                         </button>
                       )}
 
@@ -2180,6 +2655,104 @@ export function CrewChatScreen({
               );
             })}
           </div>
+        </LiquidBottomSheet>
+
+        {/* Quick Poll Creator Sheet */}
+        <LiquidBottomSheet
+          open={pollSheetOpen}
+          title="Quick Crew Poll"
+          subtitle="Vote right inside Crew Chat"
+          onClose={() => setPollSheetOpen(false)}
+        >
+          <form className="crew-chat-poll-form" onSubmit={handleCreatePollSubmit}>
+            <div>
+              <span className="gk-field__label">QUESTION</span>
+              <input
+                type="text"
+                maxLength={140}
+                placeholder="Where should we grab lunch?"
+                className="crew-chat-poll-input"
+                value={pollQuestion}
+                onChange={(e) => setPollQuestion(e.target.value)}
+                required
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <span className="gk-field__label">OPTIONS</span>
+              {pollOptions.map((opt, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="text"
+                    maxLength={60}
+                    placeholder={`Option ${idx + 1}`}
+                    className="crew-chat-poll-input"
+                    value={opt}
+                    onChange={(e) =>
+                      setPollOptions((prev) =>
+                        prev.map((val, i) => (i === idx ? e.target.value : val)),
+                      )
+                    }
+                    required={idx < 2}
+                  />
+                  {pollOptions.length > 2 && (
+                    <button
+                      type="button"
+                      className="crew-chat-search-nav-btn tactile"
+                      aria-label={`Remove option ${idx + 1}`}
+                      onClick={() =>
+                        setPollOptions((prev) => prev.filter((_, i) => i !== idx))
+                      }
+                    >
+                      <X size={14} strokeWidth={2.2} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {pollOptions.length < 6 && (
+                <Button
+                  variant="glass"
+                  size="sm"
+                  leftIcon={<Plus size={14} strokeWidth={2.2} />}
+                  onClick={() => setPollOptions((prev) => [...prev, ''])}
+                >
+                  Add Option
+                </Button>
+              )}
+            </div>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={pollAllowMultiple}
+                onChange={(e) => setPollAllowMultiple(e.target.checked)}
+              />
+              <span>Allow multiple choices</span>
+            </label>
+
+            <Button
+              type="submit"
+              variant="matcha"
+              size="lg"
+              fullWidth
+              disabled={
+                !pollQuestion.trim() ||
+                pollOptions.filter((o) => o.trim().length > 0).length < 2
+              }
+            >
+              Send Poll
+            </Button>
+          </form>
         </LiquidBottomSheet>
 
         {/* Dedicated Popup Sticker Maker Studio (Gallery -> Crop -> Text) */}
