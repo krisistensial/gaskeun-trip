@@ -1558,10 +1558,13 @@ export default function App() {
   const isPlanBottomBleed =
     route === 'hub' && !activeRouteTarget && !chatOpen && activeTab === 'plan';
 
+  const ambientTheme =
+    route === 'hub' && !activeRouteTarget && !chatOpen ? activeTab : 'home';
+
   return (
     <OverlayProvider>
       <div className="app-viewport">
-        <div className="ambient-mesh" aria-hidden="true">
+        <div className="ambient-mesh" data-ambient={ambientTheme} aria-hidden="true">
           <div className="ambient-blob ambient-blob--matcha" />
           <div className="ambient-blob ambient-blob--sunlight" />
           <div className="ambient-blob ambient-blob--mint" />

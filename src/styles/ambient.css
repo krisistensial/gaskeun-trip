@@ -1,6 +1,31 @@
 /* ==========================================================================
-   Ambient Mesh Canvas — Required behind all Liquid Glass surfaces
+   Ambient Mesh Canvas — Per-Page Pastel Atmospheres (Light Liquid Glass)
+   Smooth cross-fade per tab so every page has a calming, functional mood
    ========================================================================== */
+
+@property --amb-base {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #F6F8F5;
+}
+
+@property --amb-1 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(203, 224, 206, 0.76);
+}
+
+@property --amb-2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(245, 242, 228, 0.9);
+}
+
+@property --amb-3 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(223, 236, 230, 0.82);
+}
 
 .ambient-mesh {
   position: fixed;
@@ -8,7 +33,52 @@
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  background-color: var(--canvas-base);
+  background-color: var(--amb-base);
+  transition:
+    --amb-base 460ms ease,
+    --amb-1 460ms ease,
+    --amb-2 460ms ease,
+    --amb-3 460ms ease;
+}
+
+/* Home: Matcha & Morning Sunlight */
+.ambient-mesh[data-ambient='home'] {
+  --amb-base: #F6F8F5;
+  --amb-1: rgba(203, 224, 206, 0.78);
+  --amb-2: rgba(246, 238, 214, 0.92);
+  --amb-3: rgba(214, 235, 224, 0.85);
+}
+
+/* Plan: Sky Mist, Soft Periwinkle & Coastal Sage */
+.ambient-mesh[data-ambient='plan'] {
+  --amb-base: #F3F6FB;
+  --amb-1: rgba(196, 218, 244, 0.82);
+  --amb-2: rgba(224, 216, 246, 0.88);
+  --amb-3: rgba(204, 232, 224, 0.82);
+}
+
+/* Wallet: Crisp Mint & Warm Cream Ivory */
+.ambient-mesh[data-ambient='wallet'] {
+  --amb-base: #F4F9F6;
+  --amb-1: rgba(194, 232, 214, 0.8);
+  --amb-2: rgba(248, 236, 208, 0.9);
+  --amb-3: rgba(214, 236, 222, 0.84);
+}
+
+/* Album: Soft Peach-Rose, Pastel Lavender & Sunlight */
+.ambient-mesh[data-ambient='album'] {
+  --amb-base: #FBF6F8;
+  --amb-1: rgba(244, 210, 222, 0.82);
+  --amb-2: rgba(224, 214, 246, 0.88);
+  --amb-3: rgba(250, 232, 206, 0.86);
+}
+
+/* Prep: Pistachio Mist & Soft Cloud Blue */
+.ambient-mesh[data-ambient='prep'] {
+  --amb-base: #F4F8F5;
+  --amb-1: rgba(202, 232, 206, 0.82);
+  --amb-2: rgba(214, 232, 246, 0.88);
+  --amb-3: rgba(238, 242, 222, 0.82);
 }
 
 .ambient-blob {
@@ -18,40 +88,37 @@
 }
 
 .ambient-blob--matcha {
-  width: 540px;
-  height: 540px;
+  width: 560px;
+  height: 560px;
   top: -170px;
-  right: -180px;
+  right: -170px;
   background: radial-gradient(
     circle,
-    rgba(203, 224, 206, 0.72) 0%,
-    rgba(203, 224, 206, 0.34) 40%,
-    rgba(203, 224, 206, 0) 72%
+    var(--amb-1) 0%,
+    transparent 72%
   );
 }
 
 .ambient-blob--sunlight {
-  width: 520px;
-  height: 520px;
-  top: 26%;
-  left: -195px;
+  width: 540px;
+  height: 540px;
+  top: 24%;
+  left: -185px;
   background: radial-gradient(
     circle,
-    rgba(245, 242, 228, 0.9) 0%,
-    rgba(245, 242, 228, 0.44) 42%,
-    rgba(245, 242, 228, 0) 72%
+    var(--amb-2) 0%,
+    transparent 72%
   );
 }
 
 .ambient-blob--mint {
-  width: 500px;
-  height: 500px;
-  bottom: -160px;
-  right: -150px;
+  width: 520px;
+  height: 520px;
+  bottom: -155px;
+  right: -140px;
   background: radial-gradient(
     circle,
-    rgba(223, 236, 230, 0.8) 0%,
-    rgba(223, 236, 230, 0.38) 42%,
-    rgba(223, 236, 230, 0) 72%
+    var(--amb-3) 0%,
+    transparent 72%
   );
 }
