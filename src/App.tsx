@@ -72,6 +72,10 @@ import {
   shouldFireOsNotification,
   showDeviceNotification,
 } from './services/notifications';
+import {
+  dispatchBackgroundPush,
+  ensureWebPushSubscription,
+} from './services/pushNotifications';
 import { uploadSharedImage } from './services/mediaUploader';
 import {
   getMemberEditScopes,
@@ -261,6 +265,7 @@ export default function App() {
     (incoming: ChatMessage, currentCode: string, fromFetch?: boolean) => void
   >(() => {});
   const lastTripNotifMsRef = useRef<number>(0);
+  const lastPushTripBroadcastMsRef = useRef<number>(0);
   const shellRef = useRef<HTMLElement | null>(null);
 
   // Initialize root history marker (`depth: 0`) so Android/PWA hardware Back exits cleanly only at root
@@ -688,6 +693,37 @@ export default function App() {
     [activeTrip.members, activeMemberId],
   );
   const activeMemberName = activeMember?.name ?? 'Guest';
+
+  // Keep this device registered for Background Web Push & open Crew Chat when tapping an OS chat notification
+  useEffect(() => {
+    if (route !== 'hub' || !activeTrip.code) return;
+    void ensureWebPushSubscription(activeTrip.code, activeMemberId);
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('open') === 'chat') {
+        setChatOpen(true);
+        params.delete('open');
+        const nextQuery = params.toString();
+        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
+        window.history.replaceState(window.history.state, '', nextUrl);
+      }
+    }
+  }, [route, activeTrip.code, activeMemberId]);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const onSwMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; openChat?: boolean } | null;
+      if (data?.type === 'GASKEUN_NOTIFICATION_CLICK' && data.openChat) {
+        setChatOpen(true);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onSwMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', onSwMessage);
+    };
+  }, []);
 
   // Live Supabase Realtime Presence so crew see who else is currently active on Home
   useEffect(() => {
@@ -1138,6 +1174,26 @@ export default function App() {
             showToast(`Cloud save failed: ${res.errorMessage}`, 'error');
           }
         });
+      const latestLog = next.editLog?.[0];
+      if (
+        !options?.skipLog &&
+        latestLog &&
+        Date.now() - lastPushTripBroadcastMsRef.current >= 10_000
+      ) {
+        lastPushTripBroadcastMsRef.current = Date.now();
+        const copy = formatTripUpdateNotificationCopy({
+          tripTitle: next.title || next.code,
+          actorName: latestLog.actorName,
+          action: latestLog.action,
+        });
+        void dispatchBackgroundPush({
+          tripCode: next.code,
+          senderId: actor.id,
+          title: copy.title,
+          body: copy.body,
+          tag: `trip-${next.code}`,
+        });
+      }
       return next;
     });
     if (toastMsg) showToast(toastMsg, 'success');
@@ -1421,6 +1477,24 @@ export default function App() {
     setChatMessages(next);
     chatChannelRef.current?.broadcastMessage(msg);
     persistChatMutation(next, () => upsertRemoteChatMessage(msg));
+    const mentionedIds = extractMentionedMemberIds(msg.text, activeTrip.members);
+    const pushCopy = formatChatNotificationCopy({
+      tripTitle: activeTrip.title || activeTrip.code,
+      senderName: msg.senderName,
+      kind: msg.kind,
+      text: msg.text,
+      unreadFromOthers: 1,
+      isMentioned: mentionedIds.length > 0,
+    });
+    void dispatchBackgroundPush({
+      tripCode: activeTrip.code,
+      senderId: msg.senderId,
+      title: pushCopy.title,
+      body: pushCopy.body,
+      tag: `chat-${activeTrip.code}`,
+      renotify: true,
+      openChat: true,
+    });
   };
 
   const handleSendChatSticker = (
@@ -1441,6 +1515,22 @@ export default function App() {
     setChatMessages(next);
     chatChannelRef.current?.broadcastMessage(msg);
     persistChatMutation(next, () => upsertRemoteChatMessage(msg));
+    const pushCopy = formatChatNotificationCopy({
+      tripTitle: activeTrip.title || activeTrip.code,
+      senderName: msg.senderName,
+      kind: msg.kind,
+      text: msg.text,
+      unreadFromOthers: 1,
+    });
+    void dispatchBackgroundPush({
+      tripCode: activeTrip.code,
+      senderId: msg.senderId,
+      title: pushCopy.title,
+      body: pushCopy.body,
+      tag: `chat-${activeTrip.code}`,
+      renotify: true,
+      openChat: true,
+    });
   };
 
   const handleToggleChatReaction = (messageId: string, emoji: string) => {
@@ -1521,6 +1611,15 @@ export default function App() {
       'Poll posted',
       { skipLog: true },
     );
+    void dispatchBackgroundPush({
+      tripCode: activeTrip.code,
+      senderId: poll.createdBy,
+      title: `${activeTrip.title || activeTrip.code} • ${poll.createdByName}`,
+      body: `Started a poll: ${poll.question}`,
+      tag: `chat-${activeTrip.code}`,
+      renotify: true,
+      openChat: true,
+    });
   };
 
   const handleVoteChatPoll = (pollId: string, optionId: string) => {

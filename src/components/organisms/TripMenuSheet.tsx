@@ -48,6 +48,10 @@ import {
   setDeviceNotificationsEnabled,
   tryShowDeviceNotification,
 } from '../../services/notifications';
+import {
+  ensureWebPushSubscription,
+  removeWebPushSubscription,
+} from '../../services/pushNotifications';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import {
   TRIP_EDIT_SCOPE_META,
@@ -509,6 +513,7 @@ export function TripMenuSheet({
                 setNotifPermission(res.permission);
                 setNotifEnabled(res.granted);
                 if (res.granted) {
+                  void ensureWebPushSubscription(trip.code, activeMember?.id ?? 'guest');
                   onNotify?.(
                     res.shown
                       ? 'Phone notifications active! Check your notification shade.'
@@ -526,6 +531,7 @@ export function TripMenuSheet({
             setNotifEnabled(next);
             if (next) {
               triggerFeedback('toggle', { forceHaptic: true });
+              void ensureWebPushSubscription(trip.code, activeMember?.id ?? 'guest');
               void tryShowDeviceNotification({
                 title: 'GASKEUN! Notifications On',
                 body: 'Live Crew Chat & trip alerts are enabled on this device.',
@@ -540,6 +546,7 @@ export function TripMenuSheet({
               });
             } else {
               triggerFeedback('tap');
+              void removeWebPushSubscription();
               onNotify?.('Phone notifications paused', 'info');
             }
           }}

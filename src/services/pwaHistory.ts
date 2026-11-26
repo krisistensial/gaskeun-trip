@@ -58,7 +58,8 @@ function createBrowserEnv(): PwaHistoryEnv | null {
       if (typeof queueMicrotask === 'function') queueMicrotask(fn);
       else void Promise.resolve().then(fn);
     },
-    setTimeoutFn: (fn, ms) => window.setTimeout(fn, ms),
+    setTimeoutFn: (fn, ms) =>
+      window.setTimeout(fn, ms) as unknown as ReturnType<typeof setTimeout>,
     clearTimeoutFn: (id) => window.clearTimeout(id as unknown as number),
   };
 }

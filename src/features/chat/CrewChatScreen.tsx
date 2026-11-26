@@ -73,6 +73,10 @@ import {
   tryShowDeviceNotification,
 } from '../../services/notifications';
 import {
+  ensureWebPushSubscription,
+  removeWebPushSubscription,
+} from '../../services/pushNotifications';
+import {
   expandStickerSearchTerms,
   processPastedStickerBlob,
   searchExternalTransparentStickers,
@@ -1233,6 +1237,9 @@ export function CrewChatScreen({
                     void requestDeviceNotificationPermission().then((res) => {
                       setNotifPerm(res.permission);
                       setNotifOn(res.granted);
+                      if (res.granted) {
+                        void ensureWebPushSubscription(trip.code, activeMemberId);
+                      }
                       onNotify?.(
                         res.granted
                           ? res.shown
@@ -1256,6 +1263,7 @@ export function CrewChatScreen({
                   setNotifOn(next);
                   if (next) {
                     triggerFeedback('toggle');
+                    void ensureWebPushSubscription(trip.code, activeMemberId);
                     void tryShowDeviceNotification({
                       title: 'GASKEUN! Chat Alerts Active',
                       body: `Notifications enabled for ${trip.title}.`,
@@ -1268,6 +1276,7 @@ export function CrewChatScreen({
                     });
                   } else {
                     triggerFeedback('tap');
+                    void removeWebPushSubscription();
                     onNotify?.('Phone notifications paused on this device', 'info');
                   }
                 }}
@@ -1382,6 +1391,9 @@ export function CrewChatScreen({
                   void requestDeviceNotificationPermission().then((res) => {
                     setNotifPerm(res.permission);
                     setNotifOn(res.granted);
+                    if (res.granted) {
+                      void ensureWebPushSubscription(trip.code, activeMemberId);
+                    }
                     onNotify?.(
                       res.granted
                         ? res.shown

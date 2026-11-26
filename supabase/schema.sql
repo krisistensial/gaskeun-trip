@@ -203,3 +203,55 @@ begin
     alter publication supabase_realtime add table public.trip_messages;
   end if;
 end $$;
+
+-- ============================================================================
+-- Background Web Push Subscriptions (`trip_push_subscriptions`)
+-- Stores per-device PushManager endpoints (VAPID) so OS notifications arrive
+-- even when the PWA is minimized, backgrounded, or closed.
+-- ============================================================================
+
+create table if not exists public.trip_push_subscriptions (
+  endpoint text primary key,
+  trip_code text not null,
+  member_id text not null,
+  p256dh text not null,
+  auth text not null,
+  user_agent text,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_trip_push_subs_trip_code
+  on public.trip_push_subscriptions (trip_code);
+
+grant select, insert, update, delete on public.trip_push_subscriptions to anon, authenticated;
+
+alter table public.trip_push_subscriptions enable row level security;
+
+drop policy if exists "Allow public read trip_push_subscriptions" on public.trip_push_subscriptions;
+create policy "Allow public read trip_push_subscriptions"
+  on public.trip_push_subscriptions
+  for select
+  to anon, authenticated
+  using (length(trim(trip_code)) >= 3);
+
+drop policy if exists "Allow public insert trip_push_subscriptions" on public.trip_push_subscriptions;
+create policy "Allow public insert trip_push_subscriptions"
+  on public.trip_push_subscriptions
+  for insert
+  to anon, authenticated
+  with check (length(trim(trip_code)) >= 3 and length(trim(endpoint)) >= 10);
+
+drop policy if exists "Allow public update trip_push_subscriptions" on public.trip_push_subscriptions;
+create policy "Allow public update trip_push_subscriptions"
+  on public.trip_push_subscriptions
+  for update
+  to anon, authenticated
+  using (length(trim(trip_code)) >= 3)
+  with check (length(trim(trip_code)) >= 3 and length(trim(endpoint)) >= 10);
+
+drop policy if exists "Allow public delete trip_push_subscriptions" on public.trip_push_subscriptions;
+create policy "Allow public delete trip_push_subscriptions"
+  on public.trip_push_subscriptions
+  for delete
+  to anon, authenticated
+  using (length(trim(endpoint)) >= 10);
