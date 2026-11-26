@@ -848,7 +848,7 @@ export function CrewChatScreen({
         list.push({ id: m.id, label: m.name, member: m });
       }
     }
-    return list.slice(0, 7);
+    return list;
   }, [activeMention, trip.members]);
 
   const insertMention = (tokenName: string) => {

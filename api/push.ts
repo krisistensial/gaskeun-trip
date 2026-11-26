@@ -29,6 +29,7 @@ interface PushSubscriptionRow {
 interface PushRequestBody {
   tripCode?: string;
   senderId?: string;
+  targetMemberId?: string;
   title?: string;
   body?: string;
   tag?: string;
@@ -151,14 +152,16 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return;
   }
 
+  const targetMemberId = String(payload.targetMemberId || '').trim();
   const rows = ((data as PushSubscriptionRow[] | null) ?? []).filter((row) => {
     if (!row.endpoint || !row.p256dh || !row.auth) return false;
+    if (targetMemberId) return row.member_id === targetMemberId;
     if (senderId && row.member_id === senderId && !payload.forceShow) return false;
     return true;
   });
 
   if (rows.length === 0) {
-    res.status(200).json({ ok: true, sent: 0, expired: 0 });
+    res.status(200).json({ ok: true, sent: 0, totalTargets: 0, expired: 0, failed: [] });
     return;
   }
 
@@ -173,6 +176,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   });
 
   const expiredEndpoints: string[] = [];
+  const failed: Array<{ statusCode: number; message: string }> = [];
   let sent = 0;
 
   await Promise.allSettled(
@@ -198,8 +202,16 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
           typeof err === 'object' && err !== null && 'statusCode' in err
             ? Number((err as { statusCode?: number }).statusCode)
             : 0;
+        const message =
+          err instanceof Error
+            ? err.message
+            : typeof err === 'object' && err !== null && 'body' in err
+              ? String((err as { body?: unknown }).body || 'Push rejected')
+              : 'Push rejected';
         if (statusCode === 404 || statusCode === 410) {
           expiredEndpoints.push(row.endpoint);
+        } else {
+          failed.push({ statusCode, message: message.slice(0, 120) });
         }
       }
     }),
@@ -217,6 +229,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     sent,
     totalTargets: rows.length,
     expired: expiredEndpoints.length,
+    failed,
   });
   } catch (err: unknown) {
     res.status(500).json({

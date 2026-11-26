@@ -4,6 +4,7 @@ import {
   BellOff,
   Camera,
   Check,
+  ChevronRight,
   Cloud,
   CloudOff,
   Download,
@@ -49,6 +50,7 @@ import {
   tryShowDeviceNotification,
 } from '../../services/notifications';
 import {
+  dispatchBackgroundPushDetailed,
   ensureWebPushSubscription,
   removeWebPushSubscription,
 } from '../../services/pushNotifications';
@@ -531,19 +533,33 @@ export function TripMenuSheet({
             setNotifEnabled(next);
             if (next) {
               triggerFeedback('toggle', { forceHaptic: true });
-              void ensureWebPushSubscription(trip.code, activeMember?.id ?? 'guest');
-              void tryShowDeviceNotification({
-                title: 'GASKEUN! Notifications On',
-                body: 'Live Crew Chat & trip alerts are enabled on this device.',
-                tag: `gaskeun-test-${Date.now()}`,
-              }).then((r) => {
-                onNotify?.(
-                  r.ok
-                    ? 'Test alert sent! Check your phone notification shade.'
-                    : r.error || 'Could not display notification',
-                  r.ok ? 'success' : 'info',
-                );
-              });
+              void ensureWebPushSubscription(trip.code, activeMember?.id ?? 'guest').then(
+                (pushRes) => {
+                  void tryShowDeviceNotification({
+                    title: 'GASKEUN! Notifications On',
+                    body: pushRes.ok
+                      ? 'Background push is active on this phone.'
+                      : 'Local alerts on. Check background push setup.',
+                    tag: `gaskeun-test-${Date.now()}`,
+                  }).then((r) => {
+                    if (pushRes.ok) {
+                      onNotify?.(
+                        r.ok
+                          ? 'Background push active! Check your notification shade.'
+                          : 'Background push registered on this device.',
+                        'success',
+                      );
+                    } else {
+                      onNotify?.(
+                        pushRes.error
+                          ? `Push setup issue: ${pushRes.error}`
+                          : `Background push status: ${pushRes.status}`,
+                        'info',
+                      );
+                    }
+                  });
+                },
+              );
             } else {
               triggerFeedback('tap');
               void removeWebPushSubscription();
@@ -583,6 +599,62 @@ export function TripMenuSheet({
             <span className="menu-toggle-switch__knob" />
           </span>
         </button>
+
+        {notifPermission === 'granted' && notifEnabled && (
+          <button
+            type="button"
+            className="gk-menu-item tactile"
+            onClick={() => {
+              triggerFeedback('tap');
+              const memberId = activeMember?.id ?? 'guest';
+              onNotify?.('Exit app now ? test push arrives in 5s...', 'info');
+              void ensureWebPushSubscription(trip.code, memberId).then((subRes) => {
+                if (!subRes.ok) {
+                  onNotify?.(
+                    subRes.error
+                      ? `Push registration failed: ${subRes.error}`
+                      : `Push status: ${subRes.status}`,
+                    'error',
+                  );
+                  return;
+                }
+                window.setTimeout(() => {
+                  void dispatchBackgroundPushDetailed({
+                    tripCode: trip.code,
+                    senderId: memberId,
+                    targetMemberId: memberId,
+                    title: `${trip.title || trip.code} • Test Push`,
+                    body: 'Background push is working on this phone!',
+                    tag: `test-push-${Date.now()}`,
+                    renotify: true,
+                    openChat: true,
+                    forceShow: true,
+                  }).then((pushRes) => {
+                    if (!pushRes.ok || (pushRes.sent ?? 0) === 0) {
+                      onNotify?.(
+                        pushRes.error || 'Server found 0 active subscriptions for this profile',
+                        'error',
+                      );
+                    }
+                  });
+                }, 5000);
+              });
+            }}
+          >
+            <span className="gk-menu-item__left">
+              <span className="gk-menu-item__icon">
+                <Bell size={18} strokeWidth={1.85} />
+              </span>
+              <span>
+                <div className="gk-menu-item__title">Send Test Background Push</div>
+                <div className="gk-menu-item__sub">
+                  Fires from server after 5s ? exit app to verify
+                </div>
+              </span>
+            </span>
+            <ChevronRight size={17} strokeWidth={1.85} color="var(--text-muted)" />
+          </button>
+        )}
 
         {notifPermission === 'granted' && notifEnabled && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: -4, paddingRight: 4 }}>

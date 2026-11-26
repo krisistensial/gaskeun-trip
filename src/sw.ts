@@ -63,7 +63,21 @@ self.addEventListener('push', (event: PushEvent) => {
         (client) => client.focused && client.visibilityState === 'visible',
       );
       if (hasFocusedVisibleClient && !payload.forceShow) {
-        // Active foreground window handles in-app heads-up/toast without double OS alerts
+        // Always satisfy userVisibleOnly=true (prevents iOS 3-strikes & Chrome silent-push revocation),
+        // then dismiss silently while the foreground in-app banner is active.
+        await self.registration.showNotification(title, {
+          body,
+          icon,
+          badge,
+          tag,
+          silent: true,
+          data: {
+            url: targetUrl,
+            openChat: Boolean(payload.openChat),
+          },
+        } as NotificationOptions);
+        const active = await self.registration.getNotifications({ tag });
+        active.forEach((n) => n.close());
         return;
       }
 
@@ -81,6 +95,26 @@ self.addEventListener('push', (event: PushEvent) => {
           openChat: Boolean(payload.openChat),
         },
       } as NotificationOptions);
+    })(),
+  );
+});
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+  const pushEvent = event as ExtendableEvent & {
+    oldSubscription?: PushSubscription;
+  };
+  pushEvent.waitUntil(
+    (async () => {
+      try {
+        const appKey = pushEvent.oldSubscription?.options?.applicationServerKey;
+        if (!appKey) return;
+        await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: appKey,
+        });
+      } catch {
+        // Client will re-sync subscription on next app open
+      }
     })(),
   );
 });

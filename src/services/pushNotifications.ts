@@ -22,6 +22,7 @@ export interface WebPushSyncResult {
 export interface BackgroundPushDispatchPayload {
   tripCode: string;
   senderId: string;
+  targetMemberId?: string;
   title: string;
   body: string;
   tag?: string;
@@ -31,8 +32,14 @@ export interface BackgroundPushDispatchPayload {
   forceShow?: boolean;
 }
 
-let cachedVapidPublicKey: string | null | undefined;
-let lastPushTableMissing = false;
+export interface BackgroundPushDispatchResult {
+  ok: boolean;
+  sent?: number;
+  totalTargets?: number;
+  error?: string;
+}
+
+let cachedVapidPublicKey: string | null = null;
 
 export function resolvePushApiUrl(): string {
   const configured = String(import.meta.env.VITE_PUSH_API_URL ?? '').trim();
@@ -71,7 +78,7 @@ export async function fetchVapidPublicKey(): Promise<string | null> {
     cachedVapidPublicKey = fromBuildEnv;
     return fromBuildEnv;
   }
-  if (cachedVapidPublicKey !== undefined) {
+  if (cachedVapidPublicKey) {
     return cachedVapidPublicKey;
   }
   if (typeof fetch !== 'function') {
@@ -83,21 +90,14 @@ export async function fetchVapidPublicKey(): Promise<string | null> {
       method: 'GET',
       headers: { Accept: 'application/json' },
     });
-    if (!res.ok) {
-      cachedVapidPublicKey = null;
-      return null;
-    }
+    if (!res.ok) return null;
     const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      cachedVapidPublicKey = null;
-      return null;
-    }
+    if (!contentType.includes('application/json')) return null;
     const data = (await res.json()) as { configured?: boolean; publicKey?: string | null };
     if (data.configured && data.publicKey && data.publicKey.trim()) {
       cachedVapidPublicKey = data.publicKey.trim();
       return cachedVapidPublicKey;
     }
-    cachedVapidPublicKey = null;
     return null;
   } catch {
     return null;
@@ -105,8 +105,20 @@ export async function fetchVapidPublicKey(): Promise<string | null> {
 }
 
 export function resetPushKeyCacheForTest(): void {
-  cachedVapidPublicKey = undefined;
-  lastPushTableMissing = false;
+  cachedVapidPublicKey = null;
+}
+
+function keysMatch(
+  existingKey: ArrayBuffer | null | undefined,
+  expected: Uint8Array,
+): boolean {
+  if (!existingKey) return true;
+  const current = new Uint8Array(existingKey);
+  if (current.length !== expected.length) return false;
+  for (let i = 0; i < current.length; i += 1) {
+    if (current[i] !== expected[i]) return false;
+  }
+  return true;
 }
 
 async function getActiveServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
@@ -166,9 +178,6 @@ export async function ensureWebPushSubscription(
   if (!getDeviceNotificationsEnabled()) {
     return { ok: false, status: 'paused' };
   }
-  if (lastPushTableMissing) {
-    return { ok: false, status: 'table_missing' };
-  }
 
   const supabase = getSupabaseClient();
   if (!supabase) {
@@ -186,11 +195,16 @@ export async function ensureWebPushSubscription(
       return { ok: false, status: 'unsupported' };
     }
 
+    const expectedKeyBytes = urlBase64ToUint8Array(publicKey);
     let sub = await reg.pushManager.getSubscription();
+    if (sub && !keysMatch(sub.options?.applicationServerKey, expectedKeyBytes)) {
+      await sub.unsubscribe().catch(() => undefined);
+      sub = null;
+    }
     if (!sub) {
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
+        applicationServerKey: expectedKeyBytes,
       });
     }
 
@@ -215,7 +229,6 @@ export async function ensureWebPushSubscription(
 
     if (error) {
       if (isMissingPushTableError(error)) {
-        lastPushTableMissing = true;
         return { ok: false, status: 'table_missing', error: error.message };
       }
       return { ok: false, status: 'error', error: error.message };
@@ -251,12 +264,16 @@ export async function removeWebPushSubscription(): Promise<void> {
   }
 }
 
-export async function dispatchBackgroundPush(
+export async function dispatchBackgroundPushDetailed(
   payload: BackgroundPushDispatchPayload,
-): Promise<boolean> {
-  if (typeof fetch !== 'function') return false;
+): Promise<BackgroundPushDispatchResult> {
+  if (typeof fetch !== 'function') {
+    return { ok: false, error: 'Fetch unavailable' };
+  }
   const cleanCode = payload.tripCode.trim().toUpperCase();
-  if (cleanCode.length < 3 || !payload.body.trim()) return false;
+  if (cleanCode.length < 3 || !payload.body.trim()) {
+    return { ok: false, error: 'Invalid trip code or body' };
+  }
 
   try {
     const res = await fetch(resolvePushApiUrl(), {
@@ -268,8 +285,37 @@ export async function dispatchBackgroundPush(
       }),
       keepalive: true,
     });
-    return res.ok;
-  } catch {
-    return false;
+    let data: { ok?: boolean; sent?: number; totalTargets?: number; error?: string } | null = null;
+    try {
+      data = (await res.json()) as {
+        ok?: boolean;
+        sent?: number;
+        totalTargets?: number;
+        error?: string;
+      };
+    } catch {
+      data = null;
+    }
+    if (!res.ok) {
+      return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    }
+    return {
+      ok: Boolean(data?.ok ?? true),
+      sent: data?.sent,
+      totalTargets: data?.totalTargets,
+      error: data?.error,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Network error',
+    };
   }
+}
+
+export async function dispatchBackgroundPush(
+  payload: BackgroundPushDispatchPayload,
+): Promise<boolean> {
+  const res = await dispatchBackgroundPushDetailed(payload);
+  return res.ok;
 }
