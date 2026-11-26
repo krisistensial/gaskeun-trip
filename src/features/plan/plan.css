@@ -3,36 +3,30 @@
    ========================================================================== */
 
 .plan-root {
-  position: relative;
-  height: 100dvh;
+  height: calc(100dvh - var(--safe-top) - 20px);
   overflow: hidden;
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 @media (min-width: 520px) {
   .plan-root {
-    height: calc(100dvh - 40px);
+    height: calc(100dvh - 60px);
   }
 }
 
 .plan-frozen-header {
-  position: absolute;
-  top: calc(var(--safe-top) + 14px);
-  left: 0;
-  right: 0;
-  z-index: 8;
+  position: relative;
+  z-index: 4;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-bottom: 4px;
+  gap: 11px;
+  padding-bottom: 12px;
   background: transparent;
-  pointer-events: none;
-}
-
-.plan-frozen-header .plan-header,
-.plan-frozen-header .plan-day-strip,
-.plan-frozen-header .plan-filter-row {
-  pointer-events: auto;
+  isolation: isolate;
+  border-bottom: 1px solid rgba(74, 116, 104, 0.12);
 }
 
 .plan-header {
@@ -40,13 +34,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 6px 8px 6px 14px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.36);
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  backdrop-filter: blur(18px) saturate(185%);
-  -webkit-backdrop-filter: blur(18px) saturate(185%);
-  box-shadow: 0 10px 26px -10px rgba(16, 36, 26, 0.16);
+  background: transparent;
 }
 
 .plan-header-actions {
@@ -185,10 +173,11 @@
   color: #FFFFFF;
 }
 
-/* --- 03a Full-Bleed Dotted Circular C-Arc Stage + Floating Nav Overlays --- */
+/* --- 03a Frozen Top Nav + Full-Bottom Dotted Circular C-Arc Stage --- */
 .trail-stage {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -444,12 +433,13 @@
 }
 
 .plan-table-scroll {
-  position: absolute;
-  inset: 0;
+  position: relative;
   z-index: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
   isolation: isolate;
-  padding: calc(var(--safe-top) + 172px) 0 calc(var(--dock-clearance) + 28px);
+  padding: 12px 0 calc(var(--dock-clearance) + 24px);
   scrollbar-width: none;
 }
 
@@ -894,8 +884,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding-top: calc(var(--safe-top) + 20px);
-  padding-bottom: 36px;
+  padding-bottom: 32px;
 }
 
 .detail-nav {

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Ambient Mesh Canvas — Clean Deep Botanical Emerald Gradient (Zero Elements)
+   Ambient Mesh Canvas — Required behind all Liquid Glass surfaces
    ========================================================================== */
 
 .ambient-mesh {
@@ -8,10 +8,50 @@
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  background:
-    radial-gradient(115% 80% at 14% 8%, #aed2ba 0%, rgba(174, 210, 186, 0) 58%),
-    radial-gradient(105% 85% at 88% 88%, #4b8267 0%, rgba(75, 130, 103, 0) 62%),
-    radial-gradient(90% 70% at 78% 14%, #5e977a 0%, rgba(94, 151, 122, 0) 58%),
-    radial-gradient(95% 75% at 12% 88%, #6aa285 0%, rgba(106, 162, 133, 0) 60%),
-    linear-gradient(155deg, #9ec5ad 0%, #73a98c 48%, #4d8368 100%);
+  background-color: var(--canvas-base);
+}
+
+.ambient-blob {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.ambient-blob--matcha {
+  width: 540px;
+  height: 540px;
+  top: -170px;
+  right: -180px;
+  background: radial-gradient(
+    circle,
+    rgba(203, 224, 206, 0.72) 0%,
+    rgba(203, 224, 206, 0.34) 40%,
+    rgba(203, 224, 206, 0) 72%
+  );
+}
+
+.ambient-blob--sunlight {
+  width: 520px;
+  height: 520px;
+  top: 26%;
+  left: -195px;
+  background: radial-gradient(
+    circle,
+    rgba(245, 242, 228, 0.9) 0%,
+    rgba(245, 242, 228, 0.44) 42%,
+    rgba(245, 242, 228, 0) 72%
+  );
+}
+
+.ambient-blob--mint {
+  width: 500px;
+  height: 500px;
+  bottom: -160px;
+  right: -150px;
+  background: radial-gradient(
+    circle,
+    rgba(223, 236, 230, 0.8) 0%,
+    rgba(223, 236, 230, 0.38) 42%,
+    rgba(223, 236, 230, 0) 72%
+  );
 }

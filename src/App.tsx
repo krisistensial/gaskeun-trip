@@ -1555,20 +1555,24 @@ export default function App() {
     phase === 'pre-trip' &&
     !isDockVisible;
 
-  const isPlanFullBleed =
+  const isPlanBottomBleed =
     route === 'hub' && !activeRouteTarget && !chatOpen && activeTab === 'plan';
 
   return (
     <OverlayProvider>
       <div className="app-viewport">
-        <div className="ambient-mesh" aria-hidden="true" />
+        <div className="ambient-mesh" aria-hidden="true">
+          <div className="ambient-blob ambient-blob--matcha" />
+          <div className="ambient-blob ambient-blob--sunlight" />
+          <div className="ambient-blob ambient-blob--mint" />
+        </div>
 
         <main
           ref={shellRef}
           className="app-shell"
           style={
-            isPlanFullBleed
-              ? { paddingTop: 0, paddingBottom: 0 }
+            isPlanBottomBleed
+              ? { paddingBottom: 0 }
               : !showDock
                 ? { paddingBottom: 'calc(var(--safe-bottom) + 20px)' }
                 : undefined
