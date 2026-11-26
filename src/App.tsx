@@ -1555,23 +1555,24 @@ export default function App() {
     phase === 'pre-trip' &&
     !isDockVisible;
 
+  const isPlanFullBleed =
+    route === 'hub' && !activeRouteTarget && !chatOpen && activeTab === 'plan';
+
   return (
     <OverlayProvider>
       <div className="app-viewport">
-        <div className="ambient-mesh" aria-hidden="true">
-          <div className="ambient-blob ambient-blob--matcha" />
-          <div className="ambient-blob ambient-blob--sunlight" />
-          <div className="ambient-blob ambient-blob--mint" />
-          <div className="ambient-blob ambient-blob--emerald" />
-          <div className="ambient-blob ambient-blob--sage-mid" />
-          <div className="ambient-blob ambient-shape--leaf" />
-          <div className="ambient-blob ambient-shape--ring" />
-        </div>
+        <div className="ambient-mesh" aria-hidden="true" />
 
         <main
           ref={shellRef}
           className="app-shell"
-          style={!showDock ? { paddingBottom: 'calc(var(--safe-bottom) + 20px)' } : undefined}
+          style={
+            isPlanFullBleed
+              ? { paddingTop: 0, paddingBottom: 0 }
+              : !showDock
+                ? { paddingBottom: 'calc(var(--safe-bottom) + 20px)' }
+                : undefined
+          }
         >
           {route === 'landing' && (
             <LandingGateScreen

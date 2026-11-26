@@ -14,7 +14,7 @@
 
 .gk-glass--clear {
   background: var(--glass-clear-bg);
-  border: 1.5px solid var(--glass-clear-border);
+  border: 1px solid rgba(255, 255, 255, 0.62);
   backdrop-filter: var(--glass-clear-blur);
   -webkit-backdrop-filter: var(--glass-clear-blur);
   box-shadow: var(--glass-clear-shadow);
@@ -22,7 +22,7 @@
 
 .gk-glass--spotlight {
   background: var(--glass-spotlight-bg);
-  border: 1.5px solid var(--glass-spotlight-border);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   backdrop-filter: var(--glass-spotlight-blur);
   -webkit-backdrop-filter: var(--glass-spotlight-blur);
   box-shadow: var(--glass-spotlight-shadow);
@@ -31,7 +31,7 @@
 
 .gk-glass--elevated {
   background: var(--glass-elevated-bg);
-  border: 1.5px solid var(--glass-elevated-border);
+  border: 1px solid rgba(255, 255, 255, 0.72);
   backdrop-filter: var(--glass-elevated-blur);
   -webkit-backdrop-filter: var(--glass-elevated-blur);
   box-shadow: var(--glass-elevated-shadow);
@@ -39,7 +39,7 @@
 
 .gk-glass--tinted {
   background: var(--glass-tinted-bg);
-  border: 1.5px solid var(--glass-tinted-border);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   backdrop-filter: var(--glass-clear-blur);
   -webkit-backdrop-filter: var(--glass-clear-blur);
   box-shadow: 0 10px 26px -10px rgba(31, 45, 39, 0.08);
@@ -444,11 +444,11 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1.5px solid rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(22px) saturate(180%);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  box-shadow: 0 8px 20px -6px rgba(31, 45, 39, 0.14);
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(20px) saturate(185%);
+  -webkit-backdrop-filter: blur(20px) saturate(185%);
+  box-shadow: 0 8px 20px -6px rgba(18, 36, 28, 0.18);
   color: var(--text-primary);
   flex-shrink: 0;
   transition:
@@ -494,10 +494,7 @@
 }
 
 .gk-orb-lgr-host {
-  box-shadow:
-    0 14px 32px -8px rgba(31, 45, 39, 0.2),
-    inset 0 1.5px 1.5px rgba(255, 255, 255, 0.96),
-    inset 0 -2px 3px rgba(132, 196, 162, 0.36);
+  box-shadow: 0 10px 24px -8px rgba(12, 32, 22, 0.24);
 }
 
 /* --- TrailDot --- */

@@ -53,9 +53,9 @@ export function CornerOrb({
       <div className={`floating-glass-fab ${className.replace('floating-glass-fab', '').trim()}`.trim()}>
         <LiquidGlassSurface
           cornerRadius={999}
-          displacementScale={24}
-          blurAmount={2}
-          saturation={190}
+          displacementScale={28}
+          blurAmount={1.5}
+          saturation={195}
           className="gk-orb-lgr-host"
           fallbackClassName="gk-orb gk-orb--lg"
         >

@@ -137,9 +137,9 @@ export interface LiquidGlassSurfaceProps {
 export function LiquidGlassSurface({
   children,
   cornerRadius = 30,
-  displacementScale = 28,
-  blurAmount = 2.5,
-  saturation = 190,
+  displacementScale = 34,
+  blurAmount = 1.6,
+  saturation = 195,
   className = '',
   fallbackClassName = '',
   style,
@@ -179,7 +179,7 @@ export function LiquidGlassSurface({
 
   const lensMapUrl = useMemo(() => {
     if (!enabled) return '';
-    return buildConvexLensMapDataUrl(size.width, size.height, cornerRadius, 18);
+    return buildConvexLensMapDataUrl(size.width, size.height, cornerRadius, 20);
   }, [enabled, size.width, size.height, cornerRadius]);
 
   if (!enabled || !lensMapUrl) {

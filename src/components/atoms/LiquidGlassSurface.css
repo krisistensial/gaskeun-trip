@@ -1,6 +1,6 @@
 /* ==========================================================================
    Crystal-Clear Optical Liquid Glass Surface
-   Real Chromium `backdrop-filter: url(#lens)` refraction + glossy specular rim
+   Razor-thin 1px specular hairline + crisp edge refraction without thick stroke
    ========================================================================== */
 
 .gk-lens-host {
@@ -9,17 +9,11 @@
   height: 100%;
   pointer-events: auto;
   overflow: hidden;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.34) 0%,
-    rgba(255, 255, 255, 0.14) 52%,
-    rgba(228, 244, 234, 0.24) 100%
-  );
-  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.14);
+  border: 0.75px solid rgba(255, 255, 255, 0.34);
   box-shadow:
-    0 14px 34px -10px rgba(31, 45, 39, 0.16),
-    inset 0 1.5px 1px rgba(255, 255, 255, 0.96),
-    inset 0 -2px 3px rgba(132, 196, 162, 0.32);
+    0 12px 30px -10px rgba(12, 32, 22, 0.24),
+    inset 0 0.75px 0 rgba(255, 255, 255, 0.45);
 }
 
 .gk-lens-svg {
@@ -29,17 +23,25 @@
   pointer-events: none;
 }
 
+/* Razor-thin specular gradient rim mask (mirrors Apple iOS 26 / Ask Anything pill) */
 .gk-lens-rim {
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: radial-gradient(
-    120% 60% at 50% 0%,
-    rgba(255, 255, 255, 0.56) 0%,
-    rgba(255, 255, 255, 0.08) 46%,
-    rgba(255, 255, 255, 0) 68%
+  padding: 1px;
+  background: linear-gradient(
+    148deg,
+    rgba(255, 255, 255, 0.78) 0%,
+    rgba(255, 255, 255, 0.14) 36%,
+    rgba(255, 255, 255, 0.1) 66%,
+    rgba(255, 255, 255, 0.52) 100%
   );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
 }
 
 .gk-lens-content {
