@@ -118,6 +118,14 @@
   gap: 10px;
 }
 
+.album-drive-capsule__left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .album-drive-capsule__info {
   flex: 1;
   min-width: 0;
@@ -211,17 +219,36 @@
 }
 
 .album-sync-orb {
+  position: relative;
   width: 34px;
   height: 34px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1.25px solid rgba(255, 255, 255, 0.94);
+  background: var(--gk-liquid-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.48);
   color: var(--brand-forest);
-  box-shadow: 0 6px 16px -6px rgba(31, 45, 39, 0.14);
+  box-shadow:
+    0 6px 16px -6px rgba(24, 42, 34, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
   flex-shrink: 0;
+  text-decoration: none;
+}
+
+.album-sync-orb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--gk-rim-gradient);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .album-sync-orb:disabled {

@@ -541,65 +541,121 @@ export function AlbumScreen({
             }`}
           >
             <div className="album-drive-capsule__main">
-              {/* Left: Compact 2-line Drive status + inline Drive ↗ link */}
-              <div className="album-drive-capsule__info">
-                <div className="album-drive-capsule__top">
-                  <span
-                    className={[
-                      'album-drive-dot',
-                      hasSyncScript && syncHealth.status === 'error'
-                        ? 'album-drive-dot--error'
-                        : hasSyncScript && syncHealth.status === 'ok'
-                          ? 'album-drive-dot--ok'
-                          : 'album-drive-dot--idle',
-                    ].join(' ')}
-                    aria-hidden="true"
-                  />
-                  <span className="album-drive-capsule__label">Google Drive</span>
-                  {driveFolderUrl ? (
-                    <a
-                      href={driveFolderUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="album-drive-inline-link tactile"
-                    >
-                      <span>Drive</span>
-                      <ArrowUpRight size={11.5} strokeWidth={2.3} />
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      className="album-drive-inline-link tactile"
-                      onClick={onOpenSettings}
-                    >
-                      <span>Connect</span>
-                    </button>
-                  )}
-                </div>
+              {/* Left: Circular Google Drive Logo Orb + Compact 2-line Drive status */}
+              <div className="album-drive-capsule__left">
+                {driveFolderUrl ? (
+                  <a
+                    href={driveFolderUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open Google Drive folder"
+                    title="Open Google Drive folder"
+                    className="album-sync-orb tactile"
+                  >
+                    <svg viewBox="0 0 87.3 78" width="16" height="15" aria-hidden="true">
+                      <path
+                        d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"
+                        fill="#0066da"
+                      />
+                      <path
+                        d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z"
+                        fill="#00ac47"
+                      />
+                      <path
+                        d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z"
+                        fill="#ea4335"
+                      />
+                      <path
+                        d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"
+                        fill="#00832d"
+                      />
+                      <path
+                        d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"
+                        fill="#2684fc"
+                      />
+                      <path
+                        d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"
+                        fill="#ffba00"
+                      />
+                    </svg>
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label="Connect Google Drive folder"
+                    title="Connect Google Drive folder"
+                    className="album-sync-orb tactile"
+                    onClick={onOpenSettings}
+                  >
+                    <svg viewBox="0 0 87.3 78" width="16" height="15" aria-hidden="true">
+                      <path
+                        d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"
+                        fill="#0066da"
+                      />
+                      <path
+                        d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z"
+                        fill="#00ac47"
+                      />
+                      <path
+                        d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z"
+                        fill="#ea4335"
+                      />
+                      <path
+                        d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"
+                        fill="#00832d"
+                      />
+                      <path
+                        d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"
+                        fill="#2684fc"
+                      />
+                      <path
+                        d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"
+                        fill="#ffba00"
+                      />
+                    </svg>
+                  </button>
+                )}
 
-                <div className="album-drive-capsule__sub">
-                  {hasSyncScript ? (
-                    syncHealth.status === 'error' ? (
-                      <span className="album-drive-capsule__err">
-                        <span>Sync failed · {syncHealth.error}</span>
-                        <button
-                          type="button"
-                          className="album-drive-settings-link"
-                          onClick={onOpenSettings}
-                        >
-                          Settings
-                        </button>
-                      </span>
-                    ) : isSyncing ? (
-                      'Checking Google Drive...'
+                <div className="album-drive-capsule__info">
+                  <div className="album-drive-capsule__top">
+                    <span
+                      className={[
+                        'album-drive-dot',
+                        hasSyncScript && syncHealth.status === 'error'
+                          ? 'album-drive-dot--error'
+                          : hasSyncScript && syncHealth.status === 'ok'
+                            ? 'album-drive-dot--ok'
+                            : 'album-drive-dot--idle',
+                      ].join(' ')}
+                      aria-hidden="true"
+                    />
+                    <span className="album-drive-capsule__label">Google Drive</span>
+                  </div>
+
+                  <div className="album-drive-capsule__sub">
+                    {hasSyncScript ? (
+                      syncHealth.status === 'error' ? (
+                        <span className="album-drive-capsule__err">
+                          <span>Sync failed · {syncHealth.error}</span>
+                          <button
+                            type="button"
+                            className="album-drive-settings-link"
+                            onClick={onOpenSettings}
+                          >
+                            Settings
+                          </button>
+                        </span>
+                      ) : isSyncing ? (
+                        'Checking Google Drive...'
+                      ) : (
+                        `${drivePhotos.length} ${drivePhotos.length === 1 ? 'photo' : 'photos'} synced`
+                      )
+                    ) : hasLinkedFolder ? (
+                      'Folder linked · Add Sync URL in Settings'
                     ) : (
-                      `${drivePhotos.length} ${drivePhotos.length === 1 ? 'photo' : 'photos'} synced`
-                    )
-                  ) : hasLinkedFolder ? (
-                    'Folder linked · Add Sync URL in Settings'
-                  ) : (
-                    'Saving locally until Drive sync is connected'
-                  )}
+                      'Saving locally until Drive sync is connected'
+                    )}
+                  </div>
                 </div>
               </div>
 
