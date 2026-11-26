@@ -85,6 +85,41 @@ describe('Crew Motorbike Auto-Swap & Anti-Duplicate Stay Rooms (crewSwap)', () =
     expect(res.pods).toBe(initial);
   });
 
+  it('moves or clears lockedPassenger flag with the rider instead of leaving it behind on old slots', () => {
+    const pods: TransportPod[] = [
+      {
+        id: 'bike-1',
+        mode: 'bike',
+        label: 'Bike 1',
+        slots: [
+          { role: 'Driver', memberId: 'm-kris' },
+          { role: 'Passenger', memberId: 'm-anggi', lockedPassenger: true },
+        ],
+      },
+      {
+        id: 'bike-2',
+        mode: 'bike',
+        label: 'Bike 2',
+        slots: [
+          { role: 'Driver', memberId: 'm-chika' },
+          { role: 'Passenger', memberId: 'm-valen' },
+        ],
+      },
+    ];
+
+    // Swap Anggi (lockedPassenger: true) with Valen (driver)
+    const swapped = assignMotorbikeMember(pods, 'bike-2', 'Passenger', 'm-anggi');
+    expect(swapped.pods[1].slots[1].memberId).toBe('m-anggi');
+    expect(swapped.pods[1].slots[1].lockedPassenger).toBe(true);
+    expect(swapped.pods[0].slots[1].memberId).toBe('m-valen');
+    expect(swapped.pods[0].slots[1].lockedPassenger).toBeUndefined();
+
+    // Clear Anggi's new slot -> lockedPassenger is cleanly removed too
+    const cleared = assignMotorbikeMember(swapped.pods, 'bike-2', 'Passenger', null);
+    expect(cleared.pods[1].slots[1].memberId).toBeNull();
+    expect(cleared.pods[1].slots[1].lockedPassenger).toBeUndefined();
+  });
+
   it('enforces anti-duplicate rooms when moving a member between rooms in the same stay', () => {
     const rooms: StayRoom[] = [
       { id: 'r1', label: 'Room 1', memberIds: ['m-kris', 'm-jason'] },

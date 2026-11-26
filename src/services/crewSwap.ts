@@ -57,6 +57,7 @@ export function assignMotorbikeMember(
   // Clearing target slot
   if (!newMemberId) {
     nextPods[targetPodIdx].slots[targetSlotIdx].memberId = null;
+    delete nextPods[targetPodIdx].slots[targetSlotIdx].lockedPassenger;
     return {
       pods: nextPods,
       changed: true,
@@ -78,15 +79,31 @@ export function assignMotorbikeMember(
     }
   }
 
-  // Assign newMemberId into target slot
+  const targetLocked = Boolean(nextPods[targetPodIdx].slots[targetSlotIdx].lockedPassenger);
+  const sourceLocked =
+    sourcePodIdx >= 0 && sourceSlotIdx >= 0
+      ? Boolean(nextPods[sourcePodIdx].slots[sourceSlotIdx].lockedPassenger)
+      : false;
+
+  // Assign newMemberId (and carry their passenger lock state) into target slot
   nextPods[targetPodIdx].slots[targetSlotIdx].memberId = newMemberId;
+  if (sourceLocked) {
+    nextPods[targetPodIdx].slots[targetSlotIdx].lockedPassenger = true;
+  } else {
+    delete nextPods[targetPodIdx].slots[targetSlotIdx].lockedPassenger;
+  }
 
   // Auto-swap or move from previous bike slot
   if (sourcePodIdx >= 0 && sourceSlotIdx >= 0) {
     const sourcePod = nextPods[sourcePodIdx];
     const sourceRole = sourcePod.slots[sourceSlotIdx].role;
-    // Place displaced previous occupant (or null) into source slot
+    // Place displaced previous occupant (or null) and their lock state into source slot
     sourcePod.slots[sourceSlotIdx].memberId = previousMemberId;
+    if (previousMemberId && targetLocked) {
+      sourcePod.slots[sourceSlotIdx].lockedPassenger = true;
+    } else {
+      delete sourcePod.slots[sourceSlotIdx].lockedPassenger;
+    }
 
     // Defensive sweep: ensure no stray duplicates remain across all bikes
     for (let pIdx = 0; pIdx < nextPods.length; pIdx += 1) {
@@ -96,6 +113,7 @@ export function assignMotorbikeMember(
         if (pIdx === targetPodIdx && sIdx === targetSlotIdx) continue;
         if (pod.slots[sIdx].memberId === newMemberId) {
           pod.slots[sIdx].memberId = null;
+          delete pod.slots[sIdx].lockedPassenger;
         }
       }
     }

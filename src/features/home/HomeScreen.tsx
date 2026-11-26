@@ -346,8 +346,8 @@ export function HomeScreen({
 
   const activeDayStops = activeStop
     ? trip.itinerary
-        .filter((item) => item.dayId === activeStop.dayId)
-        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+      .filter((item) => item.dayId === activeStop.dayId)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime))
     : [];
 
   const openStopInRoute = (stop: typeof activeStop) => {
@@ -1253,11 +1253,13 @@ export function HomeScreen({
                     {pod.slots.map((slot, slotIdx) => {
                       const m = slot.memberId ? memberById.get(slot.memberId) : undefined;
                       const isTentative = m?.status === 'tentative';
-                      const avatarVariant = isTentative
-                        ? 'tentative'
-                        : slot.lockedPassenger
-                          ? 'passenger'
-                          : 'solid';
+                      const avatarVariant = !m
+                        ? 'solid'
+                        : isTentative
+                          ? 'tentative'
+                          : m.role === 'passenger'
+                            ? 'passenger'
+                            : 'solid';
 
                       return (
                         <button
@@ -1735,7 +1737,13 @@ export function HomeScreen({
                           size="sm"
                           bg={m.avatarBg}
                           color={m.avatarColor}
-                          variant={m.status === 'tentative' ? 'tentative' : 'solid'}
+                          variant={
+                            m.status === 'tentative'
+                              ? 'tentative'
+                              : m.role === 'passenger'
+                                ? 'passenger'
+                                : 'solid'
+                          }
                         />
                         <span>{m.status === 'tentative' ? `${m.name}?` : m.name}</span>
                       </span>
@@ -1831,9 +1839,8 @@ export function HomeScreen({
         title={carFrontPicker?.slot === 'frontRight' ? 'Assign Driver' : 'Assign Front Left'}
         subtitle={
           carFrontPicker
-            ? `${trip.transportPods.find((p) => p.id === carFrontPicker.podId)?.label ?? 'Car'} · ${
-                carFrontPicker.slot === 'frontRight' ? 'Front Right (Driver)' : 'Front Left'
-              }`
+            ? `${trip.transportPods.find((p) => p.id === carFrontPicker.podId)?.label ?? 'Car'} · ${carFrontPicker.slot === 'frontRight' ? 'Front Right (Driver)' : 'Front Left'
+            }`
             : undefined
         }
         onClose={() => setCarFrontPicker(null)}
@@ -1876,7 +1883,13 @@ export function HomeScreen({
                           size="sm"
                           bg={m.avatarBg}
                           color={m.avatarColor}
-                          variant={m.status === 'tentative' ? 'tentative' : 'solid'}
+                          variant={
+                            m.status === 'tentative'
+                              ? 'tentative'
+                              : m.role === 'passenger'
+                                ? 'passenger'
+                                : 'solid'
+                          }
                         />
                         <span>{m.status === 'tentative' ? `${m.name}?` : m.name}</span>
                       </span>
