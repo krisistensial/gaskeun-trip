@@ -6,11 +6,35 @@ declare let self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
 };
 
-self.skipWaiting();
+const SW_PUSH_VERSION = 'push-v3';
+
+self.addEventListener('install', () => {
+  void self.skipWaiting();
+});
 clientsClaim();
 
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
+
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
+  const data = event.data as { type?: string } | null;
+  if (data?.type === 'GASKEUN_SKIP_WAITING') {
+    void self.skipWaiting();
+    return;
+  }
+  if (data?.type === 'GASKEUN_SW_PING') {
+    const reply = {
+      ok: true,
+      version: SW_PUSH_VERSION,
+      hasPushListener: true,
+    };
+    if (event.ports && event.ports[0]) {
+      event.ports[0].postMessage(reply);
+    } else if (event.source && 'postMessage' in event.source) {
+      event.source.postMessage({ type: 'GASKEUN_SW_PONG', ...reply });
+    }
+  }
+});
 
 interface IncomingPushPayload {
   title?: string;
@@ -59,42 +83,67 @@ self.addEventListener('push', (event: PushEvent) => {
         type: 'window',
         includeUncontrolled: true,
       });
+      for (const client of windowClients) {
+        client.postMessage({
+          type: 'GASKEUN_PUSH_DEBUG',
+          phase: 'received',
+          version: SW_PUSH_VERSION,
+          title,
+        });
+      }
+
       const hasFocusedVisibleClient = windowClients.some(
         (client) => client.focused && client.visibilityState === 'visible',
       );
       if (hasFocusedVisibleClient && !payload.forceShow) {
         // Always satisfy userVisibleOnly=true (prevents iOS 3-strikes & Chrome silent-push revocation),
         // then dismiss silently while the foreground in-app banner is active.
+        try {
+          await self.registration.showNotification(title, {
+            body,
+            icon,
+            badge,
+            tag,
+            silent: true,
+            data: {
+              url: targetUrl,
+              openChat: Boolean(payload.openChat),
+            },
+          } as NotificationOptions);
+          const active = await self.registration.getNotifications({ tag });
+          active.forEach((n) => n.close());
+        } catch {
+          // ignore silent foreground cleanup error
+        }
+        return;
+      }
+
+      try {
         await self.registration.showNotification(title, {
           body,
           icon,
           badge,
           tag,
-          silent: true,
+          renotify: true,
+          silent: false,
+          vibrate: [180, 70, 180],
+          timestamp: Date.now(),
           data: {
             url: targetUrl,
             openChat: Boolean(payload.openChat),
           },
         } as NotificationOptions);
-        const active = await self.registration.getNotifications({ tag });
-        active.forEach((n) => n.close());
-        return;
+      } catch (err) {
+        for (const client of windowClients) {
+          client.postMessage({
+            type: 'GASKEUN_PUSH_DEBUG',
+            phase: 'error',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        // Fallback to minimal options in case OEM/browser rejected an extended option
+        await self.registration.showNotification(title, { body });
       }
-
-      await self.registration.showNotification(title, {
-        body,
-        icon,
-        badge,
-        tag,
-        renotify: true,
-        silent: false,
-        vibrate: [180, 70, 180],
-        timestamp: Date.now(),
-        data: {
-          url: targetUrl,
-          openChat: Boolean(payload.openChat),
-        },
-      } as NotificationOptions);
     })(),
   );
 });

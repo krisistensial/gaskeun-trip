@@ -36,7 +36,16 @@ export interface BackgroundPushDispatchResult {
   ok: boolean;
   sent?: number;
   totalTargets?: number;
+  expired?: number;
+  failedCount?: number;
   error?: string;
+}
+
+export interface ActivePushSwCheck {
+  registered: boolean;
+  pushCapable: boolean;
+  version: string | null;
+  state: string | null;
 }
 
 let cachedVapidPublicKey: string | null = null;
@@ -264,6 +273,49 @@ export async function removeWebPushSubscription(): Promise<void> {
   }
 }
 
+export async function verifyActivePushServiceWorker(): Promise<ActivePushSwCheck> {
+  const reg = await getActiveServiceWorkerRegistration();
+  if (!reg) {
+    return { registered: false, pushCapable: false, version: null, state: null };
+  }
+  await reg.update().catch(() => undefined);
+  if (reg.waiting) {
+    reg.waiting.postMessage({ type: 'GASKEUN_SKIP_WAITING' });
+  }
+  const worker = reg.active ?? reg.waiting ?? reg.installing;
+  if (!worker) {
+    return { registered: true, pushCapable: false, version: null, state: 'none' };
+  }
+
+  const pong = await new Promise<{ version?: string; hasPushListener?: boolean } | null>(
+    (resolve) => {
+      if (typeof MessageChannel === 'undefined') {
+        resolve(null);
+        return;
+      }
+      const channel = new MessageChannel();
+      const timer = globalThis.setTimeout(() => resolve(null), 1500);
+      channel.port1.onmessage = (ev) => {
+        globalThis.clearTimeout(timer);
+        resolve((ev.data ?? null) as { version?: string; hasPushListener?: boolean } | null);
+      };
+      try {
+        worker.postMessage({ type: 'GASKEUN_SW_PING' }, [channel.port2]);
+      } catch {
+        globalThis.clearTimeout(timer);
+        resolve(null);
+      }
+    },
+  );
+
+  return {
+    registered: true,
+    pushCapable: Boolean(pong?.hasPushListener),
+    version: pong?.version ?? null,
+    state: worker.state ?? null,
+  };
+}
+
 export async function dispatchBackgroundPushDetailed(
   payload: BackgroundPushDispatchPayload,
 ): Promise<BackgroundPushDispatchResult> {
@@ -285,12 +337,21 @@ export async function dispatchBackgroundPushDetailed(
       }),
       keepalive: true,
     });
-    let data: { ok?: boolean; sent?: number; totalTargets?: number; error?: string } | null = null;
+    let data: {
+      ok?: boolean;
+      sent?: number;
+      totalTargets?: number;
+      expired?: number;
+      failed?: Array<{ statusCode?: number; message?: string }>;
+      error?: string;
+    } | null = null;
     try {
       data = (await res.json()) as {
         ok?: boolean;
         sent?: number;
         totalTargets?: number;
+        expired?: number;
+        failed?: Array<{ statusCode?: number; message?: string }>;
         error?: string;
       };
     } catch {
@@ -299,11 +360,18 @@ export async function dispatchBackgroundPushDetailed(
     if (!res.ok) {
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
+    const firstFail = data?.failed?.[0];
     return {
       ok: Boolean(data?.ok ?? true),
       sent: data?.sent,
       totalTargets: data?.totalTargets,
-      error: data?.error,
+      expired: data?.expired,
+      failedCount: data?.failed?.length ?? 0,
+      error:
+        data?.error ||
+        (firstFail
+          ? `Push rejected (${firstFail.statusCode ?? '?'}): ${firstFail.message ?? ''}`
+          : undefined),
     };
   } catch (err) {
     return {
