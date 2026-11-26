@@ -178,6 +178,9 @@ export async function tryShowDeviceNotification(
           icon,
           badge,
           tag: payload.tag || `gaskeun-${Date.now()}`,
+          silent: false,
+          vibrate: [180, 70, 180],
+          timestamp: Date.now(),
           ...(payload.renotify ? { renotify: true } : {}),
         } as NotificationOptions);
         return { ok: true };

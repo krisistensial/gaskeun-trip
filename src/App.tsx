@@ -521,7 +521,7 @@ export default function App() {
             void showDeviceNotification({
               title: copy.title,
               body: copy.body,
-              tag: `trip-${remoteTrip.code}`,
+              tag: `trip-${remoteTrip.code}-${nextTopLog.id}`,
             });
           } else if (
             !shouldFireOsNotification(isHidden, hasFocus) &&
@@ -838,8 +838,8 @@ export default function App() {
         void showDeviceNotification({
           title: copy.title,
           body: copy.body,
-          tag: `chat-${currentCode}`,
-          renotify: isMentioned,
+          tag: `chat-${currentCode}-${incoming.id}`,
+          renotify: true,
         });
       }
 
@@ -973,7 +973,8 @@ export default function App() {
             void showDeviceNotification({
               title: `${tripSnapshot.title || code} • ${incomingPoll.createdByName}`,
               body: `Started a poll: ${incomingPoll.question}`,
-              tag: `chat-${code}`,
+              tag: `poll-${code}-${incomingPoll.id}`,
+              renotify: true,
             });
           }
           if (!chatOpenRef.current) {
@@ -1191,7 +1192,7 @@ export default function App() {
           senderId: actor.id,
           title: copy.title,
           body: copy.body,
-          tag: `trip-${next.code}`,
+          tag: `trip-${next.code}-${latestLog.id}`,
         });
       }
       return next;
@@ -1491,7 +1492,7 @@ export default function App() {
       senderId: msg.senderId,
       title: pushCopy.title,
       body: pushCopy.body,
-      tag: `chat-${activeTrip.code}`,
+      tag: `chat-${activeTrip.code}-${msg.id}`,
       renotify: true,
       openChat: true,
     });
@@ -1527,7 +1528,7 @@ export default function App() {
       senderId: msg.senderId,
       title: pushCopy.title,
       body: pushCopy.body,
-      tag: `chat-${activeTrip.code}`,
+      tag: `chat-${activeTrip.code}-${msg.id}`,
       renotify: true,
       openChat: true,
     });
@@ -1616,7 +1617,7 @@ export default function App() {
       senderId: poll.createdBy,
       title: `${activeTrip.title || activeTrip.code} • ${poll.createdByName}`,
       body: `Started a poll: ${poll.question}`,
-      tag: `chat-${activeTrip.code}`,
+      tag: `poll-${activeTrip.code}-${poll.id}`,
       renotify: true,
       openChat: true,
     });

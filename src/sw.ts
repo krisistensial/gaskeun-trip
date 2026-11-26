@@ -46,7 +46,9 @@ self.addEventListener('push', (event: PushEvent) => {
 
   const title = (payload.title || 'GASKEUN!').trim();
   const body = (payload.body || 'New update in your trip').trim();
-  const tag = payload.tag || `gaskeun-push-${Date.now()}`;
+  const tag =
+    payload.tag ||
+    `gaskeun-push-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const icon = payload.icon || resolveScopeAsset('pwa-192x192.png');
   const badge = payload.badge || resolveScopeAsset('favicon-32x32.png');
   const targetUrl = payload.url || self.registration.scope;
@@ -70,7 +72,10 @@ self.addEventListener('push', (event: PushEvent) => {
         icon,
         badge,
         tag,
-        renotify: Boolean(payload.renotify),
+        renotify: true,
+        silent: false,
+        vibrate: [180, 70, 180],
+        timestamp: Date.now(),
         data: {
           url: targetUrl,
           openChat: Boolean(payload.openChat),

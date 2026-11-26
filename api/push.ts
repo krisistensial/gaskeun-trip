@@ -165,8 +165,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const notificationJson = JSON.stringify({
     title,
     body,
-    tag: payload.tag || `gaskeun-${tripCode}`,
-    renotify: Boolean(payload.renotify),
+    tag: payload.tag || `gaskeun-${tripCode}-${Date.now()}`,
+    renotify: payload.renotify !== false,
     openChat: Boolean(payload.openChat),
     url: payload.url || (payload.openChat ? '/?open=chat' : '/'),
     forceShow: Boolean(payload.forceShow),
