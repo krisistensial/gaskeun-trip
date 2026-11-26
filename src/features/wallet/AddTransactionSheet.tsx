@@ -73,7 +73,25 @@ export function AddTransactionSheet({
   const [paidByMemberId, setPaidByMemberId] = useState<string>(
     () => editingTx?.paidByMemberId ?? defaultMemberId ?? members[0]?.id ?? '',
   );
+  const [splitEnabled, setSplitEnabled] = useState<boolean>(() =>
+    Boolean(editingTx?.splitMemberIds?.length),
+  );
+  const [splitMemberIds, setSplitMemberIds] = useState<string[]>(() =>
+    editingTx?.splitMemberIds?.length
+      ? editingTx.splitMemberIds
+      : members.map((m) => m.id),
+  );
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const toggleSplitMember = (targetId: string) => {
+    setSplitMemberIds((prev) =>
+      prev.includes(targetId)
+        ? prev.length > 1
+          ? prev.filter((id) => id !== targetId)
+          : prev
+        : [...prev, targetId],
+    );
+  };
 
   if (!open) return null;
 
@@ -142,6 +160,10 @@ export function AddTransactionSheet({
       paidOutOfPocket: mode === 'expense' ? paidOutOfPocket : undefined,
       paidByMemberId: mode === 'expense' && paidOutOfPocket ? paidByMemberId : undefined,
       reimbursed: mode === 'expense' && paidOutOfPocket ? Boolean(editingTx?.reimbursed) : undefined,
+      splitMemberIds:
+        mode === 'expense' && splitEnabled && splitMemberIds.length > 0
+          ? splitMemberIds
+          : undefined,
       note: note.trim() || undefined,
       createdAt: editingTx?.createdAt ?? now,
       updatedAt: now,
@@ -360,6 +382,58 @@ export function AddTransactionSheet({
                         <span>{m.name}</span>
                       </button>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="reimburse-row" style={{ marginTop: 4 }}>
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>Split among crew?</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                    {splitEnabled && numericAmount > 0 && splitMemberIds.length > 0
+                      ? `${formatCompactIDR(Math.round(numericAmount / splitMemberIds.length))} / person (${splitMemberIds.length} crew)`
+                      : 'Divide this bill evenly across selected crew'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={splitEnabled}
+                  aria-label="Toggle split among crew"
+                  className={`tx-switch ${splitEnabled ? 'tx-switch--on' : ''}`}
+                  onClick={() => setSplitEnabled((v) => !v)}
+                >
+                  <span className="tx-switch__thumb" />
+                </button>
+              </div>
+
+              {splitEnabled && (
+                <div>
+                  <div className="gk-field__label" style={{ marginBottom: 6 }}>
+                    SPLIT WITH ({splitMemberIds.length}/{members.length})
+                  </div>
+                  <div className="payer-strip" style={{ flexWrap: 'wrap' }}>
+                    {members.map((m) => {
+                      const active = splitMemberIds.includes(m.id);
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          className={`payer-chip tactile ${active ? 'payer-chip--active' : ''}`}
+                          onClick={() => toggleSplitMember(m.id)}
+                        >
+                          <Avatar
+                            initials={m.initials}
+                            name={m.name}
+                            src={m.avatarDataUrl}
+                            size="sm"
+                            bg={active ? '#E3EDE6' : m.avatarBg}
+                            color={active ? '#2D4A42' : m.avatarColor}
+                          />
+                          <span>{m.name}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -187,6 +187,8 @@ export interface Transaction {
   paidByMemberId?: string;
   /** Flipping to true marks reimbursement settled WITHOUT deducting balance again */
   reimbursed?: boolean;
+  /** Optional subset of member IDs participating in this specific expense split */
+  splitMemberIds?: string[];
   note?: string;
   createdAt: string;
   updatedAt: string;

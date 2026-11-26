@@ -23,6 +23,7 @@ import { useHorizontalScrollFade } from '../../hooks/useHorizontalScrollFade';
 import {
   calculateLedger,
   calculatePersonalTotal,
+  computeSplitBillSummary,
   formatCompactIDR,
   formatIDR,
   markTransactionSettled,
@@ -128,6 +129,10 @@ export function WalletScreen({
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
   const ledger = useMemo(() => calculateLedger(trip), [trip]);
+  const splitSummary = useMemo(
+    () => computeSplitBillSummary(trip.transactions, trip.members),
+    [trip.transactions, trip.members],
+  );
   const personalTotal = useMemo(
     () => calculatePersonalTotal(personalTransactions),
     [personalTransactions],
@@ -923,6 +928,9 @@ export function WalletScreen({
                           ? `Paid by ${payer?.name ?? 'Crew'}`
                           : 'Direct from fund'}{' '}
                         · {sourceLabel}
+                        {tx.splitMemberIds && tx.splitMemberIds.length > 0
+                          ? ` · Split ${tx.splitMemberIds.length} crew (${formatCompactIDR(Math.round(tx.amount / tx.splitMemberIds.length))}/ea)`
+                          : ''}
                       </div>
                       {isUnpaid && canEdit && (
                         <div style={{ marginTop: 8 }}>
@@ -974,6 +982,108 @@ export function WalletScreen({
               })
             )}
           </div>
+
+          {splitSummary.splitTxCount > 0 && (
+            <GlassCard variant="tinted" padding="md" style={{ marginTop: 14 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <span className="gk-field__label" style={{ margin: 0 }}>
+                  SPLIT BILL BREAKDOWN
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 }}>
+                  {splitSummary.splitTxCount} {splitSummary.splitTxCount === 1 ? 'bill' : 'bills'} ·{' '}
+                  {formatCompactIDR(splitSummary.splitTotalAmount)}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {splitSummary.memberSummaries.map((entry) => (
+                    <div
+                      key={entry.member.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        fontSize: 12.5,
+                      }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontWeight: 600 }}>
+                        <Avatar
+                          initials={entry.member.initials}
+                          name={entry.member.name}
+                          src={entry.member.avatarDataUrl}
+                          size="sm"
+                          bg={entry.member.avatarBg}
+                          color={entry.member.avatarColor}
+                        />
+                        <span>{entry.member.name}</span>
+                      </span>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                        Share {formatCompactIDR(entry.shareTotal)}
+                        {entry.netBalance !== 0 && (
+                          <span
+                            style={{
+                              marginLeft: 6,
+                              color:
+                                entry.netBalance > 0
+                                  ? 'var(--brand-matcha-deep)'
+                                  : 'var(--accent-amber)',
+                            }}
+                          >
+                            ({entry.netBalance > 0 ? `+${formatCompactIDR(entry.netBalance)}` : `-${formatCompactIDR(Math.abs(entry.netBalance))}`})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+
+              {splitSummary.settlements.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    paddingTop: 10,
+                    borderTop: '1px solid rgba(45, 74, 66, 0.1)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 5,
+                  }}
+                >
+                  <div className="gk-field__label" style={{ margin: 0 }}>
+                    SUGGESTED SETTLEMENTS
+                  </div>
+                  {splitSummary.settlements.map((s) => (
+                    <div
+                      key={`${s.from.id}-${s.to.id}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <span>
+                        {s.from.name} → {s.to.name}
+                      </span>
+                      <span style={{ color: 'var(--brand-matcha-deep)' }}>
+                        {formatIDR(s.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </GlassCard>
+          )}
         </>
       )}
 

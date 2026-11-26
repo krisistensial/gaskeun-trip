@@ -17,6 +17,7 @@ import {
   Pencil,
   Plus,
   Settings2,
+  Sparkles,
   TrainFront,
   Users,
 } from 'lucide-react';
@@ -54,6 +55,7 @@ import { triggerFeedback } from '../../services/feedback';
 import { toDriveThumbnailWidth } from '../../services/gdriveAlbum';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import { resolvePlanLiveState } from '../../services/planSchedule';
+import { hasTripEnded } from '../../services/tripRecap';
 import type {
   AlbumPhoto,
   ConvoyStatusKind,
@@ -116,6 +118,7 @@ export interface HomeScreenProps {
   onOpenMenu: () => void;
   onOpenChat?: () => void;
   onOpenRadar?: () => void;
+  onOpenRecap?: () => void;
   onSetConvoyStatus?: (status: ConvoyStatusKind) => void;
   onOpenTripSettings: () => void;
   onSwitchTrip: () => void;
@@ -146,6 +149,7 @@ export function HomeScreen({
   onOpenMenu,
   onOpenChat,
   onOpenRadar,
+  onOpenRecap,
   onSetConvoyStatus,
   onOpenTripSettings,
   onSwitchTrip,
@@ -1116,6 +1120,56 @@ export function HomeScreen({
                   </button>
                 );
               })}
+            </div>
+          </GlassCard>
+        </section>
+      )}
+
+      {hasTripEnded(trip.endDate) && onOpenRecap && (
+        <section aria-label="Trip Recap Wrapped">
+          <GlassCard variant="spotlight" padding="md" className="home-recap-banner">
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: '0.07em',
+                    textTransform: 'uppercase',
+                    color: 'var(--brand-matcha-deep)',
+                  }}
+                >
+                  <Sparkles size={13} strokeWidth={2.2} />
+                  <span>Trip Recap Ready</span>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>
+                  Share your 9:16 GASKEUN Wrapped story
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  Stats, spend &amp; crew awards ready to export as PNG
+                </div>
+              </div>
+              <Button
+                variant="matcha"
+                size="sm"
+                leftIcon={<Sparkles size={13} strokeWidth={2} />}
+                onClick={() => {
+                  triggerFeedback('tap');
+                  onOpenRecap();
+                }}
+              >
+                Open
+              </Button>
             </div>
           </GlassCard>
         </section>

@@ -312,6 +312,127 @@ export function calculatePersonalTotal(personalTransactions: Transaction[]): num
     .reduce((sum, tx) => sum + Math.max(0, Math.round(tx.amount)), 0);
 }
 
+export interface MemberSplitSummary {
+  member: TripMember;
+  shareTotal: number;
+  frontedTotal: number;
+  /** Positive = owed money back, Negative = owes for split items */
+  netBalance: number;
+  txCount: number;
+}
+
+export interface SplitSettlementItem {
+  from: TripMember;
+  to: TripMember;
+  amount: number;
+}
+
+export interface SplitBillSummary {
+  splitTxCount: number;
+  splitTotalAmount: number;
+  memberSummaries: MemberSplitSummary[];
+  settlements: SplitSettlementItem[];
+}
+
+/**
+ * Computes per-member shares & suggested settlements across expenses that specify
+ * `splitMemberIds` (selective split bill per transaction).
+ */
+export function computeSplitBillSummary(
+  transactions: readonly Transaction[],
+  members: readonly TripMember[],
+): SplitBillSummary {
+  const memberById = new Map(members.map((m) => [m.id, m]));
+  const shareById = new Map<string, number>();
+  const frontedById = new Map<string, number>();
+  const txCountById = new Map<string, number>();
+
+  let splitTxCount = 0;
+  let splitTotalAmount = 0;
+
+  for (const tx of transactions) {
+    if (tx.direction !== 'out' || (tx.pocket !== 'pool' && tx.pocket !== 'fundraise')) {
+      continue;
+    }
+    const participants = Array.isArray(tx.splitMemberIds)
+      ? Array.from(new Set(tx.splitMemberIds)).filter((id) => memberById.has(id))
+      : [];
+    if (participants.length === 0) continue;
+
+    const amount = Math.max(0, Math.round(tx.amount));
+    if (amount <= 0) continue;
+
+    splitTxCount += 1;
+    splitTotalAmount += amount;
+
+    const baseShare = Math.floor(amount / participants.length);
+    let remainder = amount - baseShare * participants.length;
+
+    for (const id of participants) {
+      const extra = remainder > 0 ? 1 : 0;
+      if (remainder > 0) remainder -= 1;
+      shareById.set(id, (shareById.get(id) ?? 0) + baseShare + extra);
+      txCountById.set(id, (txCountById.get(id) ?? 0) + 1);
+    }
+
+    if (tx.paidOutOfPocket && !tx.reimbursed && tx.paidByMemberId && memberById.has(tx.paidByMemberId)) {
+      frontedById.set(
+        tx.paidByMemberId,
+        (frontedById.get(tx.paidByMemberId) ?? 0) + amount,
+      );
+    }
+  }
+
+  const memberSummaries: MemberSplitSummary[] = members
+    .filter((m) => (shareById.get(m.id) ?? 0) > 0 || (frontedById.get(m.id) ?? 0) > 0)
+    .map((member) => {
+      const shareTotal = shareById.get(member.id) ?? 0;
+      const frontedTotal = frontedById.get(member.id) ?? 0;
+      return {
+        member,
+        shareTotal,
+        frontedTotal,
+        netBalance: frontedTotal - shareTotal,
+        txCount: txCountById.get(member.id) ?? 0,
+      };
+    })
+    .sort((a, b) => b.shareTotal - a.shareTotal);
+
+  const debtors = memberSummaries
+    .filter((s) => s.netBalance < -1)
+    .map((s) => ({ member: s.member, remaining: Math.abs(s.netBalance) }))
+    .sort((a, b) => b.remaining - a.remaining);
+  const creditors = memberSummaries
+    .filter((s) => s.netBalance > 1)
+    .map((s) => ({ member: s.member, remaining: s.netBalance }))
+    .sort((a, b) => b.remaining - a.remaining);
+
+  const settlements: SplitSettlementItem[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const pay = Math.min(debtors[i].remaining, creditors[j].remaining);
+    if (pay >= 1) {
+      settlements.push({
+        from: debtors[i].member,
+        to: creditors[j].member,
+        amount: Math.round(pay),
+      });
+    }
+    debtors[i].remaining -= pay;
+    creditors[j].remaining -= pay;
+    if (debtors[i].remaining <= 1) i += 1;
+    if (creditors[j].remaining <= 1) j += 1;
+  }
+
+  return {
+    splitTxCount,
+    splitTotalAmount,
+    memberSummaries,
+    settlements,
+  };
+}
+
 export function formatIDR(amount: number): string {
   const abs = Math.abs(Math.round(amount));
   const formatted = abs.toLocaleString('en-US');

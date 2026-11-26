@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import seedData from '../data/seed-solo-jogja-2027.json';
 import type { SharedTrip } from '../types/trip';
-import { calculateLedger, formatCompactIDR, markTransactionSettled } from './ledger';
+import {
+  calculateLedger,
+  computeSplitBillSummary,
+  formatCompactIDR,
+  markTransactionSettled,
+} from './ledger';
 
 const pilotTrip = seedData as unknown as SharedTrip;
 
@@ -164,5 +169,49 @@ describe('Ledger Calculator — Solo–Jogja Pilot & Anti-Double-Deduction', () 
     expect(s.pockets[0].spent).toBe(300_000);
     expect(s.pockets[0].remaining).toBe(525_000);
     expect(s.combinedUnallocated + s.totalPocketRemaining).toBe(s.combinedNetBalance);
+  });
+
+  it('computes per-transaction Split Bill shares, remainder-safe totals, and suggested settlements', () => {
+    const [m0, m1, m2] = pilotTrip.members;
+    const splitSummary = computeSplitBillSummary(
+      [
+        {
+          id: 'tx-split-1',
+          tripId: pilotTrip.id,
+          direction: 'out',
+          pocket: 'pool',
+          title: 'Dinner Crew',
+          amount: 100_000,
+          date: '2027-02-11',
+          paidOutOfPocket: true,
+          paidByMemberId: m0.id,
+          reimbursed: false,
+          splitMemberIds: [m0.id, m1.id, m2.id],
+          createdAt: '2027-02-11T19:00:00Z',
+          updatedAt: '2027-02-11T19:00:00Z',
+        },
+      ],
+      pilotTrip.members,
+    );
+
+    expect(splitSummary.splitTxCount).toBe(1);
+    expect(splitSummary.splitTotalAmount).toBe(100_000);
+
+    const s0 = splitSummary.memberSummaries.find((m) => m.member.id === m0.id);
+    const s1 = splitSummary.memberSummaries.find((m) => m.member.id === m1.id);
+    const s2 = splitSummary.memberSummaries.find((m) => m.member.id === m2.id);
+
+    // 100,000 / 3 = 33,333 + remainder 1 on first listed participant
+    expect(s0?.shareTotal).toBe(33_334);
+    expect(s1?.shareTotal).toBe(33_333);
+    expect(s2?.shareTotal).toBe(33_333);
+    expect((s0?.shareTotal ?? 0) + (s1?.shareTotal ?? 0) + (s2?.shareTotal ?? 0)).toBe(100_000);
+
+    // First member paid 100,000 and owes 33,334 -> net +66,666; others owe 33,333 each
+    expect(s0?.netBalance).toBe(66_666);
+    expect(splitSummary.settlements).toHaveLength(2);
+    expect(
+      splitSummary.settlements.reduce((sum, item) => sum + item.amount, 0),
+    ).toBe(66_666);
   });
 });

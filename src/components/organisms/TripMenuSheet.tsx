@@ -21,6 +21,7 @@ import {
   Settings2,
   ShieldCheck,
   Smartphone,
+  Sparkles,
   Trash2,
   Upload,
   Users,
@@ -85,6 +86,7 @@ export interface TripMenuSheetProps {
   unreadChatCount?: number;
   onForceSync?: () => void;
   onOpenChat?: () => void;
+  onOpenRecap?: () => void;
   onToggleViewOnlyMode?: (next: boolean) => void;
   onPhaseChange: (phase: HomePhase) => void;
   onUpdateActiveAvatar: (avatarDataUrl: string) => void;
@@ -117,6 +119,7 @@ export function TripMenuSheet({
   unreadChatCount = 0,
   onForceSync,
   onOpenChat,
+  onOpenRecap,
   onToggleViewOnlyMode,
   onPhaseChange,
   onUpdateActiveAvatar,
@@ -1066,6 +1069,30 @@ export function TripMenuSheet({
             </span>
           </span>
         </button>
+
+        {onOpenRecap && (
+          <button
+            type="button"
+            className="gk-menu-item"
+            onClick={() => {
+              resetLocalPanels();
+              onClose();
+              onOpenRecap();
+            }}
+          >
+            <span className="gk-menu-item__left">
+              <span className="gk-menu-item__icon">
+                <Sparkles size={18} strokeWidth={1.8} />
+              </span>
+              <span>
+                <div className="gk-menu-item__title">Trip Recap (Wrapped)</div>
+                <div className="gk-menu-item__sub">
+                  9:16 story summary &amp; crew awards PNG
+                </div>
+              </span>
+            </span>
+          </button>
+        )}
 
         <button
           type="button"

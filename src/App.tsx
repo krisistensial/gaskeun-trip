@@ -147,6 +147,11 @@ const CrewChatScreen = lazy(() =>
     default: m.CrewChatScreen,
   })),
 );
+const TripRecapSheet = lazy(() =>
+  import('./components/organisms/TripRecapSheet').then((m) => ({
+    default: m.TripRecapSheet,
+  })),
+);
 
 type AppRoute = 'landing' | 'who' | 'create' | 'hub';
 
@@ -219,6 +224,7 @@ export default function App() {
     Record<string, { memberName: string; expiresAt: number }>
   >({});
   const [menuOpen, setMenuOpen] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingImportTrip, setPendingImportTrip] = useState<SharedTrip | null>(null);
   const [toast, setToast] = useState<{ open: boolean; message: string; tone: ToastTone }>({
@@ -1750,6 +1756,7 @@ export default function App() {
               onOpenMenu={() => setMenuOpen(true)}
               onOpenChat={() => setChatOpen(true)}
               onOpenRadar={() => setActiveRouteTarget(buildCrewRadarTarget(activeTrip))}
+              onOpenRecap={() => setRecapOpen(true)}
               onSetConvoyStatus={handleSetConvoyStatus}
               onOpenTripSettings={openTripSettingsGated}
               onSwitchTrip={handleLeaveTrip}
@@ -1796,6 +1803,7 @@ export default function App() {
             })
           }
           onOpenChat={() => setChatOpen(true)}
+          onOpenRecap={() => setRecapOpen(true)}
           onToggleViewOnlyMode={handleToggleViewOnlyMode}
           onPhaseChange={(next) => {
             triggerFeedback('tap');
@@ -1823,6 +1831,20 @@ export default function App() {
           onNotify={showToast}
           onClose={() => setMenuOpen(false)}
         />
+
+        {recapOpen && (
+          <Suspense fallback={null}>
+            <TripRecapSheet
+              open={recapOpen}
+              trip={activeTrip}
+              messages={visibleChatMessages}
+              polls={activeTrip.chatPolls ?? []}
+              albumPhotos={homeAlbumPhotos}
+              onNotify={showToast}
+              onClose={() => setRecapOpen(false)}
+            />
+          </Suspense>
+        )}
 
         {settingsOpen && (
           <Suspense fallback={null}>
