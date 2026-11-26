@@ -607,7 +607,7 @@ export function TripMenuSheet({
             onClick={() => {
               triggerFeedback('tap');
               const memberId = activeMember?.id ?? 'guest';
-              onNotify?.('Exit app now ? test push arrives in 5s...', 'info');
+              onNotify?.('Exit app now — test push arrives in 5s...', 'info');
               void ensureWebPushSubscription(trip.code, memberId).then((subRes) => {
                 if (!subRes.ok) {
                   onNotify?.(
@@ -648,7 +648,7 @@ export function TripMenuSheet({
               <span>
                 <div className="gk-menu-item__title">Send Test Background Push</div>
                 <div className="gk-menu-item__sub">
-                  Fires from server after 5s ? exit app to verify
+                  Fires from server after 5s — exit app to verify
                 </div>
               </span>
             </span>
