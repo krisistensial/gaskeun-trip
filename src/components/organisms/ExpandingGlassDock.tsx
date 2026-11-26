@@ -37,11 +37,12 @@ export function ExpandingGlassDock({
     <div className={`gk-dock-wrap ${isHidden ? 'gk-dock-wrap--hidden' : ''}`} aria-hidden={isHidden}>
       <LiquidGlassSurface
         cornerRadius={30}
-        displacementScale={46}
-        blurAmount={0.08}
-        saturation={165}
-        aberrationIntensity={1.4}
+        displacementScale={26}
+        blurAmount={0.04}
+        saturation={155}
+        aberrationIntensity={0}
         elasticity={0.1}
+        mode="shader"
         className="gk-dock-lgr-host"
         fallbackClassName="gk-dock-fallback"
       >

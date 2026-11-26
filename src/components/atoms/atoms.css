@@ -494,7 +494,11 @@
 }
 
 .gk-orb-lgr-host .glass {
-  background: rgba(255, 255, 255, 0.48);
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.48) 0%,
+    rgba(235, 246, 239, 0.3) 100%
+  );
   border: 1.5px solid rgba(255, 255, 255, 0.94);
 }
 

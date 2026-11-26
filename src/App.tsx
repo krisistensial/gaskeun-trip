@@ -1562,6 +1562,10 @@ export default function App() {
           <div className="ambient-blob ambient-blob--matcha" />
           <div className="ambient-blob ambient-blob--sunlight" />
           <div className="ambient-blob ambient-blob--mint" />
+          <div className="ambient-blob ambient-blob--emerald" />
+          <div className="ambient-blob ambient-blob--sage-mid" />
+          <div className="ambient-blob ambient-shape--leaf" />
+          <div className="ambient-blob ambient-shape--ring" />
         </div>
 
         <main

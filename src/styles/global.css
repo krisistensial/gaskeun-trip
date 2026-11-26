@@ -108,9 +108,9 @@ select:active,
   .app-shell {
     min-height: calc(100dvh - 40px);
     border-radius: 36px;
-    background: rgba(246, 248, 245, 0.42);
-    border: 1px solid rgba(255, 255, 255, 0.8);
-    box-shadow: 0 28px 80px -24px rgba(31, 45, 39, 0.16);
+    background: rgba(246, 250, 247, 0.26);
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    box-shadow: 0 28px 80px -24px rgba(31, 45, 39, 0.14);
   }
 }
 
