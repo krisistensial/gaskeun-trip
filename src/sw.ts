@@ -6,15 +6,12 @@ declare let self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
 };
 
-const SW_PUSH_VERSION = 'push-v3';
+const SW_PUSH_VERSION = 'push-v4';
 
 self.addEventListener('install', () => {
   void self.skipWaiting();
 });
 clientsClaim();
-
-cleanupOutdatedCaches();
-precacheAndRoute(self.__WB_MANIFEST);
 
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
   const data = event.data as { type?: string } | null;
@@ -35,6 +32,24 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
     }
   }
 });
+
+// Deduplicate precache manifest entries defensively so a duplicate URL with
+// conflicting revisions can never abort SW installation or break push listeners.
+const rawPrecacheManifest = self.__WB_MANIFEST;
+try {
+  const uniqueByUrl = new Map<string, { url: string; revision: string | null }>();
+  for (const rawEntry of Array.isArray(rawPrecacheManifest) ? rawPrecacheManifest : []) {
+    if (!rawEntry || typeof rawEntry === 'string') continue;
+    const prev = uniqueByUrl.get(rawEntry.url);
+    if (!prev || (!prev.revision && rawEntry.revision)) {
+      uniqueByUrl.set(rawEntry.url, rawEntry);
+    }
+  }
+  cleanupOutdatedCaches();
+  precacheAndRoute(Array.from(uniqueByUrl.values()));
+} catch (err) {
+  console.warn('[GASKEUN SW] Precache setup warning:', err);
+}
 
 interface IncomingPushPayload {
   title?: string;

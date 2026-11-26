@@ -628,59 +628,63 @@ export function TripMenuSheet({
                     return;
                   }
                   onNotify?.(
-                    `SW ${swCheck.version} OK — sending server push in 3s...`,
+                    `SW ${swCheck.version} OK — sending server push now...`,
                     'info',
                   );
                   let receivedBySw = false;
+                  const cleanupSwDebug = () => {
+                    if ('serviceWorker' in navigator) {
+                      navigator.serviceWorker.removeEventListener('message', onSwDebug);
+                    }
+                  };
                   const onSwDebug = (ev: MessageEvent) => {
                     const msg = ev.data as { type?: string; phase?: string; error?: string } | null;
                     if (msg?.type !== 'GASKEUN_PUSH_DEBUG') return;
                     if (msg.phase === 'received') {
                       receivedBySw = true;
+                      cleanupSwDebug();
                       onNotify?.('FCM push received by device SW!', 'success');
                     } else if (msg.phase === 'error') {
+                      cleanupSwDebug();
                       onNotify?.(`SW notification error: ${msg.error || 'unknown'}`, 'error');
                     }
                   };
                   if ('serviceWorker' in navigator) {
                     navigator.serviceWorker.addEventListener('message', onSwDebug);
                   }
-                  window.setTimeout(() => {
-                    void dispatchBackgroundPushDetailed({
-                      tripCode: trip.code,
-                      senderId: memberId,
-                      targetMemberId: memberId,
-                      title: `${trip.title || trip.code} • Test Push`,
-                      body: 'Background push is working on this phone!',
-                      tag: `test-push-${Date.now()}`,
-                      renotify: true,
-                      openChat: true,
-                      forceShow: true,
-                    }).then((pushRes) => {
-                      if (!pushRes.ok || (pushRes.sent ?? 0) === 0) {
-                        onNotify?.(
-                          pushRes.error || `Server sent 0/${pushRes.totalTargets ?? 0}`,
-                          'error',
-                        );
-                      } else {
-                        onNotify?.(
-                          `Server sent ${pushRes.sent}/${pushRes.totalTargets ?? pushRes.sent} — waiting for FCM...`,
-                          'info',
-                        );
-                        window.setTimeout(() => {
-                          if ('serviceWorker' in navigator) {
-                            navigator.serviceWorker.removeEventListener('message', onSwDebug);
-                          }
-                          if (!receivedBySw && document.visibilityState === 'visible') {
-                            onNotify?.(
-                              'Server sent OK, but FCM did not reach phone (check DNS/VPN/Chrome Push).',
-                              'error',
-                            );
-                          }
-                        }, 6000);
-                      }
-                    });
-                  }, 3000);
+                  void dispatchBackgroundPushDetailed({
+                    tripCode: trip.code,
+                    senderId: memberId,
+                    targetMemberId: memberId,
+                    title: `${trip.title || trip.code} • Test Push`,
+                    body: 'Background push is working on this phone!',
+                    tag: `test-push-${Date.now()}`,
+                    renotify: true,
+                    openChat: true,
+                    forceShow: true,
+                  }).then((pushRes) => {
+                    if (!pushRes.ok || (pushRes.sent ?? 0) === 0) {
+                      cleanupSwDebug();
+                      onNotify?.(
+                        pushRes.error || `Server sent 0/${pushRes.totalTargets ?? 0}`,
+                        'error',
+                      );
+                    } else {
+                      onNotify?.(
+                        `Server sent ${pushRes.sent}/${pushRes.totalTargets ?? pushRes.sent} — waiting for FCM...`,
+                        'info',
+                      );
+                      window.setTimeout(() => {
+                        cleanupSwDebug();
+                        if (!receivedBySw && document.visibilityState === 'visible') {
+                          onNotify?.(
+                            'Server sent OK, but FCM did not reach phone (check DNS/VPN/Chrome Push).',
+                            'error',
+                          );
+                        }
+                      }, 6000);
+                    }
+                  });
                 });
               });
             }}
@@ -692,7 +696,7 @@ export function TripMenuSheet({
               <span>
                 <div className="gk-menu-item__title">Send Test Background Push</div>
                 <div className="gk-menu-item__sub">
-                  Checks SW + sends server push in 3s
+                  Verifies SW &amp; fires an instant server push
                 </div>
               </span>
             </span>

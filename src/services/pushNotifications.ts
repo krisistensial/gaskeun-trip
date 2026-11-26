@@ -135,9 +135,16 @@ async function getActiveServiceWorkerRegistration(): Promise<ServiceWorkerRegist
     return null;
   }
   const sw = navigator.serviceWorker;
+  const base = import.meta.env.BASE_URL || '/';
   let reg: ServiceWorkerRegistration | undefined | null = null;
   if (typeof sw.getRegistration === 'function') {
-    reg = await sw.getRegistration().catch(() => undefined);
+    reg =
+      (await sw.getRegistration(base).catch(() => undefined)) ??
+      (await sw.getRegistration().catch(() => undefined));
+  }
+  if (!reg && typeof sw.register === 'function') {
+    const swUrl = `${base.endsWith('/') ? base : `${base}/`}sw.js`;
+    reg = await sw.register(swUrl, { scope: base }).catch(() => undefined);
   }
   if (!reg && sw.ready) {
     let timerId: ReturnType<typeof globalThis.setTimeout> | undefined;
@@ -150,6 +157,44 @@ async function getActiveServiceWorkerRegistration(): Promise<ServiceWorkerRegist
     if (timerId !== undefined) globalThis.clearTimeout(timerId);
   }
   return reg ?? null;
+}
+
+async function waitForWorkerActivation(
+  worker: ServiceWorker | null | undefined,
+  timeoutMs = 4500,
+): Promise<void> {
+  if (!worker) return;
+  if (worker.state === 'activated' || worker.state === 'redundant') return;
+  if (worker.state === 'installed') {
+    try {
+      worker.postMessage({ type: 'GASKEUN_SKIP_WAITING' });
+    } catch {
+      // ignore postMessage failure
+    }
+  }
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      globalThis.clearTimeout(timer);
+      worker.removeEventListener('statechange', onStateChange);
+      resolve();
+    };
+    const onStateChange = () => {
+      if (worker.state === 'installed') {
+        try {
+          worker.postMessage({ type: 'GASKEUN_SKIP_WAITING' });
+        } catch {
+          // ignore
+        }
+      } else if (worker.state === 'activated' || worker.state === 'redundant') {
+        finish();
+      }
+    };
+    const timer = globalThis.setTimeout(finish, timeoutMs);
+    worker.addEventListener('statechange', onStateChange);
+  });
 }
 
 function isMissingPushTableError(error: unknown): boolean {
@@ -279,8 +324,9 @@ export async function verifyActivePushServiceWorker(): Promise<ActivePushSwCheck
     return { registered: false, pushCapable: false, version: null, state: null };
   }
   await reg.update().catch(() => undefined);
-  if (reg.waiting) {
-    reg.waiting.postMessage({ type: 'GASKEUN_SKIP_WAITING' });
+  const incoming = reg.waiting ?? reg.installing;
+  if (incoming) {
+    await waitForWorkerActivation(incoming, 4500);
   }
   const worker = reg.active ?? reg.waiting ?? reg.installing;
   if (!worker) {

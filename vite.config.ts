@@ -39,16 +39,6 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.ts',
       registerType: 'autoUpdate',
-      includeAssets: [
-        'favicon.png',
-        'favicon-32x32.png',
-        'apple-touch-icon.png',
-        'pwa-192x192.png',
-        'pwa-512x512.png',
-        'pwa-maskable-192x192.png',
-        'pwa-maskable-512x512.png',
-        'assets/default-cover.svg',
-      ],
       manifest: {
         name: 'GASKEUN! — Group Travel Hub',
         short_name: 'GASKEUN!',
@@ -89,6 +79,7 @@ export default defineConfig({
       },
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,json}'],
+        dontCacheBustURLsMatching: /-[a-zA-Z0-9_-]{8}\.\w+$/,
       },
     }),
   ],

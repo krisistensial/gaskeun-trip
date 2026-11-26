@@ -6,6 +6,7 @@ import {
   resetPushKeyCacheForTest,
   resolvePushApiUrl,
   urlBase64ToUint8Array,
+  verifyActivePushServiceWorker,
 } from './pushNotifications';
 
 describe('Background Web Push client service', () => {
@@ -73,5 +74,57 @@ describe('Background Web Push client service', () => {
         keepalive: true,
       }),
     );
+  });
+
+  it('waits for an installing Service Worker to activate before verifying push capability', async () => {
+    const listeners = new Set<() => void>();
+    const newWorker = {
+      state: 'installing',
+      addEventListener: vi.fn((ev: string, fn: () => void) => {
+        if (ev === 'statechange') listeners.add(fn);
+      }),
+      removeEventListener: vi.fn((ev: string, fn: () => void) => {
+        if (ev === 'statechange') listeners.delete(fn);
+      }),
+      postMessage: vi.fn((msg: { type?: string }, ports?: MessagePort[]) => {
+        if (msg.type === 'GASKEUN_SW_PING' && ports?.[0]) {
+          ports[0].postMessage({ ok: true, version: 'push-v4', hasPushListener: true });
+        }
+      }),
+    };
+
+    const fakeReg: {
+      active: typeof newWorker | null;
+      waiting: typeof newWorker | null;
+      installing: typeof newWorker | null;
+      update: ReturnType<typeof vi.fn>;
+    } = {
+      active: null,
+      waiting: null,
+      installing: null,
+      update: vi.fn(async () => {
+        fakeReg.installing = newWorker;
+        globalThis.setTimeout(() => {
+          newWorker.state = 'activated';
+          fakeReg.installing = null;
+          fakeReg.active = newWorker;
+          listeners.forEach((fn) => fn());
+        }, 10);
+      }),
+    };
+
+    vi.stubGlobal('navigator', {
+      serviceWorker: {
+        getRegistration: vi.fn(async () => fakeReg),
+      },
+    });
+
+    const check = await verifyActivePushServiceWorker();
+    expect(check).toEqual({
+      registered: true,
+      pushCapable: true,
+      version: 'push-v4',
+      state: 'activated',
+    });
   });
 });
