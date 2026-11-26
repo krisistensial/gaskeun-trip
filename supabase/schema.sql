@@ -164,7 +164,7 @@ alter table public.trip_messages add column if not exists sticker_url text;
 create index if not exists idx_trip_messages_code_created
   on public.trip_messages (trip_code, created_at desc);
 
-grant select, insert, update on public.trip_messages to anon, authenticated;
+grant select, insert, update on public.trip_messages to anon, authenticated, service_role;
 
 alter table public.trip_messages enable row level security;
 
@@ -223,7 +223,8 @@ create table if not exists public.trip_push_subscriptions (
 create index if not exists idx_trip_push_subs_trip_code
   on public.trip_push_subscriptions (trip_code);
 
-grant select, insert, update, delete on public.trip_push_subscriptions to anon, authenticated;
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on public.trip_push_subscriptions to anon, authenticated, service_role;
 
 alter table public.trip_push_subscriptions enable row level security;
 
@@ -255,3 +256,5 @@ create policy "Allow public delete trip_push_subscriptions"
   for delete
   to anon, authenticated
   using (length(trim(endpoint)) >= 10);
+
+notify pgrst, 'reload schema';
