@@ -79,9 +79,11 @@ describe('Device / Phone Notification service', () => {
     );
   });
 
-  it('formats compact anti-stacking chat/trip notifications and restricts OS tray alerts to background', () => {
+  it('formats compact anti-stacking chat/trip notifications and fires OS alerts when hidden or unfocused', () => {
     expect(shouldFireOsNotification(false)).toBe(false);
-    expect(shouldFireOsNotification(true)).toBe(true);
+    expect(shouldFireOsNotification(false, true)).toBe(false);
+    expect(shouldFireOsNotification(false, false)).toBe(true);
+    expect(shouldFireOsNotification(true, true)).toBe(true);
 
     const stickerAlert = formatChatNotificationCopy({
       tripTitle: 'Solo – Jogja',

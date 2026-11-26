@@ -68,11 +68,15 @@ export function formatTripUpdateNotificationCopy(params: {
 }
 
 /**
- * Only dispatch OS tray notifications when the app is backgrounded/hidden
- * so active foreground sessions rely solely on the sleek in-app heads-up pill.
+ * Fire OS tray notifications when the app is backgrounded OR the browser window
+ * is currently unfocused (e.g. covered window / desktop workspace / split-screen),
+ * while actively focused sessions use the sleek in-app heads-up banner/toast.
  */
-export function shouldFireOsNotification(isDocumentHidden: boolean): boolean {
-  return Boolean(isDocumentHidden);
+export function shouldFireOsNotification(
+  isDocumentHidden: boolean,
+  hasDocumentFocus = true,
+): boolean {
+  return Boolean(isDocumentHidden || !hasDocumentFocus);
 }
 
 export function isDeviceNotificationSupported(): boolean {
@@ -151,10 +155,23 @@ export async function tryShowDeviceNotification(
 
   try {
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      const reg = await Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 900)),
-      ]);
+      const sw = navigator.serviceWorker;
+      let reg: ServiceWorkerRegistration | null | undefined = null;
+      if (typeof sw.getRegistration === 'function') {
+        reg =
+          (await sw.getRegistration(resolveAssetUrl('')).catch(() => undefined)) ??
+          (await sw.getRegistration().catch(() => undefined));
+      }
+      if (!reg && sw.ready) {
+        let timerId: ReturnType<typeof globalThis.setTimeout> | undefined;
+        reg = await Promise.race([
+          sw.ready.catch(() => null),
+          new Promise<null>((resolve) => {
+            timerId = globalThis.setTimeout(() => resolve(null), 2500);
+          }),
+        ]);
+        if (timerId !== undefined) globalThis.clearTimeout(timerId);
+      }
       if (reg && typeof reg.showNotification === 'function') {
         await reg.showNotification(payload.title, {
           body: payload.body,
@@ -178,9 +195,13 @@ export async function tryShowDeviceNotification(
     });
     return { ok: true };
   } catch (err) {
+    const rawMsg = err instanceof Error ? err.message : '';
+    const friendlyMsg = /illegal constructor/i.test(rawMsg)
+      ? 'Install PWA or reload once so the notification Service Worker stays active.'
+      : rawMsg || 'Browser declined showing notification.';
     return {
       ok: false,
-      error: err instanceof Error ? err.message : 'Browser declined showing notification.',
+      error: friendlyMsg,
     };
   }
 }

@@ -1661,3 +1661,43 @@
     transition: none;
   }
 }
+
+.crew-chat-notif-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 12px;
+  background: rgba(227, 237, 230, 0.88);
+  border-bottom: 1px solid rgba(74, 116, 104, 0.14);
+  flex-shrink: 0;
+}
+
+.crew-chat-notif-banner__text {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--brand-forest, #2d4a42);
+}
+
+.crew-chat-notif-banner__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.crew-chat-notif-banner__btn {
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: none;
+  background: var(--brand-matcha, #4a7468);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}

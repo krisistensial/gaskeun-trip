@@ -262,6 +262,7 @@ export function CrewChatScreen({
   // Device notification shortcut state in Chat header
   const [notifPerm, setNotifPerm] = useState(() => getDeviceNotificationPermission());
   const [notifOn, setNotifOn] = useState(() => getDeviceNotificationsEnabled());
+  const [notifPromptDismissed, setNotifPromptDismissed] = useState(false);
 
   const [replyTarget, setReplyTarget] = useState<ChatReplyPreview | null>(null);
 
@@ -1363,6 +1364,46 @@ export function CrewChatScreen({
             >
               <X size={14} strokeWidth={2.2} />
             </button>
+          </div>
+        )}
+
+        {notifPerm === 'default' && !notifPromptDismissed && !selectMode && (
+          <div className="crew-chat-notif-banner">
+            <span className="crew-chat-notif-banner__text">
+              <Bell size={14} strokeWidth={2.1} color="var(--brand-matcha)" />
+              <span>Enable phone alerts for new crew messages</span>
+            </span>
+            <div className="crew-chat-notif-banner__actions">
+              <button
+                type="button"
+                className="crew-chat-notif-banner__btn tactile"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  void requestDeviceNotificationPermission().then((res) => {
+                    setNotifPerm(res.permission);
+                    setNotifOn(res.granted);
+                    onNotify?.(
+                      res.granted
+                        ? res.shown
+                          ? 'Phone notifications enabled!'
+                          : res.error || 'Permission granted — check device settings'
+                        : res.error || 'Notification permission declined',
+                      res.granted ? 'success' : 'info',
+                    );
+                  });
+                }}
+              >
+                Enable
+              </button>
+              <button
+                type="button"
+                className="crew-chat-reply-banner__close"
+                aria-label="Dismiss alert prompt"
+                onClick={() => setNotifPromptDismissed(true)}
+              >
+                <X size={13} strokeWidth={2.2} />
+              </button>
+            </div>
           </div>
         )}
 

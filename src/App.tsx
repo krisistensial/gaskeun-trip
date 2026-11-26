@@ -252,6 +252,14 @@ export default function App() {
   const radarChannelRef = useRef<CrewRadarController | null>(null);
   const useSharedTripChatFallbackRef = useRef(false);
   const lastAutoPullMsRef = useRef<number>(0);
+  const chatMessagesRef = useRef<ChatMessage[]>(chatMessages);
+  chatMessagesRef.current = chatMessages;
+  const chatLastReadIsoRef = useRef<string>(chatLastReadIso);
+  chatLastReadIsoRef.current = chatLastReadIso;
+  const activeMemberIdRef = useRef<string | null>(null);
+  const notifyIncomingChatRef = useRef<
+    (incoming: ChatMessage, currentCode: string, fromFetch?: boolean) => void
+  >(() => {});
   const lastTripNotifMsRef = useRef<number>(0);
   const shellRef = useRef<HTMLElement | null>(null);
 
@@ -489,28 +497,48 @@ export default function App() {
         if (
           nextTopLog &&
           nextTopLog.id !== prevTopLogId &&
-          nextTopLog.actorId !== activeMemberId &&
-          typeof document !== 'undefined' &&
-          shouldFireOsNotification(document.visibilityState === 'hidden') &&
-          Date.now() - lastTripNotifMsRef.current >= 15_000
+          nextTopLog.actorId !== (activeMemberIdRef.current ?? 'guest') &&
+          typeof document !== 'undefined'
         ) {
-          lastTripNotifMsRef.current = Date.now();
-          const copy = formatTripUpdateNotificationCopy({
-            tripTitle: remoteTrip.title,
-            actorName: nextTopLog.actorName,
-            action: nextTopLog.action,
-          });
-          void showDeviceNotification({
-            title: copy.title,
-            body: copy.body,
-            tag: `trip-${remoteTrip.code}`,
-          });
+          const isHidden = document.visibilityState === 'hidden';
+          const hasFocus =
+            typeof document.hasFocus === 'function' ? document.hasFocus() : true;
+          if (
+            shouldFireOsNotification(isHidden, hasFocus) &&
+            Date.now() - lastTripNotifMsRef.current >= 15_000
+          ) {
+            lastTripNotifMsRef.current = Date.now();
+            const copy = formatTripUpdateNotificationCopy({
+              tripTitle: remoteTrip.title,
+              actorName: nextTopLog.actorName,
+              action: nextTopLog.action,
+            });
+            void showDeviceNotification({
+              title: copy.title,
+              body: copy.body,
+              tag: `trip-${remoteTrip.code}`,
+            });
+          } else if (
+            !shouldFireOsNotification(isHidden, hasFocus) &&
+            Date.now() - lastTripNotifMsRef.current >= 8_000
+          ) {
+            lastTripNotifMsRef.current = Date.now();
+            showToast(`${nextTopLog.actorName}: ${nextTopLog.action}`, 'info');
+          }
+        }
+        if (useSharedTripChatFallbackRef.current && remoteTrip.chatMessages?.length) {
+          const knownIds = new Set(chatMessagesRef.current.map((m) => m.id));
+          const unseenFallback = remoteTrip.chatMessages.filter((m) => !knownIds.has(m.id));
+          const newestFallback = unseenFallback[unseenFallback.length - 1];
+          if (newestFallback) {
+            notifyIncomingChatRef.current(newestFallback, remoteTrip.code, true);
+          }
         }
       });
     });
 
     return unsubscribe;
-  }, [route, activeTrip.code]);
+  }, [route, activeTrip.code, showToast]);
 
   // Auto-pull from Supabase when tab becomes visible or window regains focus
   useEffect(() => {
@@ -523,6 +551,21 @@ export default function App() {
       lastAutoPullMsRef.current = now;
       const current = activeTripRef.current;
       void syncActiveTripFromCloud(current.code, current, { force: false, notify: false });
+      if (route === 'hub' && current.code && !useSharedTripChatFallbackRef.current) {
+        const pullCode = current.code;
+        void fetchRemoteChatMessages(pullCode).then((res) => {
+          if (!res.ok || activeTripRef.current.code !== pullCode) return;
+          setChatMessages((prev) => {
+            const prevIds = new Set(prev.map((m) => m.id));
+            const merged = mergeChatMessages(prev, res.messages);
+            saveLocalChatCache(pullCode, merged);
+            const freshIncoming = res.messages.filter((m) => !prevIds.has(m.id));
+            const newest = freshIncoming[freshIncoming.length - 1];
+            if (newest) notifyIncomingChatRef.current(newest, pullCode, true);
+            return merged;
+          });
+        });
+      }
     };
 
     const handleVisibility = () => {
@@ -636,6 +679,7 @@ export default function App() {
   const effectiveCoverUrl = sharedCoverUrl || defaultCoverPath;
 
   const activeMemberId = localData?.activeMemberId ?? null;
+  activeMemberIdRef.current = activeMemberId;
   const activeMember = useMemo(
     () =>
       activeMemberId && activeMemberId !== 'guest'
@@ -704,25 +748,45 @@ export default function App() {
   }, [activeTrip.code, activeTrip.chatMessages, activeTrip.chatReadReceipts, activeMemberId]);
 
   const notifyIncomingChat = useCallback(
-    (incoming: ChatMessage, currentCode: string) => {
-      const msgAgeMs = Date.now() - Date.parse(incoming.createdAt);
+    (incoming: ChatMessage, currentCode: string, fromFetch = false) => {
+      const createdMs = Date.parse(incoming.createdAt);
+      const msgAgeMs = Date.now() - createdMs;
+      const lastReadMs = chatLastReadIsoRef.current
+        ? Date.parse(chatLastReadIsoRef.current)
+        : 0;
+      const maxAgeMs =
+        fromFetch && Number.isFinite(lastReadMs) && lastReadMs > 0
+          ? 86_400_000
+          : fromFetch
+            ? 900_000
+            : 300_000;
       const isHidden =
         typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      const hasFocus =
+        typeof document !== 'undefined' && typeof document.hasFocus === 'function'
+          ? document.hasFocus()
+          : true;
+      const currentMemberId = activeMemberIdRef.current;
       if (
         incoming.deleted ||
-        incoming.senderId === (activeMemberId ?? 'guest') ||
+        incoming.senderId === (currentMemberId ?? 'guest') ||
+        !Number.isFinite(createdMs) ||
         !Number.isFinite(msgAgeMs) ||
-        msgAgeMs > 180_000
+        msgAgeMs > maxAgeMs ||
+        (fromFetch &&
+          Number.isFinite(lastReadMs) &&
+          lastReadMs > 0 &&
+          createdMs <= lastReadMs)
       ) {
         return;
       }
 
       const tripSnapshot = activeTripRef.current;
       const isMentioned = Boolean(
-        activeMemberId &&
-          activeMemberId !== 'guest' &&
+        currentMemberId &&
+          currentMemberId !== 'guest' &&
           incoming.kind === 'text' &&
-          extractMentionedMemberIds(incoming.text, tripSnapshot.members).includes(activeMemberId),
+          extractMentionedMemberIds(incoming.text, tripSnapshot.members).includes(currentMemberId),
       );
       const copy = formatChatNotificationCopy({
         tripTitle: tripSnapshot.title || currentCode,
@@ -733,8 +797,8 @@ export default function App() {
         isMentioned,
       });
 
-      // Only alert OS tray when backgrounded/hidden — foreground uses the single in-app banner
-      if (shouldFireOsNotification(isHidden)) {
+      // Alert OS tray when backgrounded OR unfocused — focused foreground uses the single in-app banner
+      if (shouldFireOsNotification(isHidden, hasFocus)) {
         void showDeviceNotification({
           title: copy.title,
           body: copy.body,
@@ -759,8 +823,9 @@ export default function App() {
         });
       }
     },
-    [activeMemberId],
+    [],
   );
+  notifyIncomingChatRef.current = notifyIncomingChat;
 
   useEffect(() => {
     if (!chatHeadsUp) return;
@@ -787,7 +852,7 @@ export default function App() {
           saveLocalChatCache(code, merged);
           const freshIncoming = res.messages.filter((m) => !prevIds.has(m.id));
           const newest = freshIncoming[freshIncoming.length - 1];
-          if (newest) notifyIncomingChat(newest, code);
+          if (newest) notifyIncomingChat(newest, code, true);
           return merged;
         });
       } else if (res.tableMissing) {
@@ -845,10 +910,53 @@ export default function App() {
         );
       },
       onPoll: (incomingPoll) => {
+        const alreadyKnown = (activeTripRef.current.chatPolls ?? []).some(
+          (p) => p.id === incomingPoll.id,
+        );
         setActiveTrip((prev) => ({
           ...prev,
           chatPolls: mergeChatPolls(prev.chatPolls ?? [], [incomingPoll]),
         }));
+        const currentMemberId = activeMemberIdRef.current ?? 'guest';
+        const pollAgeMs = Date.now() - Date.parse(incomingPoll.createdAt);
+        if (
+          !alreadyKnown &&
+          !incomingPoll.closed &&
+          incomingPoll.createdBy !== currentMemberId &&
+          Number.isFinite(pollAgeMs) &&
+          pollAgeMs <= 300_000
+        ) {
+          const tripSnapshot = activeTripRef.current;
+          const isHidden =
+            typeof document !== 'undefined' && document.visibilityState === 'hidden';
+          const hasFocus =
+            typeof document !== 'undefined' && typeof document.hasFocus === 'function'
+              ? document.hasFocus()
+              : true;
+          if (shouldFireOsNotification(isHidden, hasFocus)) {
+            void showDeviceNotification({
+              title: `${tripSnapshot.title || code} • ${incomingPoll.createdByName}`,
+              body: `Started a poll: ${incomingPoll.question}`,
+              tag: `chat-${code}`,
+            });
+          }
+          if (!chatOpenRef.current) {
+            const creator = tripSnapshot.members.find(
+              (m) => m.id === incomingPoll.createdBy,
+            );
+            triggerFeedback('success');
+            setChatHeadsUp({
+              id: incomingPoll.id,
+              senderName: incomingPoll.createdByName,
+              body: `Started a poll: ${incomingPoll.question}`,
+              initials:
+                creator?.initials ?? incomingPoll.createdByName.slice(0, 2).toUpperCase(),
+              avatarDataUrl: creator?.avatarDataUrl,
+              avatarBg: creator?.avatarBg ?? '#E3EDE6',
+              avatarColor: creator?.avatarColor ?? '#2D4A42',
+            });
+          }
+        }
       },
       onPin: ({ messageId }) => {
         setActiveTrip((prev) => ({
