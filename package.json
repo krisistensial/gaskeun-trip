@@ -16,7 +16,6 @@
     "@supabase/supabase-js": "^2.49.4",
     "idb": "^8.0.2",
     "leaflet": "^1.9.4",
-    "liquid-glass-react": "^1.1.1",
     "lucide-react": "^0.487.0",
     "motion": "^14.14.0",
     "react": "^19.0.0",
