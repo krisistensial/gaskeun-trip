@@ -478,7 +478,7 @@
   min-height: 0;
   overflow-y: auto;
   isolation: isolate;
-  padding: 12px 0 calc(var(--dock-clearance) + 24px);
+  padding: 12px 0 calc(var(--dock-clearance) + 72px);
   scrollbar-width: none;
 }
 
