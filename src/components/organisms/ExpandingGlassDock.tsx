@@ -2,6 +2,7 @@ import { Calendar, Home, Images, ListChecks, Wallet, type LucideIcon } from 'luc
 import { useHasActiveOverlay } from '../../context/OverlayContext';
 import { triggerFeedback } from '../../services/feedback';
 import type { DockTabId } from '../../types/trip';
+import { LiquidGlassSurface } from '../atoms/LiquidGlassSurface';
 import './ExpandingGlassDock.css';
 
 interface DockItemConfig {
@@ -34,28 +35,39 @@ export function ExpandingGlassDock({
 
   return (
     <div className={`gk-dock-wrap ${isHidden ? 'gk-dock-wrap--hidden' : ''}`} aria-hidden={isHidden}>
-      <nav className="gk-dock" aria-label="Main navigation">
-        {DOCK_ITEMS.map(({ id, label, Icon }) => {
-          const isActive = activeTab === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              tabIndex={isHidden ? -1 : 0}
-              className={`gk-dock__item ${isActive ? 'gk-dock__item--active' : ''}`}
-              onClick={() => {
-                if (!isActive) triggerFeedback('tap');
-                onChange(id);
-              }}
-              aria-current={isActive ? 'page' : undefined}
-              aria-label={label}
-            >
-              <Icon size={20} strokeWidth={1.8} />
-              <span className="gk-dock__label">{label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      <LiquidGlassSurface
+        cornerRadius={30}
+        displacementScale={46}
+        blurAmount={0.08}
+        saturation={165}
+        aberrationIntensity={1.4}
+        elasticity={0.1}
+        className="gk-dock-lgr-host"
+        fallbackClassName="gk-dock-fallback"
+      >
+        <nav className="gk-dock" aria-label="Main navigation">
+          {DOCK_ITEMS.map(({ id, label, Icon }) => {
+            const isActive = activeTab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                tabIndex={isHidden ? -1 : 0}
+                className={`gk-dock__item ${isActive ? 'gk-dock__item--active' : ''}`}
+                onClick={() => {
+                  if (!isActive) triggerFeedback('tap');
+                  onChange(id);
+                }}
+                aria-current={isActive ? 'page' : undefined}
+                aria-label={label}
+              >
+                <Icon size={20} strokeWidth={1.8} />
+                <span className="gk-dock__label">{label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </LiquidGlassSurface>
     </div>
   );
 }

@@ -1415,6 +1415,7 @@ export function PlanScreen({
         <CornerOrb
           kind="add"
           size="lg"
+          portal
           ariaLabel="Add itinerary stop"
           className="floating-glass-fab"
           onClick={handleAddNewStop}

@@ -8,5 +8,10 @@ export { EmptyState, type EmptyStateProps } from './EmptyState';
 export { GlassCard, type GlassCardProps, type GlassPadding, type GlassVariant } from './GlassCard';
 export { Input, type InputProps, type InputStatus } from './Input';
 export { LiquidBottomSheet, type LiquidBottomSheetProps } from './LiquidBottomSheet';
+export {
+  LiquidGlassSurface,
+  canUseSvgLiquidGlass,
+  type LiquidGlassSurfaceProps,
+} from './LiquidGlassSurface';
 export { Toast, type ToastProps, type ToastTone } from './Toast';
 export { TrailDot, type TrailDotProps, type TrailDotStatus } from './TrailDot';

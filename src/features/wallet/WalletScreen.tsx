@@ -1154,6 +1154,7 @@ export function WalletScreen({
         <CornerOrb
           kind="add"
           size="lg"
+          portal
           ariaLabel="Add transaction"
           className="floating-glass-fab"
           onClick={handleOpenFab}

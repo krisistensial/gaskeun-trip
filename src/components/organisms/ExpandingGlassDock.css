@@ -9,6 +9,7 @@
   transform: translateX(-50%);
   z-index: var(--z-dock);
   width: min(calc(100% - 24px), 344px);
+  height: var(--dock-height);
   display: flex;
   justify-content: center;
   pointer-events: none;
@@ -23,25 +24,33 @@
   pointer-events: none;
 }
 
-.gk-dock-wrap--hidden .gk-dock {
-  pointer-events: none;
+.gk-dock-wrap--hidden,
+.gk-dock-wrap--hidden * {
+  pointer-events: none !important;
+}
+
+.gk-dock-fallback {
+  pointer-events: auto;
+  width: 100%;
+  height: 100%;
+  border-radius: 30px;
+  background: var(--glass-elevated-bg);
+  border: 1.5px solid var(--glass-elevated-border);
+  backdrop-filter: var(--glass-elevated-blur);
+  -webkit-backdrop-filter: var(--glass-elevated-blur);
+  box-shadow: var(--glass-elevated-shadow);
 }
 
 .gk-dock {
   pointer-events: auto;
   width: 100%;
-  height: var(--dock-height);
+  height: 100%;
   padding: 6px 10px;
   border-radius: 30px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  background: var(--glass-elevated-bg);
-  border: 1.5px solid var(--glass-elevated-border);
-  backdrop-filter: var(--glass-elevated-blur);
-  -webkit-backdrop-filter: var(--glass-elevated-blur);
-  box-shadow: var(--glass-elevated-shadow);
 }
 
 .gk-dock__item {

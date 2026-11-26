@@ -877,13 +877,7 @@
   color: var(--brand-forest);
 }
 
-/* --- Floating Glass (+) Button above Dock --- */
-.floating-glass-fab {
-  position: fixed;
-  right: max(16px, calc(50% - 198px));
-  bottom: calc(var(--dock-height) + var(--safe-bottom) + 26px);
-  z-index: var(--z-fab);
-}
+/* FAB positioning is centralized globally in src/components/atoms/atoms.css (.floating-glass-fab) */
 
 /* --- 04_Plan_Detail_Edit --- */
 .detail-root {

@@ -1,0 +1,43 @@
+/* ==========================================================================
+   Hybrid Liquid Glass Surface (rdev/liquid-glass-react Chromium Host)
+   Adapts SVG displacement refraction cleanly to GASKEUN!'s Light Crystal UI
+   ========================================================================== */
+
+.gk-lgr-host {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+}
+
+.gk-lgr-host .bg-black {
+  display: none;
+}
+
+.gk-lgr-node {
+  width: 100%;
+  height: 100%;
+}
+
+.gk-lgr-node .glass {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  box-shadow: var(--glass-elevated-shadow) !important;
+}
+
+.gk-lgr-node .glass > div:last-child {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit !important;
+  color: inherit !important;
+  text-shadow: none !important;
+}

@@ -466,6 +466,38 @@
   color: var(--brand-matcha);
 }
 
+/* Floating Glass (+) FAB — always portaled to document.body at bottom-right above Dock */
+.floating-glass-fab {
+  position: fixed;
+  right: max(16px, calc(50% - 198px));
+  bottom: calc(var(--dock-height) + var(--safe-bottom) + 26px);
+  z-index: var(--z-fab);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+}
+
+.gk-orb-fab-btn {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-matcha);
+  background: transparent;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.gk-orb-fab-btn:active {
+  transform: scale(0.92);
+}
+
+.gk-orb-lgr-host .glass {
+  background: rgba(255, 255, 255, 0.48);
+  border: 1.5px solid rgba(255, 255, 255, 0.94);
+}
+
 /* --- TrailDot --- */
 .gk-trail-dot {
   position: relative;
