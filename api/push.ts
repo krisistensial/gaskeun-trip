@@ -1,5 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
-import webpush from 'web-push';
+import * as webpushModule from 'web-push';
+
+const webpush =
+  (webpushModule as unknown as { default?: typeof webpushModule }).default ??
+  webpushModule;
 
 interface ApiRequest {
   method?: string;
@@ -67,26 +71,31 @@ function getPushEnv() {
 }
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
-  setCors(res);
+  try {
+    setCors(res);
 
-  if (req.method === 'OPTIONS') {
-    res.status(204).end();
-    return;
-  }
+    if (req.method === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
 
-  const env = getPushEnv();
-  const isConfigured = Boolean(
-    env.publicKey && env.privateKey && env.supabaseUrl && env.supabaseKey,
-  );
+    const env = getPushEnv();
+    const missing: string[] = [];
+    if (!env.publicKey) missing.push('VAPID_PUBLIC_KEY');
+    if (!env.privateKey) missing.push('VAPID_PRIVATE_KEY');
+    if (!env.supabaseUrl) missing.push('VITE_SUPABASE_URL');
+    if (!env.supabaseKey) missing.push('VITE_SUPABASE_ANON_KEY');
+    const isConfigured = missing.length === 0;
 
-  if (req.method === 'GET') {
-    res.status(200).json({
-      ok: true,
-      configured: isConfigured,
-      publicKey: env.publicKey || null,
-    });
-    return;
-  }
+    if (req.method === 'GET') {
+      res.status(200).json({
+        ok: true,
+        configured: isConfigured,
+        publicKey: env.publicKey || null,
+        ...(missing.length > 0 ? { missing } : {}),
+      });
+      return;
+    }
 
   if (req.method !== 'POST') {
     res.status(405).json({ ok: false, error: 'Method not allowed' });
@@ -209,4 +218,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     totalTargets: rows.length,
     expired: expiredEndpoints.length,
   });
+  } catch (err: unknown) {
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Unexpected push server error',
+    });
+  }
 }
