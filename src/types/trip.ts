@@ -284,6 +284,20 @@ export interface OnlinePresenceUser {
   joinedAt: string;
 }
 
+export type ConvoyStatusKind = 'otw' | 'meetup' | 'fuel' | 'break' | 'arrived';
+
+export interface CrewLivePin {
+  memberId: string;
+  memberName: string;
+  lat?: number;
+  lng?: number;
+  accuracyMeters?: number;
+  isLiveStreaming?: boolean;
+  convoyStatus?: ConvoyStatusKind;
+  statusNote?: string;
+  updatedAt: string; // ISO
+}
+
 export type ChatMessageKind = 'text' | 'sticker';
 
 export interface ChatReplyPreview {
@@ -384,6 +398,8 @@ export interface SharedTrip {
   pinnedChatMessageId?: string;
   /** Per-member read receipts (`Seen by`) synced via Realtime Broadcast + Layer 1 */
   chatReadReceipts?: Record<string, ChatReadReceipt>;
+  /** Foreground Live GPS & 1-Tap Convoy Check-In Pins keyed by memberId */
+  crewLivePins?: Record<string, CrewLivePin>;
   updatedAt: string;
 }
 

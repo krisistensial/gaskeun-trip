@@ -12,6 +12,7 @@ import {
   Crown,
   Images,
   LogOut,
+  MapPin,
   MessageCircle,
   Pencil,
   Plus,
@@ -41,6 +42,12 @@ import {
   type CarBenchRow,
   type CarFrontSlot,
 } from '../../services/crewSwap';
+import {
+  CONVOY_STATUS_META,
+  formatPinRelativeAge,
+  getConvoyStatusInfo,
+  isCrewPinLive,
+} from '../../services/crewRadar';
 import { calculateLedger, formatCompactIDR } from '../../services/ledger';
 import { getVisibleOtherOnlineMembers } from '../../services/activityLog';
 import { triggerFeedback } from '../../services/feedback';
@@ -49,6 +56,8 @@ import type { CroppedImageResult } from '../../services/photoCrop';
 import { resolvePlanLiveState } from '../../services/planSchedule';
 import type {
   AlbumPhoto,
+  ConvoyStatusKind,
+  CrewLivePin,
   DockTabId,
   OnlinePresenceUser,
   RouteTarget,
@@ -100,11 +109,14 @@ export interface HomeScreenProps {
   activeMember?: TripMember;
   activeMemberName: string;
   onlineMembers?: OnlinePresenceUser[];
+  radarPins?: Record<string, CrewLivePin>;
   unreadChatCount?: number;
   canEdit: boolean;
   viewOnlyMode?: boolean;
   onOpenMenu: () => void;
   onOpenChat?: () => void;
+  onOpenRadar?: () => void;
+  onSetConvoyStatus?: (status: ConvoyStatusKind) => void;
   onOpenTripSettings: () => void;
   onSwitchTrip: () => void;
   onNavigateTab: (tab: DockTabId) => void;
@@ -127,11 +139,14 @@ export function HomeScreen({
   activeMember,
   activeMemberName,
   onlineMembers = [],
+  radarPins = {},
   unreadChatCount = 0,
   canEdit,
   viewOnlyMode = false,
   onOpenMenu,
   onOpenChat,
+  onOpenRadar,
+  onSetConvoyStatus,
   onOpenTripSettings,
   onSwitchTrip,
   onNavigateTab,
@@ -1115,21 +1130,36 @@ export function HomeScreen({
               {trip.members.length} riders · {trip.stays.length} stays
             </span>
           </div>
-          {canEdit && (
-            <Button
-              variant={editingCrew ? 'matcha' : 'glass'}
-              size="sm"
-              leftIcon={<Pencil size={13} strokeWidth={2} />}
-              onClick={() =>
-                requireEdit(() => {
-                  triggerFeedback('toggle');
-                  setEditingCrew((prev) => !prev);
-                })
-              }
-            >
-              {editingCrew ? 'Done' : 'Edit'}
-            </Button>
-          )}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {onOpenRadar && (
+              <Button
+                variant="glass"
+                size="sm"
+                leftIcon={<MapPin size={13} strokeWidth={2} />}
+                onClick={() => {
+                  triggerFeedback('tap');
+                  onOpenRadar();
+                }}
+              >
+                Radar
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                variant={editingCrew ? 'matcha' : 'glass'}
+                size="sm"
+                leftIcon={<Pencil size={13} strokeWidth={2} />}
+                onClick={() =>
+                  requireEdit(() => {
+                    triggerFeedback('toggle');
+                    setEditingCrew((prev) => !prev);
+                  })
+                }
+              >
+                {editingCrew ? 'Done' : 'Edit'}
+              </Button>
+            )}
+          </div>
         </div>
 
         {editingCrew && (
@@ -1521,16 +1551,47 @@ export function HomeScreen({
         </button>
       )}
 
-      {/* Live Online Crew Sheet (opened from Home Hero Presence Avatar Stack) */}
+      {/* Live Online Crew & Convoy Status Sheet */}
       <LiquidBottomSheet
         open={onlineSheetOpen}
         title="Online Now"
         subtitle={`${onlineMembers.length} active in ${trip.title}`}
         onClose={() => setOnlineSheetOpen(false)}
       >
+        {onSetConvoyStatus && activeMemberId && activeMemberId !== 'guest' && (
+          <div style={{ marginBottom: 12 }}>
+            <div className="gk-field__label" style={{ marginBottom: 6 }}>
+              MY CONVOY STATUS
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {CONVOY_STATUS_META.map((st) => {
+                const picked = radarPins[activeMemberId]?.convoyStatus === st.id;
+                return (
+                  <button
+                    key={st.id}
+                    type="button"
+                    aria-pressed={picked}
+                    className={`mode-chip tactile ${picked ? 'mode-chip--active' : ''}`}
+                    onClick={() => {
+                      triggerFeedback('check');
+                      onSetConvoyStatus(st.id);
+                    }}
+                  >
+                    {st.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="gk-menu-list">
           {onlineMembers.map((u) => {
             const isSelf = activeMemberId === u.memberId;
+            const pin = radarPins[u.memberId];
+            const statusInfo = getConvoyStatusInfo(pin?.convoyStatus);
+            const hasPin = typeof pin?.lat === 'number' && typeof pin?.lng === 'number';
+            const liveNow = isCrewPinLive(pin);
             return (
               <div key={u.memberId} className="gk-menu-item" style={{ cursor: 'default' }}>
                 <span className="gk-menu-item__left">
@@ -1551,14 +1612,39 @@ export function HomeScreen({
                       {u.name}
                       {isSelf ? ' (You)' : ''}
                     </div>
-                    <div className="gk-menu-item__sub">Active right now</div>
+                    <div className="gk-menu-item__sub">
+                      {hasPin
+                        ? liveNow
+                          ? 'Sharing Live GPS'
+                          : `Pin ${formatPinRelativeAge(pin.updatedAt)}`
+                        : 'Active right now'}
+                    </div>
                   </span>
                 </span>
-                <Badge tone="mint">Online</Badge>
+                <Badge tone={statusInfo ? statusInfo.tone : 'mint'}>
+                  {statusInfo ? statusInfo.label : 'Online'}
+                </Badge>
               </div>
             );
           })}
         </div>
+
+        {onOpenRadar && (
+          <div style={{ marginTop: 12 }}>
+            <Button
+              variant="matcha"
+              size="md"
+              fullWidth
+              leftIcon={<MapPin size={15} strokeWidth={2} />}
+              onClick={() => {
+                setOnlineSheetOpen(false);
+                onOpenRadar();
+              }}
+            >
+              Open Live Crew Radar
+            </Button>
+          </div>
+        )}
       </LiquidBottomSheet>
 
       {/* Trip Title Quick Switcher / Edit Details Sheet */}

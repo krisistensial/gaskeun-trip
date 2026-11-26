@@ -1,11 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { ArrowUpRight, MapPin, Navigation, WifiOff } from 'lucide-react';
-import { Badge, Button, CornerOrb, GlassCard } from '../../components/atoms';
+import {
+  ArrowUpRight,
+  LocateFixed,
+  MapPin,
+  Navigation,
+  Radio,
+  Trash2,
+  WifiOff,
+} from 'lucide-react';
+import { Avatar, Badge, Button, CornerOrb, GlassCard } from '../../components/atoms';
+import {
+  CONVOY_STATUS_META,
+  formatPinRelativeAge,
+  formatRadarDistance,
+  getConvoyStatusInfo,
+  haversineDistanceMeters,
+  isCrewPinLive,
+} from '../../services/crewRadar';
+import { triggerFeedback } from '../../services/feedback';
 import { getGoogleMapsRouteUrl, hasGoogleMapsRoute } from '../../services/planSchedule';
 import { normalizeExternalUrl } from '../../services/planUtils';
-import type { PlanItem, RouteTarget } from '../../types/trip';
+import type {
+  ConvoyStatusKind,
+  CrewLivePin,
+  PlanItem,
+  RouteTarget,
+  SharedTrip,
+  TripMember,
+} from '../../types/trip';
 import './plan.css';
 
 // Prevent Leaflet from ever fetching default CDN marker PNGs
@@ -15,6 +39,15 @@ L.Icon.Default.mergeOptions({
   iconRetinaUrl: '',
   shadowUrl: '',
 });
+
+function escapeHtml(raw: string): string {
+  return raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 interface TrailStopPoint {
   id: string;
@@ -29,18 +62,52 @@ interface TrailStopPoint {
 
 export interface RouteMapViewProps {
   target: RouteTarget;
+  trip?: SharedTrip;
+  activeMemberId?: string | null;
+  activeMemberName?: string;
+  livePins?: Record<string, CrewLivePin>;
+  onUpsertCrewPin?: (
+    pin: CrewLivePin,
+    options?: { syncLayer1?: boolean; toastMsg?: string },
+  ) => void;
+  onClearOwnPin?: () => void;
+  onNotify?: (msg: string, tone?: 'success' | 'info' | 'error') => void;
   onBack: () => void;
   onSelectPlanItem?: (item: PlanItem) => void;
 }
 
-export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewProps) {
+export function RouteMapView({
+  target,
+  trip,
+  activeMemberId = null,
+  activeMemberName = 'Crew',
+  livePins = {},
+  onUpsertCrewPin,
+  onClearOwnPin,
+  onNotify,
+  onBack,
+  onSelectPlanItem,
+}: RouteMapViewProps) {
   const mapElRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const crewLayerRef = useRef<L.LayerGroup | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const lastBroadcastMsRef = useRef<number>(0);
+  const lastPersistMsRef = useRef<number>(0);
+  const hasAutoFitCrewRef = useRef<boolean>(false);
 
   const [isOnline, setIsOnline] = useState<boolean>(() =>
     typeof navigator === 'undefined' ? true : navigator.onLine,
   );
   const [tileFailed, setTileFailed] = useState<boolean>(false);
+  const [sharingLive, setSharingLive] = useState<boolean>(false);
+  const [checkingIn, setCheckingIn] = useState<boolean>(false);
+  const [nowTickMs, setNowTickMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTickMs(Date.now()), 15_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const onOnline = () => {
@@ -55,6 +122,206 @@ export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewP
       window.removeEventListener('offline', onOffline);
     };
   }, []);
+
+  const memberById = useMemo(() => {
+    const map = new Map<string, TripMember>();
+    for (const m of trip?.members ?? []) {
+      map.set(m.id, m);
+    }
+    return map;
+  }, [trip?.members]);
+
+  const ownPin = activeMemberId ? livePins[activeMemberId] : undefined;
+  const ownPinRef = useRef<CrewLivePin | undefined>(ownPin);
+  ownPinRef.current = ownPin;
+
+  const activePinEntries = useMemo(() => {
+    return Object.values(livePins)
+      .filter((p) => {
+        const hasCoords =
+          typeof p.lat === 'number' &&
+          Number.isFinite(p.lat) &&
+          typeof p.lng === 'number' &&
+          Number.isFinite(p.lng);
+        return hasCoords || Boolean(p.convoyStatus);
+      })
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }, [livePins]);
+
+  const mappableCrewPins = useMemo(
+    () =>
+      activePinEntries.filter(
+        (p): p is CrewLivePin & { lat: number; lng: number } =>
+          typeof p.lat === 'number' &&
+          Number.isFinite(p.lat) &&
+          typeof p.lng === 'number' &&
+          Number.isFinite(p.lng),
+      ),
+    [activePinEntries],
+  );
+
+  // Cleanly stop geolocation watch on unmount or toggle off
+  const stopLiveGps = (markOffline = true) => {
+    if (watchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setSharingLive(false);
+    const curr = ownPinRef.current;
+    if (markOffline && activeMemberId && activeMemberId !== 'guest' && curr?.isLiveStreaming) {
+      onUpsertCrewPin?.(
+        {
+          ...curr,
+          memberId: activeMemberId,
+          memberName: activeMemberName,
+          isLiveStreaming: false,
+          updatedAt: new Date().toISOString(),
+        },
+        { syncLayer1: true },
+      );
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleToggleLiveGps = () => {
+    if (!activeMemberId || activeMemberId === 'guest') {
+      onNotify?.('Sign into a crew profile to share live GPS', 'info');
+      return;
+    }
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      onNotify?.('GPS location is not supported on this browser', 'error');
+      return;
+    }
+    if (sharingLive) {
+      triggerFeedback('tap');
+      stopLiveGps(true);
+      onNotify?.('Live GPS paused — last pin kept on map', 'info');
+      return;
+    }
+
+    triggerFeedback('success');
+    setSharingLive(true);
+    lastBroadcastMsRef.current = 0;
+    lastPersistMsRef.current = 0;
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const now = Date.now();
+        if (now - lastBroadcastMsRef.current < 3800) return;
+        lastBroadcastMsRef.current = now;
+
+        const shouldPersist = now - lastPersistMsRef.current >= 25_000;
+        if (shouldPersist) lastPersistMsRef.current = now;
+
+        const curr = ownPinRef.current;
+        onUpsertCrewPin?.(
+          {
+            memberId: activeMemberId,
+            memberName: activeMemberName,
+            lat: Number(pos.coords.latitude.toFixed(6)),
+            lng: Number(pos.coords.longitude.toFixed(6)),
+            accuracyMeters: Math.round(pos.coords.accuracy),
+            isLiveStreaming: true,
+            convoyStatus: curr?.convoyStatus,
+            updatedAt: new Date(now).toISOString(),
+          },
+          { syncLayer1: shouldPersist },
+        );
+      },
+      (err) => {
+        stopLiveGps(false);
+        const msg =
+          err.code === err.PERMISSION_DENIED
+            ? 'Location permission denied — allow GPS in browser settings'
+            : 'Could not read GPS signal right now';
+        onNotify?.(msg, 'error');
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 4000,
+        timeout: 12_000,
+      },
+    );
+  };
+
+  const handleOneTapCheckIn = () => {
+    if (!activeMemberId || activeMemberId === 'guest') {
+      onNotify?.('Sign into a crew profile to drop a check-in pin', 'info');
+      return;
+    }
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      onNotify?.('GPS location is not supported on this browser', 'error');
+      return;
+    }
+    triggerFeedback('tap');
+    setCheckingIn(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCheckingIn(false);
+        triggerFeedback('success');
+        const curr = ownPinRef.current;
+        onUpsertCrewPin?.(
+          {
+            memberId: activeMemberId,
+            memberName: activeMemberName,
+            lat: Number(pos.coords.latitude.toFixed(6)),
+            lng: Number(pos.coords.longitude.toFixed(6)),
+            accuracyMeters: Math.round(pos.coords.accuracy),
+            isLiveStreaming: sharingLive,
+            convoyStatus: curr?.convoyStatus,
+            updatedAt: new Date().toISOString(),
+          },
+          { syncLayer1: true, toastMsg: 'Check-in GPS pin updated on map' },
+        );
+      },
+      () => {
+        setCheckingIn(false);
+        triggerFeedback('warning');
+        onNotify?.('Could not capture GPS check-in — check location access', 'error');
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 8000,
+        timeout: 10_000,
+      },
+    );
+  };
+
+  const handleSetStatus = (nextStatus: ConvoyStatusKind) => {
+    if (!activeMemberId || activeMemberId === 'guest') {
+      onNotify?.('Sign into a crew profile to share your status', 'info');
+      return;
+    }
+    triggerFeedback('check');
+    const curr = ownPinRef.current;
+    const toggled = curr?.convoyStatus === nextStatus ? undefined : nextStatus;
+    onUpsertCrewPin?.(
+      {
+        memberId: activeMemberId,
+        memberName: activeMemberName,
+        lat: curr?.lat,
+        lng: curr?.lng,
+        accuracyMeters: curr?.accuracyMeters,
+        isLiveStreaming: sharingLive ? true : curr?.isLiveStreaming,
+        convoyStatus: toggled,
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        syncLayer1: true,
+        toastMsg: toggled
+          ? `Status set: ${getConvoyStatusInfo(toggled)?.label ?? toggled}`
+          : 'Status cleared',
+      },
+    );
+  };
 
   const stops: TrailStopPoint[] = useMemo(() => {
     if (target.dayItems && target.dayItems.length > 0) {
@@ -89,14 +356,17 @@ export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewP
     [stops],
   );
 
-  const showSchematic = !isOnline || tileFailed || mappable.length === 0;
+  const hasAnyMapCoords = mappable.length > 0 || mappableCrewPins.length > 0;
+  const showSchematic = !isOnline || tileFailed || !hasAnyMapCoords;
 
   useEffect(() => {
     if (showSchematic) {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
+        crewLayerRef.current = null;
       }
+      hasAutoFitCrewRef.current = false;
       return;
     }
 
@@ -106,10 +376,15 @@ export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewP
     if (mapInstanceRef.current) {
       mapInstanceRef.current.remove();
       mapInstanceRef.current = null;
+      crewLayerRef.current = null;
     }
 
     const focused = mappable.find((s) => s.isFocused) ?? mappable[0];
-    const center: [number, number] = focused?.coords ?? [-7.7956, 110.3695];
+    const fallbackPin = mappableCrewPins[0];
+    const center: [number, number] =
+      focused?.coords ??
+      (fallbackPin ? [fallbackPin.lat, fallbackPin.lng] : [-7.7956, 110.3695]);
+
     const map = L.map(container, {
       center,
       zoom: 13,
@@ -145,9 +420,9 @@ export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewP
 
       const marker = L.marker(stop.coords, { icon }).addTo(map);
       marker.bindPopup(
-        `<strong>${stop.time ? `${stop.time} · ` : ''}${stop.title}</strong>${stop.hint ? `<br/>${stop.hint}` : ''}`,
+        `<strong>${stop.time ? `${escapeHtml(stop.time)} · ` : ''}${escapeHtml(stop.title)}</strong>${stop.hint ? `<br/>${escapeHtml(stop.hint)}` : ''}`,
       );
-      if (stop.isFocused) {
+      if (stop.isFocused && mappableCrewPins.length === 0) {
         marker.openPopup();
       }
     });
@@ -164,13 +439,75 @@ export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewP
       map.setView(latLngs[0], 14);
     }
 
+    const crewLayer = L.layerGroup().addTo(map);
+    crewLayerRef.current = crewLayer;
     mapInstanceRef.current = map;
 
     return () => {
       map.remove();
       mapInstanceRef.current = null;
+      crewLayerRef.current = null;
     };
   }, [showSchematic, mappable]);
+
+  // Update Live Crew GPS pins incrementally without resetting user zoom/pan
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const crewLayer = crewLayerRef.current;
+    if (!map || !crewLayer) return;
+
+    crewLayer.clearLayers();
+    const crewPoints: [number, number][] = [];
+
+    for (const pin of mappableCrewPins) {
+      crewPoints.push([pin.lat, pin.lng]);
+      const member = memberById.get(pin.memberId);
+      const liveNow = isCrewPinLive(pin, nowTickMs);
+      const isSelf = Boolean(activeMemberId && pin.memberId === activeMemberId);
+      const ringColor = liveNow ? '#2B946B' : '#E0922B';
+      const initials = escapeHtml(member?.initials || pin.memberName.slice(0, 1).toUpperCase());
+      const bg = member?.avatarBg || '#E3EDE6';
+      const fg = member?.avatarColor || '#2D4A42';
+      const statusInfo = getConvoyStatusInfo(pin.convoyStatus);
+      const age = liveNow ? 'Live now' : formatPinRelativeAge(pin.updatedAt, nowTickMs);
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="${liveNow ? 'crew-radar-marker-live' : ''}" style="width:32px;height:32px;border-radius:16px;background:${bg};color:${fg};font-family:Fredoka,sans-serif;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;border:2.5px solid ${ringColor};box-shadow:0 4px 12px rgba(24,36,32,0.32);">${initials}</div>`,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+      });
+
+      const marker = L.marker([pin.lat, pin.lng], { icon, zIndexOffset: 500 }).addTo(crewLayer);
+      marker.bindPopup(
+        `<strong>${escapeHtml(pin.memberName)}${isSelf ? ' (You)' : ''}</strong><br/>${escapeHtml(age)}${statusInfo ? ` · ${escapeHtml(statusInfo.label)}` : ''}`,
+      );
+    }
+
+    if (!hasAutoFitCrewRef.current && crewPoints.length > 0 && mappable.length === 0) {
+      hasAutoFitCrewRef.current = true;
+      if (crewPoints.length === 1) {
+        map.setView(crewPoints[0], 15);
+      } else {
+        map.fitBounds(L.latLngBounds(crewPoints), { padding: [42, 42] });
+      }
+    }
+  }, [mappableCrewPins, memberById, activeMemberId, nowTickMs, mappable.length]);
+
+  const handleFitMap = () => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    triggerFeedback('tap');
+    const allPts: [number, number][] = [
+      ...mappable.map((s) => s.coords!).filter(Boolean),
+      ...mappableCrewPins.map((p): [number, number] => [p.lat, p.lng]),
+    ];
+    if (allPts.length === 1) {
+      map.setView(allPts[0], 15, { animate: true });
+    } else if (allPts.length > 1) {
+      map.fitBounds(L.latLngBounds(allPts), { padding: [40, 40], animate: true });
+    }
+  };
 
   const focusedStop = stops.find((s) => s.isFocused) ?? stops[0];
   const externalMapsUrl =
@@ -240,6 +577,61 @@ export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewP
           </p>
         )}
       </div>
+
+      {/* Live Crew GPS Radar + 1-Tap Check-In + Convoy Status Controls */}
+      {onUpsertCrewPin && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="radar-controls-row">
+            <Button
+              variant={sharingLive ? 'matcha' : 'glass'}
+              size="sm"
+              leftIcon={<Radio size={14} strokeWidth={2.1} />}
+              onClick={handleToggleLiveGps}
+            >
+              {sharingLive ? 'Live GPS: On' : 'Share Live GPS'}
+            </Button>
+            <Button
+              variant="glass"
+              size="sm"
+              disabled={checkingIn}
+              leftIcon={<MapPin size={14} strokeWidth={2} />}
+              onClick={handleOneTapCheckIn}
+            >
+              {checkingIn ? 'Locating...' : '1-Tap Check-In'}
+            </Button>
+            {typeof ownPin?.lat === 'number' && onClearOwnPin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                leftIcon={<Trash2 size={13.5} strokeWidth={2} />}
+                onClick={() => {
+                  stopLiveGps(false);
+                  onClearOwnPin();
+                }}
+              >
+                Clear Pin
+              </Button>
+            )}
+          </div>
+
+          <div className="radar-status-row" role="group" aria-label="My convoy status">
+            {CONVOY_STATUS_META.map((st) => {
+              const active = ownPin?.convoyStatus === st.id;
+              return (
+                <button
+                  key={st.id}
+                  type="button"
+                  aria-pressed={active}
+                  className={`plan-chip tactile ${active ? 'plan-chip--active' : ''}`}
+                  onClick={() => handleSetStatus(st.id)}
+                >
+                  {st.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Interactive Leaflet Map OR Crisp SVG Schematic Trail when Offline / Tile Failure */}
       {showSchematic ? (
@@ -328,7 +720,97 @@ export function RouteMapView({ target, onBack, onSelectPlanItem }: RouteMapViewP
           </svg>
         </div>
       ) : (
-        <div ref={mapElRef} className="route-map-frame" aria-label="Interactive route map" />
+        <div className="route-map-wrap">
+          <div ref={mapElRef} className="route-map-frame" aria-label="Interactive route map" />
+          <button
+            type="button"
+            className="route-map-fit-btn tactile"
+            onClick={handleFitMap}
+          >
+            <LocateFixed size={13} strokeWidth={2.2} />
+            <span>Fit Map</span>
+          </button>
+        </div>
+      )}
+
+      {/* Live Crew Pins & Convoy Radar Cards */}
+      {activePinEntries.length > 0 && (
+        <div className="radar-crew-list">
+          <div className="gk-field__label">
+            CREW RADAR ({activePinEntries.length})
+          </div>
+          {activePinEntries.map((pin) => {
+            const member = memberById.get(pin.memberId);
+            const liveNow = isCrewPinLive(pin, nowTickMs);
+            const statusInfo = getConvoyStatusInfo(pin.convoyStatus);
+            const hasCoords =
+              typeof pin.lat === 'number' &&
+              Number.isFinite(pin.lat) &&
+              typeof pin.lng === 'number' &&
+              Number.isFinite(pin.lng);
+            const distText =
+              hasCoords && focusedStop?.coords
+                ? formatRadarDistance(
+                    haversineDistanceMeters(
+                      pin.lat!,
+                      pin.lng!,
+                      focusedStop.coords[0],
+                      focusedStop.coords[1],
+                    ),
+                  )
+                : '';
+
+            return (
+              <GlassCard
+                key={pin.memberId}
+                variant="clear"
+                padding="sm"
+                interactive={hasCoords && !showSchematic}
+                onClick={() => {
+                  if (hasCoords && mapInstanceRef.current && !showSchematic) {
+                    triggerFeedback('tap');
+                    mapInstanceRef.current.setView([pin.lat!, pin.lng!], 15, { animate: true });
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <Avatar
+                    initials={member?.initials ?? pin.memberName.slice(0, 1).toUpperCase()}
+                    name={pin.memberName}
+                    src={member?.avatarDataUrl}
+                    size="sm"
+                    bg={member?.avatarBg ?? '#E3EDE6'}
+                    color={member?.avatarColor ?? '#2D4A42'}
+                    variant={liveNow ? 'selected' : 'solid'}
+                  />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {pin.memberName}
+                      {activeMemberId === pin.memberId ? ' (You)' : ''}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                      {hasCoords
+                        ? `${liveNow ? 'Live GPS' : formatPinRelativeAge(pin.updatedAt, nowTickMs)}${
+                            distText ? ` · ${distText}` : ''
+                          }`
+                        : `Status updated ${formatPinRelativeAge(pin.updatedAt, nowTickMs)}`}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  {statusInfo && <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>}
+                  {hasCoords && <Badge tone={liveNow ? 'mint' : 'amber'}>{liveNow ? 'Live' : 'Pin'}</Badge>}
+                </div>
+              </GlassCard>
+            );
+          })}
+        </div>
       )}
 
       {/* Primary Destination Card + Open in Google Maps CTA */}

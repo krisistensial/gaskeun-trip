@@ -58,6 +58,13 @@ import {
   upsertRemoteChatMessage,
   type CrewChatChannelController,
 } from './services/chatSync';
+import {
+  buildCrewRadarTarget,
+  getConvoyStatusInfo,
+  mergeCrewLivePins,
+  subscribeToCrewRadar,
+  type CrewRadarController,
+} from './services/crewRadar';
 import { triggerFeedback } from './services/feedback';
 import {
   formatChatNotificationCopy,
@@ -106,6 +113,8 @@ import type {
   SharedTrip,
   Transaction,
   TripEditScope,
+  ConvoyStatusKind,
+  CrewLivePin,
 } from './types/trip';
 import './App.css';
 
@@ -186,6 +195,7 @@ export default function App() {
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
   const [onlineMembers, setOnlineMembers] = useState<OnlinePresenceUser[]>([]);
+  const [liveRadarPins, setLiveRadarPins] = useState<Record<string, CrewLivePin>>({});
   const [driveAlbumPhotos, setDriveAlbumPhotos] = useState<AlbumPhoto[]>(() =>
     loadCachedDrivePhotos(pilotSeed.id),
   );
@@ -233,6 +243,7 @@ export default function App() {
   const chatOpenRef = useRef<boolean>(chatOpen);
   chatOpenRef.current = chatOpen;
   const chatChannelRef = useRef<CrewChatChannelController | null>(null);
+  const radarChannelRef = useRef<CrewRadarController | null>(null);
   const useSharedTripChatFallbackRef = useRef(false);
   const lastAutoPullMsRef = useRef<number>(0);
   const lastTripNotifMsRef = useRef<number>(0);
@@ -842,11 +853,22 @@ export default function App() {
     });
     chatChannelRef.current = controller;
 
+    const radarController = subscribeToCrewRadar(code, (incomingPin) => {
+      setLiveRadarPins((prev) =>
+        mergeCrewLivePins(prev, { [incomingPin.memberId]: incomingPin }),
+      );
+    });
+    radarChannelRef.current = radarController;
+
     return () => {
       alive = false;
       controller.unsubscribe();
+      radarController.unsubscribe();
       if (chatChannelRef.current === controller) {
         chatChannelRef.current = null;
+      }
+      if (radarChannelRef.current === radarController) {
+        radarChannelRef.current = null;
       }
     };
   }, [route, activeTrip.code, activeMemberId, activeMemberName]);
@@ -1434,6 +1456,80 @@ export default function App() {
     );
   };
 
+  const mergedCrewPins = useMemo(
+    () => mergeCrewLivePins(activeTrip.crewLivePins, liveRadarPins),
+    [activeTrip.crewLivePins, liveRadarPins],
+  );
+
+  const handleUpsertCrewPin = (
+    pin: CrewLivePin,
+    options?: { syncLayer1?: boolean; toastMsg?: string },
+  ) => {
+    setLiveRadarPins((prev) => mergeCrewLivePins(prev, { [pin.memberId]: pin }));
+    radarChannelRef.current?.broadcastPin(pin);
+    if (options?.syncLayer1 !== false) {
+      handleUpdateTrip(
+        (prev) => ({
+          ...prev,
+          crewLivePins: mergeCrewLivePins(prev.crewLivePins, { [pin.memberId]: pin }),
+        }),
+        options?.toastMsg,
+        { skipLog: true },
+      );
+    } else if (options?.toastMsg) {
+      showToast(options.toastMsg, 'success');
+    }
+  };
+
+  const handleClearOwnCrewPin = () => {
+    if (!activeMemberId || activeMemberId === 'guest') return;
+    const prevPin = mergedCrewPins[activeMemberId];
+    const cleared: CrewLivePin = {
+      memberId: activeMemberId,
+      memberName: activeMemberName,
+      convoyStatus: prevPin?.convoyStatus,
+      isLiveStreaming: false,
+      updatedAt: new Date().toISOString(),
+    };
+    setLiveRadarPins((prev) => ({ ...prev, [activeMemberId]: cleared }));
+    radarChannelRef.current?.broadcastPin(cleared);
+    handleUpdateTrip(
+      (prev) => ({
+        ...prev,
+        crewLivePins: {
+          ...(prev.crewLivePins ?? {}),
+          [activeMemberId]: cleared,
+        },
+      }),
+      'GPS pin cleared from map',
+      { skipLog: true },
+    );
+  };
+
+  const handleSetConvoyStatus = (nextStatus: ConvoyStatusKind) => {
+    if (!activeMemberId || activeMemberId === 'guest') return;
+    const curr = mergedCrewPins[activeMemberId];
+    const toggled = curr?.convoyStatus === nextStatus ? undefined : nextStatus;
+    handleUpsertCrewPin(
+      {
+        memberId: activeMemberId,
+        memberName: activeMemberName,
+        lat: curr?.lat,
+        lng: curr?.lng,
+        accuracyMeters: curr?.accuracyMeters,
+        isLiveStreaming: curr?.isLiveStreaming,
+        convoyStatus: toggled,
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        syncLayer1: true,
+        toastMsg: toggled
+          ? `Status: ${getConvoyStatusInfo(toggled)?.label ?? toggled}`
+          : 'Status cleared',
+      },
+    );
+  };
+
   const handleChatTypingChange = useCallback((isTyping: boolean) => {
     chatChannelRef.current?.sendTypingPing(isTyping);
   }, []);
@@ -1508,6 +1604,13 @@ export default function App() {
             {route === 'hub' && activeRouteTarget && (
               <RouteMapView
                 target={activeRouteTarget}
+                trip={activeTrip}
+                activeMemberId={activeMemberId}
+                activeMemberName={activeMemberName}
+                livePins={mergedCrewPins}
+                onUpsertCrewPin={handleUpsertCrewPin}
+                onClearOwnPin={handleClearOwnCrewPin}
+                onNotify={showToast}
                 onBack={() => setActiveRouteTarget(null)}
                 onSelectPlanItem={(stop) => {
                   setActiveRouteTarget((prev) =>
@@ -1640,11 +1743,14 @@ export default function App() {
               activeMember={activeMember}
               activeMemberName={activeMemberName}
               onlineMembers={onlineMembers}
+              radarPins={mergedCrewPins}
               unreadChatCount={unreadChatCount}
               canEdit={canEditCrew}
               viewOnlyMode={isViewOnlyActive}
               onOpenMenu={() => setMenuOpen(true)}
               onOpenChat={() => setChatOpen(true)}
+              onOpenRadar={() => setActiveRouteTarget(buildCrewRadarTarget(activeTrip))}
+              onSetConvoyStatus={handleSetConvoyStatus}
               onOpenTripSettings={openTripSettingsGated}
               onSwitchTrip={handleLeaveTrip}
               onNavigateTab={handleNavigateTab}
