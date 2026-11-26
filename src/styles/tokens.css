@@ -118,4 +118,25 @@
   --dock-clearance: calc(var(--dock-height) + var(--safe-bottom) + 34px);
   --shell-min-w: 360px;
   --shell-max-w: 430px;
+
+  /* J. Two-Material Liquid + Frosted Glass System */
+  --gk-frosted-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
+  --gk-rim-gradient: linear-gradient(
+    142deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(255, 255, 255, 0.24) 38%,
+    rgba(74, 116, 104, 0.1) 68%,
+    rgba(255, 255, 255, 0.72) 100%
+  );
+  --gk-liquid-fill: linear-gradient(
+    156deg,
+    rgba(255, 255, 255, 0.48) 0%,
+    rgba(255, 255, 255, 0.18) 54%,
+    rgba(255, 255, 255, 0.3) 100%
+  );
+  --gk-active-pill-fill: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(244, 249, 246, 0.88) 100%
+  );
 }

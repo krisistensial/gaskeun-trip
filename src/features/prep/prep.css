@@ -31,18 +31,39 @@
 }
 
 .prep-seg {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1.5px solid rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
+  background: var(--gk-liquid-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(18px) saturate(185%);
+  -webkit-backdrop-filter: blur(18px) saturate(185%);
+  box-shadow:
+    0 8px 20px -8px rgba(24, 42, 34, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
+}
+
+.prep-seg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--gk-rim-gradient);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .prep-seg__btn {
+  position: relative;
+  z-index: 1;
   height: 36px;
   border-radius: 18px;
   display: inline-flex;
@@ -52,13 +73,15 @@
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-secondary);
-  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 
 .prep-seg__btn--active {
-  background: var(--brand-matcha);
-  color: var(--text-inverse);
-  box-shadow: 0 6px 14px -4px rgba(45, 74, 66, 0.3);
+  background: var(--gk-active-pill-fill);
+  color: var(--brand-forest);
+  box-shadow:
+    0 4px 12px -4px rgba(24, 42, 34, 0.18),
+    inset 0 1px 0 #FFFFFF;
 }
 
 .prep-progress-head {

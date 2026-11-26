@@ -41,6 +41,7 @@
 }
 
 .wallet-subtab {
+  position: relative;
   height: 34px;
   padding: 0 14px;
   flex-shrink: 0;
@@ -48,15 +49,38 @@
   font-size: 11.5px;
   font-weight: 600;
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.74);
-  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  background: var(--gk-liquid-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.45);
+  box-shadow:
+    0 6px 14px -8px rgba(24, 42, 34, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+
+.wallet-subtab::after,
+.privacy-pill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--gk-rim-gradient);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .wallet-subtab--active {
   background: var(--brand-matcha);
   border-color: var(--brand-matcha);
   color: var(--text-inverse);
+}
+
+.wallet-subtab--active::after {
+  opacity: 0.34;
 }
 
 .wallet-hero-num {
@@ -181,6 +205,7 @@
 }
 
 .privacy-pill {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -188,8 +213,13 @@
   height: 36px;
   padding: 0 14px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1.2px solid rgba(255, 255, 255, 0.92);
+  background-color: rgba(255, 255, 255, 0.54);
+  background-image: var(--gk-frosted-grain);
+  background-size: 120px 120px;
+  border: 0.75px solid rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(18px) saturate(175%);
+  -webkit-backdrop-filter: blur(18px) saturate(175%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
   font-size: 11.5px;
   font-weight: 600;
   color: var(--text-secondary);

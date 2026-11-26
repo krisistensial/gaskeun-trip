@@ -1067,6 +1067,7 @@
 }
 
 .mode-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1076,14 +1077,37 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.66);
-  border: 1.25px solid rgba(255, 255, 255, 0.92);
+  background: var(--gk-liquid-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.45);
+  box-shadow:
+    0 6px 14px -8px rgba(24, 42, 34, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+.mode-chip::after,
+.floating-crew-jump::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--gk-rim-gradient);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .mode-chip--active {
   background: var(--brand-matcha);
   border-color: var(--brand-matcha);
   color: var(--text-inverse);
+}
+
+.mode-chip--active::after {
+  opacity: 0.34;
 }
 
 .bike-pod-list {
@@ -1171,11 +1195,13 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--brand-forest);
-  background: rgba(255, 255, 255, 0.84);
-  border: 1.5px solid rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(24px) saturate(190%);
-  -webkit-backdrop-filter: blur(24px) saturate(190%);
-  box-shadow: 0 10px 26px -6px rgba(31, 45, 39, 0.18);
+  background: var(--gk-liquid-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.48);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  box-shadow:
+    0 10px 26px -8px rgba(24, 42, 34, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
   transition: transform var(--dur-fast) var(--ease-spring), opacity var(--dur-fast) ease;
 }
 

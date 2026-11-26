@@ -2,7 +2,7 @@
    GASKEUN! True Atomic Styles — Option 2A Crystal Liquid
    ========================================================================== */
 
-/* --- GlassCard --- */
+/* --- GlassCard (Textured Frosted Glass + 1px Gradient Highlight Stroke) --- */
 .gk-glass {
   position: relative;
   border-radius: var(--radius-xl);
@@ -12,17 +12,35 @@
     background var(--dur-fast) ease;
 }
 
+.gk-glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--gk-rim-gradient);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 3;
+}
+
 .gk-glass--clear {
-  background: var(--glass-clear-bg);
-  border: 1px solid rgba(255, 255, 255, 0.62);
+  background-color: var(--glass-clear-bg);
+  background-image: var(--gk-frosted-grain);
+  background-size: 120px 120px;
+  border: 0.75px solid rgba(255, 255, 255, 0.48);
   backdrop-filter: var(--glass-clear-blur);
   -webkit-backdrop-filter: var(--glass-clear-blur);
   box-shadow: var(--glass-clear-shadow);
 }
 
 .gk-glass--spotlight {
-  background: var(--glass-spotlight-bg);
-  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: var(--gk-frosted-grain) 0 0 / 120px 120px repeat, var(--glass-spotlight-bg);
+  border: 0.75px solid rgba(255, 255, 255, 0.56);
   backdrop-filter: var(--glass-spotlight-blur);
   -webkit-backdrop-filter: var(--glass-spotlight-blur);
   box-shadow: var(--glass-spotlight-shadow);
@@ -30,16 +48,20 @@
 }
 
 .gk-glass--elevated {
-  background: var(--glass-elevated-bg);
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  background-color: var(--glass-elevated-bg);
+  background-image: var(--gk-frosted-grain);
+  background-size: 120px 120px;
+  border: 0.75px solid rgba(255, 255, 255, 0.58);
   backdrop-filter: var(--glass-elevated-blur);
   -webkit-backdrop-filter: var(--glass-elevated-blur);
   box-shadow: var(--glass-elevated-shadow);
 }
 
 .gk-glass--tinted {
-  background: var(--glass-tinted-bg);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  background-color: var(--glass-tinted-bg);
+  background-image: var(--gk-frosted-grain);
+  background-size: 120px 120px;
+  border: 0.75px solid rgba(255, 255, 255, 0.48);
   backdrop-filter: var(--glass-clear-blur);
   -webkit-backdrop-filter: var(--glass-clear-blur);
   box-shadow: 0 10px 26px -10px rgba(31, 45, 39, 0.08);
@@ -125,12 +147,32 @@
 }
 
 .gk-btn--glass {
-  background: rgba(255, 255, 255, 0.68);
+  position: relative;
+  background: var(--gk-liquid-fill);
   color: var(--brand-forest);
-  border: 1.5px solid var(--glass-clear-border);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: 0 8px 20px -8px rgba(31, 45, 39, 0.12);
+  border: 0.75px solid rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(18px) saturate(185%);
+  -webkit-backdrop-filter: blur(18px) saturate(185%);
+  box-shadow:
+    0 8px 20px -8px rgba(24, 42, 34, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.gk-btn--glass::after,
+.gk-day-pill::after,
+.gk-orb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--gk-rim-gradient);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .gk-btn--ghost {
@@ -184,9 +226,10 @@
 }
 
 .gk-badge--neutral {
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--gk-liquid-fill);
   color: var(--text-secondary);
-  border: 1px solid var(--glass-clear-border);
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 /* --- Avatar --- */
@@ -355,6 +398,7 @@
 
 /* --- DayPill (Vertical Thu / 11 + Ideas + Dashed +Day) --- */
 .gk-day-pill {
+  position: relative;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
@@ -366,15 +410,23 @@
   padding: 6px 2px;
   border-radius: 20px;
   scroll-snap-align: start;
-  background: rgba(255, 255, 255, 0.56);
-  border: 1.25px solid rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: var(--gk-liquid-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow:
+    0 6px 14px -8px rgba(24, 42, 34, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
   transition:
     transform var(--dur-fast) var(--ease-spring),
     background-color var(--dur-fast) var(--ease-spring),
     border-color var(--dur-fast) ease,
     box-shadow var(--dur-fast) ease;
+}
+
+.gk-day-pill--active::after,
+.gk-day-pill--add::after {
+  opacity: 0.25;
 }
 
 .gk-day-pill:active {
@@ -438,17 +490,20 @@
 
 /* --- CornerOrb --- */
 .gk-orb {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.42);
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  backdrop-filter: blur(20px) saturate(185%);
-  -webkit-backdrop-filter: blur(20px) saturate(185%);
-  box-shadow: 0 8px 20px -6px rgba(18, 36, 28, 0.18);
+  background: var(--gk-liquid-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(18px) saturate(185%);
+  -webkit-backdrop-filter: blur(18px) saturate(185%);
+  box-shadow:
+    0 8px 20px -6px rgba(24, 42, 34, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
   color: var(--text-primary);
   flex-shrink: 0;
   transition:

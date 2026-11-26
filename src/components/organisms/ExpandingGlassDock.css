@@ -77,8 +77,11 @@
 }
 
 .gk-dock__item--active {
-  background: rgba(255, 255, 255, 0.44);
-  border: 0.75px solid rgba(255, 255, 255, 0.54);
+  background: var(--gk-active-pill-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 4px 12px -4px rgba(24, 42, 34, 0.18),
+    inset 0 1px 0 #FFFFFF;
   color: var(--brand-forest);
   padding: 0 15px;
   gap: 7px;

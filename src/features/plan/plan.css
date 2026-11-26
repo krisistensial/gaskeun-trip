@@ -46,18 +46,38 @@
 }
 
 .plan-map-btn {
+  position: relative;
   width: 38px;
   height: 38px;
   border-radius: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.54);
-  border: 1px solid rgba(255, 255, 255, 0.68);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background: var(--gk-liquid-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   color: var(--brand-matcha);
-  box-shadow: 0 6px 16px -8px rgba(31, 45, 39, 0.14);
+  box-shadow:
+    0 8px 18px -8px rgba(24, 42, 34, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.plan-map-btn::after,
+.plan-view-switch::after,
+.plan-chip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--gk-rim-gradient);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .plan-title {
@@ -70,32 +90,40 @@
 }
 
 .plan-view-switch {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 3px;
   height: 38px;
   padding: 3px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.54);
-  border: 1px solid rgba(255, 255, 255, 0.68);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: 0 6px 16px -8px rgba(31, 45, 39, 0.12);
+  background: var(--gk-liquid-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(18px) saturate(185%);
+  -webkit-backdrop-filter: blur(18px) saturate(185%);
+  box-shadow:
+    0 8px 18px -8px rgba(24, 42, 34, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
 }
 
 .plan-view-btn {
+  position: relative;
+  z-index: 1;
   height: 30px;
   padding: 0 11px;
   border-radius: 16px;
   font-size: 11.5px;
   font-weight: 600;
   color: var(--text-secondary);
-  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 
 .plan-view-btn--active {
-  background: var(--brand-matcha);
-  color: var(--text-inverse);
+  background: var(--gk-active-pill-fill);
+  color: var(--brand-forest);
+  box-shadow:
+    0 4px 10px -4px rgba(24, 42, 34, 0.18),
+    inset 0 1px 0 #FFFFFF;
 }
 
 .plan-day-strip {
@@ -117,8 +145,8 @@
 .plan-day-strip .gk-day-pill {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  background: rgba(255, 255, 255, 0.56);
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: var(--gk-liquid-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.45);
 }
 
 .plan-day-strip .gk-day-pill--ideas {
@@ -152,6 +180,7 @@
 }
 
 .plan-chip {
+  position: relative;
   height: 30px;
   padding: 0 13px;
   border-radius: 15px;
@@ -159,14 +188,22 @@
   font-weight: 600;
   white-space: nowrap;
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.48);
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: var(--gk-liquid-fill);
+  border: 0.75px solid rgba(255, 255, 255, 0.45);
+  box-shadow:
+    0 6px 14px -8px rgba(24, 42, 34, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
 
 .plan-chip--active {
   background: var(--brand-forest);
   border-color: var(--brand-forest);
   color: var(--text-inverse);
+}
+
+.plan-chip--active::after,
+.plan-chip--content-active::after {
+  opacity: 0.34;
 }
 
 .plan-chip--content-active {
