@@ -31,16 +31,16 @@ export function sanitizeSvgFilterId(rawId: string): string {
 
 /**
  * Generates an RGBA optical displacement map (data URL) for `<feDisplacementMap>`
- * modeling an Apple Liquid Glass convex squircle meniscus:
- * - Optically flat neutral (128, 128) center so text & icons stay razor-sharp
- * - Steep Snell's-law curved rim bezel (`bezelWidth` px) that visibly magnifies
- *   and curves underlying cards, borders, and icons around rounded corners
+ * modeling a calm, crystal-clear glass pane with a thin clear curved water/glass edge:
+ * - Optically flat neutral (128, 128) across the entire interior so text, icons & background stay calm
+ * - Smooth monotonic refractive pull strictly within the outer `bezelWidth` (~8–10px) rim stroke,
+ *   never inverting or mirroring the underlying image
  */
 export function buildConvexLensMapDataUrl(
   width: number,
   height: number,
   cornerRadius: number,
-  bezelWidth = 16,
+  bezelWidth = 9,
 ): string {
   if (typeof document === 'undefined') return '';
   const w = Math.max(16, Math.round(width));
@@ -58,7 +58,8 @@ export function buildConvexLensMapDataUrl(
   const r = Math.min(cornerRadius, halfW, halfH);
   const bx = Math.max(0, halfW - r);
   const by = Math.max(0, halfH - r);
-  const bezel = Math.max(8, Math.min(bezelWidth, Math.min(halfW, halfH) * 0.72));
+  // Keep bezel strictly a thin outer rim stroke (never eating into the calm clear center)
+  const bezel = Math.max(5, Math.min(bezelWidth, Math.min(halfW, halfH) * 0.36));
 
   for (let y = 0; y < h; y++) {
     const py = y + 0.5 - halfH;
@@ -95,21 +96,17 @@ export function buildConvexLensMapDataUrl(
       let dx = 0;
       let dy = 0;
       if (distInside < bezel) {
-        // u: 0 at outer glass edge -> 1 at flat interior boundary
-        const u = Math.min(1, distInside / bezel);
-        // Apple-style convex squircle meniscus slope: steep optical bend across the rim
-        const t = 1 - u;
-        const meniscus = Math.pow(t, 1.25) * (0.42 + 0.58 * Math.sin(t * Math.PI * 0.5));
-        // Slight outward corner curl boost right along curved corners
-        const cornerFactor = qx > 0 && qy > 0 ? 1.12 : 1.0;
-        const strength = Math.min(1, meniscus * cornerFactor);
-        dx = -nx * strength;
-        dy = -ny * strength;
+        // t: 0 at inner edge of rim stroke -> 1 at outer glass edge
+        const t = 1 - distInside / bezel;
+        // Smooth water-meniscus bend (quadratic ease-in so interior transition is seamless, no fold/mirror)
+        const bend = t * t;
+        dx = -nx * bend;
+        dy = -ny * bend;
       }
 
       const idx = (y * w + x) * 4;
-      data[idx] = Math.max(0, Math.min(255, Math.round(128 + dx * 127)));
-      data[idx + 1] = Math.max(0, Math.min(255, Math.round(128 + dy * 127)));
+      data[idx] = Math.max(0, Math.min(255, Math.round(128 + dx * 126)));
+      data[idx + 1] = Math.max(0, Math.min(255, Math.round(128 + dy * 126)));
       data[idx + 2] = 128;
       data[idx + 3] = 255;
     }
@@ -128,7 +125,7 @@ export interface LiquidGlassSurfaceProps {
   cornerRadius?: number;
   displacementScale?: number;
   bezelWidth?: number;
-  /** Subtle RGB prism edge dispersion ratio (0 disables chromatic split; 0.08–0.12 mimics real optical glass) */
+  /** Optional chromatic split (defaults to 0 for pure clean water/glass refraction with zero RGB glitch) */
   chromaticAberration?: number;
   blurAmount?: number;
   saturation?: number;
@@ -138,21 +135,19 @@ export interface LiquidGlassSurfaceProps {
 }
 
 /**
- * Apple-Grade Optical Liquid Glass wrapper:
- * - On Chromium (Chrome Android/Desktop, Edge), applies multi-channel Snell's-law
- *   `<feDisplacementMap>` with RGB chromatic dispersion via `backdrop-filter: url(#lens)`
- *   directly onto live DOM pixels behind the glass — visibly curving & refracting borders,
- *   cards, and icons around the rounded glass rim while keeping center clarity crisp.
- * - On Safari/iOS, Firefox, and reduced-motion devices, renders refined double-bevel CSS Liquid Glass.
+ * Pure Clear Liquid Glass Surface:
+ * - Calm, crystal-clear center with gentle glass tint & subtle blur
+ * - Thin curved clear rim stroke (~8–10px) that optically bends passing background elements
+ *   like clear water/glass without mirroring or RGB glitch artifacts
  */
 export function LiquidGlassSurface({
   children,
   cornerRadius = 30,
-  displacementScale = 54,
-  bezelWidth = 16,
-  chromaticAberration = 0.1,
-  blurAmount = 0.65,
-  saturation = 215,
+  displacementScale = 22,
+  bezelWidth = 9,
+  chromaticAberration = 0,
+  blurAmount = 1.15,
+  saturation = 190,
   className = '',
   fallbackClassName = '',
   style,
@@ -204,7 +199,7 @@ export function LiquidGlassSurface({
   }
 
   const effectiveRadius = Math.min(cornerRadius, size.height / 2);
-  const ca = Math.max(0, Math.min(0.2, chromaticAberration));
+  const ca = Math.max(0, Math.min(0.06, chromaticAberration));
   const scaleR = Math.round(displacementScale * (1 + ca) * 10) / 10;
   const scaleG = displacementScale;
   const scaleB = Math.round(displacementScale * (1 - ca) * 10) / 10;
@@ -215,8 +210,8 @@ export function LiquidGlassSurface({
       className={`gk-lens-host ${className}`.trim()}
       style={{
         borderRadius: `${effectiveRadius}px`,
-        backdropFilter: `url(#${filterId}) blur(${blurAmount}px) saturate(${saturation}%) brightness(1.06)`,
-        WebkitBackdropFilter: `url(#${filterId}) blur(${blurAmount}px) saturate(${saturation}%) brightness(1.06)`,
+        backdropFilter: `url(#${filterId}) blur(${blurAmount}px) saturate(${saturation}%) brightness(1.04)`,
+        WebkitBackdropFilter: `url(#${filterId}) blur(${blurAmount}px) saturate(${saturation}%) brightness(1.04)`,
         ...style,
       }}
     >

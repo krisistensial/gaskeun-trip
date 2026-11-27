@@ -62,11 +62,11 @@ export function CornerOrb({
       >
         <LiquidGlassSurface
           cornerRadius={999}
-          displacementScale={52}
-          bezelWidth={16}
-          chromaticAberration={0.11}
-          blurAmount={0.6}
-          saturation={215}
+          displacementScale={20}
+          bezelWidth={8}
+          chromaticAberration={0}
+          blurAmount={1.1}
+          saturation={190}
           className="gk-orb-lgr-host"
           fallbackClassName="gk-orb gk-orb--lg"
         >
