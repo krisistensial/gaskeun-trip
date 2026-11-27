@@ -3,7 +3,7 @@ import type { SharedTrip } from '../types/trip';
 import { uploadPhotoToDrive } from './gdriveAlbum';
 import { getSupabaseClient } from './supabaseSync';
 
-export type UiAssetKind = 'hero' | 'plan' | 'stay' | 'train' | 'avatar' | 'idea';
+export type UiAssetKind = 'hero' | 'plan' | 'stay' | 'train' | 'avatar' | 'idea' | 'chat-wallpaper';
 export type SharedMediaKind = 'album' | UiAssetKind;
 
 export const TRIP_ASSETS_BUCKET = 'trip-assets';

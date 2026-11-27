@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Cloud,
   CloudOff,
+  Compass,
   Download,
   Eye,
   EyeOff,
@@ -94,6 +95,7 @@ export interface TripMenuSheetProps {
   onForceSync?: () => void;
   onOpenChat?: () => void;
   onOpenRecap?: () => void;
+  onStartTour?: () => void;
   onToggleViewOnlyMode?: (next: boolean) => void;
   onPhaseChange: (phase: HomePhase) => void;
   onUpdateActiveAvatar: (avatarDataUrl: string) => void;
@@ -127,6 +129,7 @@ export function TripMenuSheet({
   onForceSync,
   onOpenChat,
   onOpenRecap,
+  onStartTour,
   onToggleViewOnlyMode,
   onPhaseChange,
   onUpdateActiveAvatar,
@@ -772,6 +775,37 @@ export function TripMenuSheet({
             ) : (
               <Badge tone="neutral">Open</Badge>
             )}
+          </button>
+        )}
+
+        {onStartTour && (
+          <button
+            type="button"
+            className="gk-menu-item tactile"
+            onClick={() => {
+              triggerFeedback('tap');
+              onClose();
+              onStartTour();
+            }}
+          >
+            <span className="gk-menu-item__left">
+              <span
+                className="gk-menu-item__icon"
+                style={{
+                  background: 'var(--brand-matcha-soft)',
+                  color: 'var(--brand-forest)',
+                }}
+              >
+                <Compass size={18} strokeWidth={1.85} />
+              </span>
+              <span>
+                <div className="gk-menu-item__title">Quick App Tour</div>
+                <div className="gk-menu-item__sub">
+                  Replay the interactive walkthrough guide
+                </div>
+              </span>
+            </span>
+            <Badge tone="neutral">Start</Badge>
           </button>
         )}
 

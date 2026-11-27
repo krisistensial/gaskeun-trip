@@ -21,6 +21,8 @@ export interface TripMember {
   role: MemberRole;
   status: MemberStatus;
   isCreator?: boolean;
+  /** ISO timestamp when this member was added to the trip (used for optional chat history cutoff) */
+  joinedAt?: string;
 }
 
 export interface TripDay {
@@ -314,6 +316,7 @@ export type ChatMessageKind = 'text' | 'sticker';
 
 export interface ChatReplyPreview {
   id: string;
+  senderId?: string;
   senderName: string;
   kind: ChatMessageKind;
   text: string;
@@ -367,6 +370,15 @@ export interface ChatPoll {
   closed?: boolean;
 }
 
+export interface ChatWallpaperConfig {
+  /** Curated preset key (e.g. 'matcha-doodle', 'sage-mist', 'warm-sunset', 'forest-night') */
+  presetId?: string;
+  /** Custom uploaded photo URL (stored in Supabase trip-assets, never Google Drive) */
+  imageUrl?: string;
+  /** Clarity / opacity from 0.10 to 1.00 (WhatsApp-style dimming/transparency control) */
+  opacity: number;
+}
+
 export interface SharedTrip {
   schemaVersion: number;
   /** Internal seed revision for non-destructive pilot demo upgrades */
@@ -418,6 +430,10 @@ export interface SharedTrip {
   chatReadReceipts?: Record<string, ChatReadReceipt>;
   /** Per-member delivery receipts (received by another crew webapp) synced via Realtime Broadcast + Layer 1 */
   chatDeliveryReceipts?: Record<string, ChatDeliveryReceipt>;
+  /** Host toggle: when false, newly added crew only see chat messages sent on/after their joinedAt */
+  chatHistoryForNewMembers?: boolean;
+  /** Host-customizable Crew Chat background wallpaper & clarity setting (synced to all crew) */
+  chatWallpaper?: ChatWallpaperConfig;
   /** Foreground Live GPS & 1-Tap Convoy Check-In Pins keyed by memberId */
   crewLivePins?: Record<string, CrewLivePin>;
   updatedAt: string;

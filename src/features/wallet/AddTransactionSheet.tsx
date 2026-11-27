@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Lock, Trash2 } from 'lucide-react';
 import { Avatar, Button, ConfirmDialog, Input, LiquidBottomSheet } from '../../components/atoms';
-import { formatCompactIDR, type BudgetPocketSummary } from '../../services/ledger';
+import { formatCompactIDR, formatIDRNumber, type BudgetPocketSummary } from '../../services/ledger';
 import type { Transaction, TransactionPocket, TripMember } from '../../types/trip';
 import './wallet.css';
 
@@ -96,7 +96,7 @@ export function AddTransactionSheet({
   if (!open) return null;
 
   const numericAmount = Number(amountRaw.replace(/\D/g, '')) || 0;
-  const formattedAmount = numericAmount > 0 ? numericAmount.toLocaleString('en-US') : '';
+  const formattedAmount = numericAmount > 0 ? formatIDRNumber(numericAmount) : '';
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();

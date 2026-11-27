@@ -691,6 +691,7 @@ export function HomeScreen({
             {onOpenChat && (
               <button
                 type="button"
+                data-tour="home-chat"
                 className="home-chat-orb tactile"
                 aria-label={
                   unreadChatCount > 0
@@ -713,6 +714,7 @@ export function HomeScreen({
             )}
             <button
               type="button"
+              data-tour="home-profile"
               className="home-profile-orb tactile"
               aria-label="Open profile and settings"
               title="Profile & Settings"
@@ -738,7 +740,7 @@ export function HomeScreen({
         {/* Boxless Editorial Magazine Serif Countdown — Elevated & Centered over Hero Photo */}
         {phase === 'pre-trip' ? (
           <div className="home-hero__center">
-            <div className="countdown-hero-card" aria-label="Departure countdown">
+            <div data-tour="home-hero" className="countdown-hero-card" aria-label="Departure countdown">
               <div className="countdown-days-block">
                 <span className="countdown-days-val">{countdown.days}</span>
                 <span className="countdown-days-lbl">Days</span>
@@ -911,7 +913,7 @@ export function HomeScreen({
         const collagePhotos = validAlbumPhotos.slice(0, 4);
 
         return (
-          <section className="bento-duo" aria-label="Quick access">
+          <section data-tour="home-bento" className="bento-duo" aria-label="Quick access">
             <GlassCard
               variant="clear"
               padding="md"
@@ -1176,7 +1178,7 @@ export function HomeScreen({
       )}
 
       {/* Crew & Stay Section (01c_Home_CrewSection) */}
-      <section id="crew-section" ref={crewSectionRef} className="crew-section">
+      <section id="crew-section" data-tour="home-crew" ref={crewSectionRef} className="crew-section">
         <div className="crew-header">
           <div>
             <h2 className="crew-title">Crew &amp; Stay</h2>

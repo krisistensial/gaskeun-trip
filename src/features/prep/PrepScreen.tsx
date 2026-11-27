@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
   ArrowRight,
+  ArrowRightLeft,
   Briefcase,
   Check,
   Lock,
@@ -95,6 +96,7 @@ export function PrepScreen({
   const [bagNameDraft, setBagNameDraft] = useState('');
   const [bagPinnedDraft, setBagPinnedDraft] = useState(false);
   const [deletingBag, setDeletingBag] = useState<PrepBag | null>(null);
+  const [movingTask, setMovingTask] = useState<PrepTask | null>(null);
 
   // Multi-step undo stacks (max 20 per scope: personal & group)
   const [undoStacks, setUndoStacks] = useState<PrepUndoStacks>(() => createEmptyUndoStacks());
@@ -237,6 +239,7 @@ export function PrepScreen({
     setTab(nextTab);
     setIsEditMode(false);
     setAddSheetOpen(false);
+    setMovingTask(null);
     setPicPickerTaskId(null);
     setDeleteState(cancelDeleteVerify());
     setEditState(cancelEditVerify());
@@ -331,6 +334,23 @@ export function PrepScreen({
       setSelectedBagFilter('all');
     }
     setDeletingBag(null);
+  };
+
+  const handleMovePersonalTask = (task: PrepTask, targetBagId: string | undefined) => {
+    const currentBagId = task.bagId && bagById.has(task.bagId) ? task.bagId : undefined;
+    if (currentBagId === targetBagId) {
+      setMovingTask(null);
+      return;
+    }
+    triggerFeedback('success');
+    const next = personalPrep.map((t) =>
+      t.id === task.id
+        ? { ...t, bagId: targetBagId }
+        : t,
+    );
+    const destLabel = targetBagId ? bagById.get(targetBagId)?.name ?? 'Bag' : 'Unassigned';
+    commitChangeWithUndo('personal', next, `Moved "${task.title}" to ${destLabel}`);
+    setMovingTask(null);
   };
 
   const handleToggle = (task: PrepTask) => {
@@ -456,6 +476,22 @@ export function PrepScreen({
 
         <span className="prep-item__text">{task.title}</span>
 
+        {tab === 'personal' && !isEditMode && (
+          <button
+            type="button"
+            className="prep-move-btn tactile"
+            aria-label={`Move ${task.title} to another bag`}
+            title="Move to another bag"
+            onClick={() => {
+              triggerFeedback('tap');
+              setMovingTask(task);
+            }}
+          >
+            <ArrowRightLeft size={12.5} strokeWidth={2.1} />
+            <span>Move</span>
+          </button>
+        )}
+
         {tab === 'group' && (
           <button
             type="button"
@@ -477,6 +513,20 @@ export function PrepScreen({
 
         {isEditMode && canEditActiveTab && (
           <div className="prep-row-actions">
+            {tab === 'personal' && (
+              <button
+                type="button"
+                className="prep-icon-btn prep-icon-btn--move tactile"
+                aria-label={`Move ${task.title} to another bag`}
+                title="Move to another bag"
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setMovingTask(task);
+                }}
+              >
+                <ArrowRightLeft size={13.5} strokeWidth={2.1} />
+              </button>
+            )}
             <button
               type="button"
               className="prep-icon-btn prep-icon-btn--edit tactile"
@@ -904,6 +954,96 @@ export function PrepScreen({
             </Button>
           </div>
         </form>
+      </LiquidBottomSheet>
+
+      {/* 1-Tap Move Personal Item to Another Bag / Place Sheet */}
+      <LiquidBottomSheet
+        open={Boolean(movingTask)}
+        title="Move to Bag"
+        subtitle={movingTask ? `Choose where to pack "${movingTask.title}"` : ''}
+        onClose={() => setMovingTask(null)}
+      >
+        {movingTask && (
+          <div className="prep-move-list">
+            {sortedBags.map((bag) => {
+              const isCurrent = movingTask.bagId === bag.id;
+              const count = personalPrep.filter((t) => t.bagId === bag.id).length;
+              return (
+                <button
+                  key={bag.id}
+                  type="button"
+                  className={`prep-move-option tactile ${
+                    isCurrent ? 'prep-move-option--active' : ''
+                  }`}
+                  onClick={() => handleMovePersonalTask(movingTask, bag.id)}
+                >
+                  <span className="prep-move-option__left">
+                    <span className="prep-move-option__icon">
+                      {bag.pinned ? (
+                        <Star size={15} strokeWidth={2.1} fill="#D99136" color="#D99136" />
+                      ) : (
+                        <Briefcase size={15} strokeWidth={2} />
+                      )}
+                    </span>
+                    <span className="prep-move-option__copy">
+                      <span className="prep-move-option__name">{bag.name}</span>
+                      <span className="prep-move-option__meta">
+                        {count} {count === 1 ? 'item' : 'items'}
+                      </span>
+                    </span>
+                  </span>
+                  {isCurrent && (
+                    <span className="prep-move-option__badge">
+                      <Check size={13} strokeWidth={2.6} />
+                      <span>Current</span>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            <button
+              type="button"
+              className={`prep-move-option tactile ${
+                !movingTask.bagId || !bagById.has(movingTask.bagId)
+                  ? 'prep-move-option--active'
+                  : ''
+              }`}
+              onClick={() => handleMovePersonalTask(movingTask, undefined)}
+            >
+              <span className="prep-move-option__left">
+                <span className="prep-move-option__icon prep-move-option__icon--muted">
+                  <ArrowRightLeft size={14} strokeWidth={2} />
+                </span>
+                <span className="prep-move-option__copy">
+                  <span className="prep-move-option__name">Unassigned</span>
+                  <span className="prep-move-option__meta">Not placed in a specific bag</span>
+                </span>
+              </span>
+              {(!movingTask.bagId || !bagById.has(movingTask.bagId)) && (
+                <span className="prep-move-option__badge">
+                  <Check size={13} strokeWidth={2.6} />
+                  <span>Current</span>
+                </span>
+              )}
+            </button>
+
+            {onUpdatePersonalBags && (
+              <Button
+                variant="glass"
+                size="md"
+                fullWidth
+                leftIcon={<Plus size={15} strokeWidth={2.2} />}
+                onClick={() => {
+                  setMovingTask(null);
+                  openCreateBagSheet();
+                }}
+              >
+                Create New Bag / Place
+              </Button>
+            )}
+          </div>
+        )}
       </LiquidBottomSheet>
 
       {/* Add / Rename Personal Bag Sheet */}

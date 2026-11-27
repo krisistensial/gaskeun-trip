@@ -14,7 +14,7 @@ import './gate.css';
 export interface WhoAreYouScreenProps {
   trip: SharedTrip;
   selectedMemberId: string | null;
-  onSelectProfile: (memberId: string) => void;
+  onSelectProfile: (memberId: string, opts?: { justSetPasscode?: boolean }) => void;
   onSetMemberPasscode: (memberId: string, passcode: string | undefined, toastMsg?: string) => void;
   onBack: () => void;
 }
@@ -66,6 +66,7 @@ export function WhoAreYouScreen({
     e?.preventDefault();
     if (!pendingPickId) return;
 
+    let justSetPasscode = false;
     if (pendingMember) {
       if (pendingRequiresPin) {
         if (!isValidPasscode(pinInput)) {
@@ -86,13 +87,14 @@ export function WhoAreYouScreen({
           return;
         }
         onSetMemberPasscode(pendingMember.id, pinInput, 'Personal 4-digit passcode saved');
+        justSetPasscode = true;
       }
     }
 
     triggerFeedback('success');
     const chosen = pendingPickId;
     closeProfileSheet();
-    onSelectProfile(chosen);
+    onSelectProfile(chosen, { justSetPasscode });
   };
 
   return (

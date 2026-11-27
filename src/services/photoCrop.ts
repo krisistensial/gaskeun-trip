@@ -10,6 +10,7 @@ export type CropPresetId =
   | 'train-photo'
   | 'avatar'
   | 'idea'
+  | 'chat-wallpaper'
   | 'album';
 
 const IMAGE_FILE_EXT_RE = /\.(jpe?g|png|webp|gif|heic|heif|avif|bmp)$/i;
@@ -95,6 +96,15 @@ export const CROP_PRESETS: Record<Exclude<CropPresetId, 'album'>, CropPresetSpec
     outputW: 960,
     outputH: 1200,
     quality: 0.86,
+  },
+  'chat-wallpaper': {
+    id: 'chat-wallpaper',
+    title: 'Crop Chat Wallpaper',
+    ratioLabel: '9:16',
+    aspect: 9 / 16,
+    outputW: 900,
+    outputH: 1600,
+    quality: 0.82,
   },
 };
 

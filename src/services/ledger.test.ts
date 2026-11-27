@@ -5,6 +5,8 @@ import {
   calculateLedger,
   computeSplitBillSummary,
   formatCompactIDR,
+  formatIDR,
+  formatIDRNumber,
   markTransactionSettled,
 } from './ledger';
 
@@ -107,10 +109,15 @@ describe('Ledger Calculator — Solo–Jogja Pilot & Anti-Double-Deduction', () 
     expect(finalSummary.pendingReimburseItems).toHaveLength(0);
   });
 
-  it('formats compact IDR labels cleanly', () => {
-    expect(formatCompactIDR(2_355_000)).toBe('Rp 2.36M');
-    expect(formatCompactIDR(555_000)).toBe('Rp 555k');
-    expect(formatCompactIDR(33_500)).toBe('Rp 33.5k');
+  it('formats Indonesian IDR & compact labels cleanly (dot thousands, comma decimals, rb/jt/M)', () => {
+    expect(formatIDRNumber(3_367_500)).toBe('3.367.500');
+    expect(formatIDR(3_367_500)).toBe('Rp 3.367.500');
+    expect(formatIDR(-50_000)).toBe('-Rp 50.000');
+    expect(formatCompactIDR(2_355_000)).toBe('Rp 2,36 jt');
+    expect(formatCompactIDR(1_000_000)).toBe('Rp 1 jt');
+    expect(formatCompactIDR(555_000)).toBe('Rp 555 rb');
+    expect(formatCompactIDR(33_500)).toBe('Rp 33,5 rb');
+    expect(formatCompactIDR(1_250_000_000)).toBe('Rp 1,25 M');
   });
 
   it('reconciles Combined Treasury & multi-source Budget Pockets with zero double counting', () => {

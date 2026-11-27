@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import seedData from './data/seed-solo-jogja-2027.json';
 import { Avatar, ConfirmDialog, GaskeunLoader, Toast, type ToastTone } from './components/atoms';
 import { ExpandingGlassDock } from './components/organisms/ExpandingGlassDock';
+import { OnboardingTour } from './components/organisms/OnboardingTour';
 import { TripMenuSheet, type HomePhase } from './components/organisms/TripMenuSheet';
 import { OverlayProvider } from './context/OverlayContext';
 import { useKeyboardOffset } from './hooks/useVisualViewport';
@@ -41,6 +42,9 @@ import {
   createTextChatMessage,
   extractMentionedMemberIds,
   loadChatLastRead,
+  filterVisibleMessagesForMember,
+  filterVisiblePollsForMember,
+  MAX_CHAT_MESSAGES,
   mergeChatDeliveryReceipts,
   mergeChatMessages,
   mergeChatPolls,
@@ -52,6 +56,7 @@ import {
 import {
   appendClearedChatIds,
   enqueuePendingChatItem,
+  fetchOlderRemoteChatMessages,
   fetchRemoteChatMessages,
   flushPendingChatQueue,
   getPendingChatMessageIds,
@@ -93,6 +98,10 @@ import {
   toggleMemberEditScopeByHost,
 } from './services/permissions';
 import type { CroppedImageResult } from './services/photoCrop';
+import {
+  hasCompletedTour,
+  markTourCompleted,
+} from './services/onboardingTour';
 import { pwaHistory, useBackHandler } from './services/pwaHistory';
 import {
   clearActiveSession,
@@ -119,6 +128,7 @@ import type {
   ChatMessage,
   ChatReadReceipt,
   ChatReplyPreview,
+  ChatWallpaperConfig,
   DockTabId,
   LocalPersonalData,
   OnlinePresenceUser,
@@ -226,8 +236,11 @@ export default function App() {
   const [viewOnlyMode, setViewOnlyMode] = useState<boolean>(() => loadViewOnlyMode());
 
   const [activeRouteTarget, setActiveRouteTarget] = useState<RouteTarget | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [hasMoreOlderChat, setHasMoreOlderChat] = useState(false);
+  const [loadingOlderChat, setLoadingOlderChat] = useState(false);
   const [clearedChatIds, setClearedChatIds] = useState<string[]>(() =>
     loadClearedChatIds(pilotSeed.code, null),
   );
@@ -1001,6 +1014,7 @@ export default function App() {
       if (!alive) return;
       if (res.ok) {
         useSharedTripChatFallbackRef.current = false;
+        setHasMoreOlderChat(res.messages.length >= MAX_CHAT_MESSAGES);
         acknowledgeChatDeliveredRef.current(res.messages);
         setChatMessages((prev) => {
           const prevIds = new Set(prev.map((m) => m.id));
@@ -1212,9 +1226,26 @@ export default function App() {
 
   const clearedChatSet = useMemo(() => new Set(clearedChatIds), [clearedChatIds]);
 
+  const allowChatHistoryForNewMembers = activeTrip.chatHistoryForNewMembers !== false;
+
   const visibleChatMessages = useMemo(
-    () => chatMessages.filter((m) => !clearedChatSet.has(m.id)),
-    [chatMessages, clearedChatSet],
+    () =>
+      filterVisibleMessagesForMember(
+        chatMessages.filter((m) => !clearedChatSet.has(m.id)),
+        activeMember,
+        allowChatHistoryForNewMembers,
+      ),
+    [chatMessages, clearedChatSet, activeMember, allowChatHistoryForNewMembers],
+  );
+
+  const visibleChatPolls = useMemo(
+    () =>
+      filterVisiblePollsForMember(
+        activeTrip.chatPolls ?? [],
+        activeMember,
+        allowChatHistoryForNewMembers,
+      ),
+    [activeTrip.chatPolls, activeMember, allowChatHistoryForNewMembers],
   );
 
   const unreadChatCount = useMemo(
@@ -1465,16 +1496,31 @@ export default function App() {
     return true;
   };
 
-  const handleSelectProfile = async (memberId: string) => {
+  const handleSelectProfile = async (
+    memberId: string,
+    opts?: { justSetPasscode?: boolean },
+  ) => {
     const nextLocal = await setActiveMemberLocal(activeTrip.id, memberId);
     setLocalData(nextLocal);
     persistSession(activeTrip.code, memberId);
+    setActiveRouteTarget(null);
+    setChatOpen(false);
+    setActiveTab('home');
     setRoute('hub');
     const name =
       memberId === 'guest'
         ? 'Guest'
         : activeTrip.members.find((m) => m.id === memberId)?.name ?? 'Guest';
     showToast(`Welcome, ${name}`, 'success');
+
+    if (
+      memberId !== 'guest' &&
+      (opts?.justSetPasscode || !hasCompletedTour(activeTrip.code, memberId))
+    ) {
+      window.setTimeout(() => {
+        setTourOpen(true);
+      }, 360);
+    }
   };
 
   const handleUpdateMemberAvatar = (memberId: string, avatarDataUrl: string) => {
@@ -2025,6 +2071,70 @@ export default function App() {
     chatChannelRef.current?.sendTypingPing(isTyping);
   }, []);
 
+  const handleLoadOlderChatMessages = useCallback(async () => {
+    const code = activeTripRef.current.code;
+    if (!code || loadingOlderChat) return;
+    const oldest = chatMessagesRef.current[0];
+    if (!oldest?.createdAt) {
+      setHasMoreOlderChat(false);
+      return;
+    }
+    setLoadingOlderChat(true);
+    try {
+      const res = await fetchOlderRemoteChatMessages(code, oldest.createdAt, 80);
+      if (res.ok) {
+        if (res.messages.length === 0) {
+          setHasMoreOlderChat(false);
+          showToast('You have reached the beginning of this chat', 'info');
+        } else {
+          setHasMoreOlderChat(res.hasMore);
+          setChatMessages((prev) =>
+            mergeChatMessages(prev, res.messages, prev.length + res.messages.length + 20),
+          );
+        }
+      } else {
+        showToast(res.error || 'Could not load older messages', 'info');
+      }
+    } finally {
+      setLoadingOlderChat(false);
+    }
+  }, [loadingOlderChat, showToast]);
+
+  const handleUpdateChatWallpaper = (wallpaper: ChatWallpaperConfig | undefined) => {
+    if (!isHost) return;
+    handleUpdateTrip(
+      (prev) => ({
+        ...prev,
+        chatWallpaper: wallpaper,
+      }),
+      wallpaper ? 'Chat wallpaper updated for crew' : 'Chat wallpaper reset to default',
+    );
+  };
+
+  const handleToggleChatHistoryForNewMembers = (allow: boolean) => {
+    if (!isHost) return;
+    handleUpdateTrip(
+      (prev) => ({
+        ...prev,
+        chatHistoryForNewMembers: allow,
+      }),
+      allow
+        ? 'New crew can now read earlier chat history'
+        : 'New crew will only see messages after joining',
+    );
+  };
+
+  const handleStartTour = () => {
+    setMenuOpen(false);
+    setChatOpen(false);
+    setActiveRouteTarget(null);
+    setActiveTab('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.setTimeout(() => {
+      setTourOpen(true);
+    }, 180);
+  };
+
   const visibleSavedTrips = useMemo(
     () => filterJoinedTrips(savedTrips, joinedTripCodes),
     [savedTrips, joinedTripCodes],
@@ -2132,7 +2242,7 @@ export default function App() {
               <CrewChatScreen
                 trip={activeTrip}
                 messages={visibleChatMessages}
-                polls={activeTrip.chatPolls ?? []}
+                polls={visibleChatPolls}
                 pinnedMessageId={activeTrip.pinnedChatMessageId}
                 readReceipts={chatReadReceipts}
                 deliveryReceipts={chatDeliveryReceipts}
@@ -2153,6 +2263,11 @@ export default function App() {
                 onVotePoll={handleVoteChatPoll}
                 onToggleClosePoll={handleToggleCloseChatPoll}
                 onTogglePinMessage={handleTogglePinChatMessage}
+                onUpdateChatWallpaper={handleUpdateChatWallpaper}
+                onToggleChatHistoryForNewMembers={handleToggleChatHistoryForNewMembers}
+                hasMoreOlder={hasMoreOlderChat && !useSharedTripChatFallbackRef.current}
+                loadingOlder={loadingOlderChat}
+                onLoadOlderMessages={() => void handleLoadOlderChatMessages()}
                 onTypingChange={handleChatTypingChange}
                 onMarkRead={handleMarkChatRead}
                 onNotify={showToast}
@@ -2305,6 +2420,7 @@ export default function App() {
           }
           onOpenChat={() => setChatOpen(true)}
           onOpenRecap={() => setRecapOpen(true)}
+          onStartTour={handleStartTour}
           onToggleViewOnlyMode={handleToggleViewOnlyMode}
           onPhaseChange={(next) => {
             triggerFeedback('tap');
@@ -2363,6 +2479,7 @@ export default function App() {
                     albumUrl: patch.gdriveFolderUrl || prev.albumUrl,
                     gdriveFolderUrl: patch.gdriveFolderUrl,
                     gdriveScriptUrl: patch.gdriveScriptUrl,
+                    chatHistoryForNewMembers: patch.chatHistoryForNewMembers,
                     financeConfig: {
                       ...prev.financeConfig,
                       poolTargetPerPerson: patch.poolTargetPerPerson,
@@ -2449,6 +2566,21 @@ export default function App() {
             </button>,
             document.body,
           )}
+        <OnboardingTour
+          open={tourOpen && route === 'hub' && !chatOpen && !activeRouteTarget && activeTab === 'home'}
+          tripTitle={activeTrip.title}
+          memberName={activeMemberName}
+          onRevealDock={() => setHasRevealedDock(true)}
+          onFinish={() => {
+            markTourCompleted(activeTrip.code, activeMemberId);
+            setTourOpen(false);
+            showToast('You are all set! Have an awesome trip', 'success');
+          }}
+          onSkip={() => {
+            markTourCompleted(activeTrip.code, activeMemberId);
+            setTourOpen(false);
+          }}
+        />
       </div>
     </OverlayProvider>
   );

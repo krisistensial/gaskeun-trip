@@ -17,6 +17,7 @@ export interface TripSettingsSheetProps {
     minimumDpPerPerson: number;
     gdriveFolderUrl: string;
     gdriveScriptUrl: string;
+    chatHistoryForNewMembers: boolean;
   }) => void;
   onCopyText: (text: string, label: string) => void;
   onClose: () => void;
@@ -54,6 +55,9 @@ export function TripSettingsSheet({
     trip.gdriveFolderUrl ?? trip.albumUrl ?? '',
   );
   const [gdriveScriptUrl, setGdriveScriptUrl] = useState(trip.gdriveScriptUrl ?? '');
+  const [chatHistoryForNewMembers, setChatHistoryForNewMembers] = useState(
+    trip.chatHistoryForNewMembers !== false,
+  );
   const [copiedWhich, setCopiedWhich] = useState<'code' | 'link' | null>(null);
 
   if (!open) return null;
@@ -78,6 +82,7 @@ export function TripSettingsSheet({
       minimumDpPerPerson: Math.max(0, Number(minDp.replace(/\D/g, '')) || 0),
       gdriveFolderUrl: gdriveFolderUrl.trim(),
       gdriveScriptUrl: gdriveScriptUrl.trim(),
+      chatHistoryForNewMembers,
     });
     onClose();
   };
@@ -194,6 +199,53 @@ export function TripSettingsSheet({
             value={minDp}
             onChange={(e) => setMinDp(e.target.value.replace(/\D/g, ''))}
           />
+
+          {/* Host Toggle: New Crew Chat History Visibility */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              padding: '12px 14px',
+              borderRadius: 20,
+              background: 'rgba(227, 237, 230, 0.45)',
+              border: '1px solid rgba(45, 74, 66, 0.08)',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span
+                style={{
+                  fontSize: '0.84rem',
+                  fontWeight: 700,
+                  color: 'var(--text-primary)',
+                }}
+              >
+                New Crew Chat History
+              </span>
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  color: 'var(--text-muted)',
+                  lineHeight: 1.35,
+                }}
+              >
+                {chatHistoryForNewMembers
+                  ? 'Newly added crew can read earlier trip chat messages.'
+                  : 'Newly added crew only see messages sent after they joined.'}
+              </span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={chatHistoryForNewMembers}
+              aria-label="Allow newly added crew to view earlier chat history"
+              className={`menu-toggle-switch ${chatHistoryForNewMembers ? 'menu-toggle-switch--on' : ''}`}
+              onClick={() => setChatHistoryForNewMembers((v) => !v)}
+            >
+              <span className="menu-toggle-switch__knob" />
+            </button>
+          </div>
 
           {/* Optional Collapsible Google Drive Album Sync */}
           <button

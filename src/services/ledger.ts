@@ -433,26 +433,50 @@ export function computeSplitBillSummary(
   };
 }
 
+/**
+ * Formats an integer using Indonesian thousands grouping (dot separator, e.g. `3.367.500`).
+ * Uses deterministic regex formatting so results are 100% consistent across all browsers/OS locales.
+ */
+export function formatIDRNumber(amount: number): string {
+  const abs = Math.abs(Math.round(Number.isFinite(amount) ? amount : 0));
+  return String(abs).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
 export function formatIDR(amount: number): string {
-  const abs = Math.abs(Math.round(amount));
-  const formatted = abs.toLocaleString('en-US');
+  const formatted = formatIDRNumber(amount);
   return amount < 0 ? `-Rp ${formatted}` : `Rp ${formatted}`;
 }
 
+/**
+ * Formats compact IDR using Indonesian decimal comma & unit suffixes:
+ * - `Rp 1,25 M` (miliar), `Rp 3,37 jt` (juta), `Rp 33,5 rb` (ribu), `Rp 500`.
+ */
 export function formatCompactIDR(amount: number): string {
   const sign = amount < 0 ? '-' : '';
-  const abs = Math.abs(amount);
+  const abs = Math.abs(Number.isFinite(amount) ? amount : 0);
+  if (abs >= 1_000_000_000) {
+    const rounded = Math.round((abs / 1_000_000_000) * 100) / 100;
+    const label = (Number.isInteger(rounded)
+      ? String(rounded)
+      : rounded.toFixed(2).replace(/\.?0+$/, '')
+    ).replace('.', ',');
+    return `${sign}Rp ${label} M`;
+  }
   if (abs >= 1_000_000) {
     const rounded = Math.round((abs / 1_000_000) * 100) / 100;
-    const label = Number.isInteger(rounded)
+    const label = (Number.isInteger(rounded)
       ? String(rounded)
-      : rounded.toFixed(2).replace(/\.?0+$/, '');
-    return `${sign}Rp ${label}M`;
+      : rounded.toFixed(2).replace(/\.?0+$/, '')
+    ).replace('.', ',');
+    return `${sign}Rp ${label} jt`;
   }
   if (abs >= 1_000) {
     const rounded = Math.round((abs / 1_000) * 10) / 10;
-    const label = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace(/\.0$/, '');
-    return `${sign}Rp ${label}k`;
+    const label = (Number.isInteger(rounded)
+      ? String(rounded)
+      : rounded.toFixed(1).replace(/\.0$/, '')
+    ).replace('.', ',');
+    return `${sign}Rp ${label} rb`;
   }
-  return `${sign}Rp ${abs}`;
+  return `${sign}Rp ${Math.round(abs)}`;
 }

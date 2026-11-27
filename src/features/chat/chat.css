@@ -141,6 +141,8 @@
 }
 
 .crew-chat-scroll {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -151,6 +153,15 @@
   padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
+}
+
+.crew-chat-wallpaper-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: repeat;
+  transition: opacity 180ms ease;
 }
 
 .crew-chat-stream-inner {
@@ -1293,6 +1304,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  pointer-events: none;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -1303,6 +1315,12 @@
 
 .crew-chat-hold-stack--other {
   align-items: flex-start;
+}
+
+.crew-chat-reaction-bar,
+.crew-chat-hold-preview,
+.crew-chat-action-sheet {
+  pointer-events: auto;
 }
 
 .crew-chat-reaction-bar {
@@ -1700,4 +1718,270 @@
   font-size: 0.72rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* Load Older Messages Pagination Pill */
+.crew-chat-load-older-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 10px;
+}
+
+.crew-chat-load-older-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 74, 66, 0.14);
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--brand-forest, #2d4a42);
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(31, 51, 45, 0.07);
+}
+
+.crew-chat-load-older-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Host-Only Chat Wallpaper & Access Sheet */
+.crew-chat-wp-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.crew-chat-wp-preview {
+  position: relative;
+  height: 158px;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(45, 74, 66, 0.12);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(164, 214, 194, 0.42), transparent 54%),
+    radial-gradient(circle at 90% 84%, rgba(227, 237, 230, 0.72), transparent 56%),
+    var(--bg-canvas, #f6f8f5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.crew-chat-wp-preview__bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: repeat;
+  transition: opacity 140ms ease;
+}
+
+.crew-chat-wp-preview__content {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 9px;
+}
+
+.crew-chat-wp-preview__bubble {
+  max-width: 78%;
+  padding: 8px 12px;
+  border-radius: 16px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 4px 12px rgba(24, 42, 36, 0.08);
+}
+
+.crew-chat-wp-preview__bubble--other {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-primary, #1f332d);
+  border-bottom-left-radius: 6px;
+}
+
+.crew-chat-wp-preview__bubble--own {
+  align-self: flex-end;
+  background: linear-gradient(135deg, #4a7468 0%, #34584e 100%);
+  color: #ffffff;
+  border-bottom-right-radius: 6px;
+}
+
+.crew-chat-wp-preview__sender {
+  font-size: 0.66rem;
+  font-weight: 800;
+  color: var(--brand-matcha, #4a7468);
+}
+
+.crew-chat-wp-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crew-chat-wp-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.crew-chat-wp-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(74, 116, 104, 0.22);
+  background: rgba(227, 237, 230, 0.65);
+  color: var(--brand-forest, #2d4a42);
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.crew-chat-wp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.crew-chat-wp-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 6px;
+  border-radius: 16px;
+  border: 1.5px solid rgba(45, 74, 66, 0.1);
+  background: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+}
+
+.crew-chat-wp-swatch--active {
+  border-color: var(--brand-matcha, #4a7468);
+  background: rgba(227, 237, 230, 0.52);
+  box-shadow: 0 4px 12px rgba(74, 116, 104, 0.14);
+}
+
+.crew-chat-wp-swatch__tile {
+  position: relative;
+  width: 100%;
+  height: 48px;
+  border-radius: 11px;
+  border: 1px solid rgba(45, 74, 66, 0.1);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.crew-chat-wp-swatch__check {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--brand-matcha, #4a7468);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(31, 51, 45, 0.25);
+}
+
+.crew-chat-wp-swatch__label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-primary, #1f332d);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.crew-chat-wp-slider-card {
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(45, 74, 66, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crew-chat-wp-slider-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.crew-chat-wp-slider-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary, #1f332d);
+}
+
+.crew-chat-wp-slider-val {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--brand-matcha, #4a7468);
+}
+
+.crew-chat-wp-range {
+  width: 100%;
+  accent-color: var(--brand-matcha, #4a7468);
+  cursor: pointer;
+}
+
+.crew-chat-wp-range:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.crew-chat-wp-slider-hints {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted, #52665e);
+}
+
+.crew-chat-wp-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: rgba(227, 237, 230, 0.46);
+  border: 1px solid rgba(45, 74, 66, 0.08);
+}
+
+.crew-chat-wp-history-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.crew-chat-wp-history-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary, #1f332d);
+}
+
+.crew-chat-wp-history-sub {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-muted, #52665e);
+}
+
+.crew-chat-wp-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

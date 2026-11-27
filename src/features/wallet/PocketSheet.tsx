@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button, ConfirmDialog, Input, LiquidBottomSheet } from '../../components/atoms';
-import { formatCompactIDR, formatIDR, type BudgetPocketSummary } from '../../services/ledger';
+import { formatCompactIDR, formatIDR, formatIDRNumber, type BudgetPocketSummary } from '../../services/ledger';
 import { triggerFeedback } from '../../services/feedback';
 import type { BudgetPocket, PocketAllocation } from '../../types/trip';
 import './wallet.css';
@@ -189,7 +189,7 @@ export function PocketSheet({
               inputMode="numeric"
               className="pocket-source-box__input"
               placeholder="0"
-              value={fromPool > 0 ? fromPool.toLocaleString('en-US') : ''}
+              value={fromPool > 0 ? formatIDRNumber(fromPool) : ''}
               onChange={(e) => setFromPoolRaw(e.target.value.replace(/\D/g, ''))}
             />
             {maxPoolAvailable > 0 && (
@@ -247,7 +247,7 @@ export function PocketSheet({
               inputMode="numeric"
               className="pocket-source-box__input"
               placeholder="0"
-              value={fromFundraise > 0 ? fromFundraise.toLocaleString('en-US') : ''}
+              value={fromFundraise > 0 ? formatIDRNumber(fromFundraise) : ''}
               onChange={(e) => setFromFundraiseRaw(e.target.value.replace(/\D/g, ''))}
             />
             {maxFundraiseAvailable > 0 && (

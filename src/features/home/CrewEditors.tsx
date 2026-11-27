@@ -334,9 +334,12 @@ export function CrewMembersSheet({
       initials: trimmed.slice(0, 1).toUpperCase(),
       avatarBg: sw.bg,
       avatarColor: sw.color,
+      avatarDataUrl: existing?.avatarDataUrl,
+      passcode: existing?.passcode,
       role,
       status,
       isCreator: existing?.isCreator,
+      joinedAt: existing ? existing.joinedAt : new Date().toISOString(),
     };
     onSaveMember(member, !existing);
     resetForm();

@@ -21,6 +21,7 @@ import {
   Clock,
   Copy,
   Eye,
+  Image as ImageIcon,
   MessageCircle,
   Pin,
   PinOff,
@@ -46,7 +47,9 @@ import {
   buildChatTimeline,
   buildReplyPreview,
   CHAT_QUICK_REACTIONS,
+  clampWallpaperOpacity,
   computeChatMessageTickStatus,
+  getChatWallpaperPreset,
   countTotalReactions,
   CREW_STICKER_PACK,
   formatChatDayDivider,
@@ -57,6 +60,7 @@ import {
   getMessageSeenByMembers,
   getStickerById,
   isGroupedWithPrevious,
+  resolveReplyAuthorLabel,
   sanitizeChatText,
   searchChatTimelineIds,
   splitTextWithMentions,
@@ -87,6 +91,7 @@ import {
 } from '../../services/stickerSearch';
 import { primeFeedbackAudio, triggerFeedback } from '../../services/feedback';
 import { useBackHandler } from '../../services/pwaHistory';
+import { ChatWallpaperSheet } from './ChatWallpaperSheet';
 import { CreateStickerSheet } from './CreateStickerSheet';
 import type {
   ChatDeliveryReceipt,
@@ -94,6 +99,7 @@ import type {
   ChatPoll,
   ChatReadReceipt,
   ChatReplyPreview,
+  ChatWallpaperConfig,
   OnlinePresenceUser,
   SharedTrip,
   TripMember,
@@ -134,6 +140,11 @@ export interface CrewChatScreenProps {
   onVotePoll?: (pollId: string, optionId: string) => void;
   onToggleClosePoll?: (pollId: string) => void;
   onTogglePinMessage?: (messageId: string | null) => void;
+  onUpdateChatWallpaper?: (wallpaper: ChatWallpaperConfig | undefined) => void;
+  onToggleChatHistoryForNewMembers?: (allow: boolean) => void;
+  hasMoreOlder?: boolean;
+  loadingOlder?: boolean;
+  onLoadOlderMessages?: () => void;
   onTypingChange: (isTyping: boolean) => void;
   onMarkRead: () => void;
   onNotify?: (message: string, tone?: ToastTone) => void;
@@ -239,12 +250,18 @@ export function CrewChatScreen({
   onVotePoll,
   onToggleClosePoll,
   onTogglePinMessage,
+  onUpdateChatWallpaper,
+  onToggleChatHistoryForNewMembers,
+  hasMoreOlder = false,
+  loadingOlder = false,
+  onLoadOlderMessages,
   onTypingChange,
   onMarkRead,
   onNotify,
   onBack,
 }: CrewChatScreenProps) {
   const [draft, setDraft] = useState('');
+  const [wallpaperSheetOpen, setWallpaperSheetOpen] = useState(false);
   const [cursorIndex, setCursorIndex] = useState(0);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>('none');
   const [emojiCategory, setEmojiCategory] = useState(FULL_EMOJI_GROUPS[0].id);
@@ -317,6 +334,12 @@ export function CrewChatScreen({
   const lastTapRef = useRef<{ id: string; at: number } | null>(null);
   const typingTimeoutRef = useRef<number | null>(null);
   const isNearBottomRef = useRef(true);
+
+  const messagesById = useMemo(() => {
+    const map = new Map<string, ChatMessage>();
+    for (const m of messages) map.set(m.id, m);
+    return map;
+  }, [messages]);
   const gestureRef = useRef<{
     msg: ChatMessage | null;
     pointerId: number;
@@ -387,9 +410,15 @@ export function CrewChatScreen({
       }, 95);
     };
 
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setHoldTarget(null);
+      }
+    };
     const safetyTimer = window.setTimeout(unlock, 340);
     window.addEventListener('pointerup', unlock, { once: true });
     window.addEventListener('touchend', unlock, { once: true });
+    window.addEventListener('keydown', onKeyDown);
     window.addEventListener('pointercancel', unlock, { once: true });
 
     return () => {
@@ -398,6 +427,7 @@ export function CrewChatScreen({
       window.removeEventListener('pointerup', unlock);
       window.removeEventListener('touchend', unlock);
       window.removeEventListener('pointercancel', unlock);
+      window.removeEventListener('keydown', onKeyDown);
     };
   }, [holdTarget]);
 
@@ -961,6 +991,7 @@ export function CrewChatScreen({
       readReceipts,
       members: trip.members,
       activeMemberId,
+      chatHistoryForNewMembers: trip.chatHistoryForNewMembers,
     });
     if (status === 'pending') {
       return (
@@ -1034,7 +1065,9 @@ export function CrewChatScreen({
               }
             }}
           >
-            <span className="crew-chat-reply-quote__author">{msg.replyTo.senderName}</span>
+            <span className="crew-chat-reply-quote__author">
+              {resolveReplyAuthorLabel(msg.replyTo, activeMemberId, activeMemberName, messagesById)}
+            </span>
             <span className="crew-chat-reply-quote__text">{msg.replyTo.text}</span>
           </button>
         )}
@@ -1092,7 +1125,9 @@ export function CrewChatScreen({
             }
           }}
         >
-          <span className="crew-chat-reply-quote__author">{msg.replyTo.senderName}</span>
+          <span className="crew-chat-reply-quote__author">
+            {resolveReplyAuthorLabel(msg.replyTo, activeMemberId, activeMemberName, messagesById)}
+          </span>
           <span className="crew-chat-reply-quote__text">{msg.replyTo.text}</span>
         </button>
       )}
@@ -1205,6 +1240,23 @@ export function CrewChatScreen({
                   {headerSubText}
                 </div>
               </div>
+
+              {isHost && onUpdateChatWallpaper && (
+                <button
+                  type="button"
+                  className={`crew-chat-bell-orb tactile ${
+                    trip.chatWallpaper ? 'crew-chat-bell-orb--on' : ''
+                  }`}
+                  aria-label="Chat wallpaper and settings"
+                  title="Chat wallpaper & settings"
+                  onClick={() => {
+                    triggerFeedback('tap');
+                    setWallpaperSheetOpen(true);
+                  }}
+                >
+                  <ImageIcon size={15} strokeWidth={2} />
+                </button>
+              )}
 
               <button
                 type="button"
@@ -1432,7 +1484,11 @@ export function CrewChatScreen({
             >
               <Pin size={14} strokeWidth={2.1} color="var(--brand-matcha)" />
               <span className="crew-chat-pin-bar__text">
-                <span className="crew-chat-pin-bar__label">{pinnedMessage.senderName}</span>
+                <span className="crew-chat-pin-bar__label">
+                  {activeMemberId && pinnedMessage.senderId === activeMemberId
+                    ? 'You'
+                    : pinnedMessage.senderName}
+                </span>
                 {pinnedMessage.kind === 'sticker' ? 'Sticker' : pinnedMessage.text}
               </span>
             </button>
@@ -1454,6 +1510,38 @@ export function CrewChatScreen({
 
         {/* Bottom-Anchored Message Stream */}
         <div className="crew-chat-scroll-wrap">
+          {(() => {
+            const wp = trip.chatWallpaper;
+            if (!wp) return null;
+            const wpOpacity = clampWallpaperOpacity(wp.opacity);
+            if (wp.imageUrl) {
+              return (
+                <div
+                  className="crew-chat-wallpaper-layer"
+                  aria-hidden="true"
+                  style={{
+                    backgroundImage: `url(${wp.imageUrl})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    opacity: wpOpacity,
+                  }}
+                />
+              );
+            }
+            const preset = getChatWallpaperPreset(wp.presetId);
+            if (!preset || preset.layerBg === 'none') return null;
+            return (
+              <div
+                className="crew-chat-wallpaper-layer"
+                aria-hidden="true"
+                style={{
+                  backgroundImage: preset.layerBg,
+                  backgroundSize: preset.layerSize ?? 'cover',
+                  opacity: wpOpacity,
+                }}
+              />
+            );
+          })()}
           <div
             ref={scrollRef}
             className="crew-chat-scroll"
@@ -1495,6 +1583,21 @@ export function CrewChatScreen({
               </motion.div>
             ) : (
               <div className="crew-chat-stream-inner">
+                {hasMoreOlder && onLoadOlderMessages && (
+                  <div className="crew-chat-load-older-wrap">
+                    <button
+                      type="button"
+                      className="crew-chat-load-older-btn tactile"
+                      disabled={loadingOlder}
+                      onClick={() => {
+                        triggerFeedback('tap');
+                        onLoadOlderMessages();
+                      }}
+                    >
+                      {loadingOlder ? 'Loading older messages...' : 'Load older messages'}
+                    </button>
+                  </div>
+                )}
                 {timelineEntries.map((entry, idx) => {
                   const prevEntry = idx > 0 ? timelineEntries[idx - 1] : undefined;
                   const nextEntry =
@@ -1855,7 +1958,13 @@ export function CrewChatScreen({
                   <Reply size={14} strokeWidth={2} style={{ color: 'var(--brand-matcha)' }} />
                   <div className="crew-chat-reply-banner__body">
                     <div className="crew-chat-reply-banner__title">
-                      Replying to {replyTarget.senderName}
+                      Replying to{' '}
+                      {resolveReplyAuthorLabel(
+                        replyTarget,
+                        activeMemberId,
+                        activeMemberName,
+                        messagesById,
+                      )}
                     </div>
                     <div className="crew-chat-reply-banner__snippet">{replyTarget.text}</div>
                   </div>
@@ -2323,7 +2432,6 @@ export function CrewChatScreen({
                     className={`crew-chat-hold-stack ${
                       holdTarget.isOwn ? 'crew-chat-hold-stack--own' : 'crew-chat-hold-stack--other'
                     }`}
-                    onClick={(e) => e.stopPropagation()}
                   >
                     {/* Emoji Reaction Bar ABOVE held message (normal messages only) */}
                     {!holdTarget.message.deleted && (
@@ -2331,6 +2439,7 @@ export function CrewChatScreen({
                         className="crew-chat-reaction-bar"
                         role="group"
                         aria-label="Quick emoji reactions"
+                        onClick={(e) => e.stopPropagation()}
                         initial={{ opacity: 0, y: 10, scale: 0.88 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 8, scale: 0.9 }}
@@ -2367,6 +2476,7 @@ export function CrewChatScreen({
                     {/* Highlighted Message Preview */}
                     <motion.div
                       className="crew-chat-hold-preview"
+                      onClick={(e) => e.stopPropagation()}
                       initial={{ opacity: 0, scale: 0.94 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.94 }}
@@ -2386,6 +2496,7 @@ export function CrewChatScreen({
                     {/* Action Menu BELOW held message */}
                     <motion.div
                       className="crew-chat-action-sheet"
+                      onClick={(e) => e.stopPropagation()}
                       initial={{ opacity: 0, y: -10, scale: 0.94 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -8, scale: 0.94 }}
@@ -2868,6 +2979,18 @@ export function CrewChatScreen({
             </Button>
           </form>
         </LiquidBottomSheet>
+
+        {/* Host-Only Chat Wallpaper & Access Settings Sheet */}
+        {isHost && onUpdateChatWallpaper && (
+          <ChatWallpaperSheet
+            open={wallpaperSheetOpen}
+            trip={trip}
+            onApplyWallpaper={onUpdateChatWallpaper}
+            onToggleChatHistory={onToggleChatHistoryForNewMembers}
+            onNotify={onNotify}
+            onClose={() => setWallpaperSheetOpen(false)}
+          />
+        )}
 
         {/* Dedicated Popup Sticker Maker Studio (Gallery -> Crop -> Text) */}
         <CreateStickerSheet

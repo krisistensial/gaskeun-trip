@@ -1,6 +1,6 @@
 import type * as XlsxType from 'xlsx';
 import { normalizeCarSeats } from './crewSwap';
-import { calculateLedger } from './ledger';
+import { calculateLedger, formatIDRNumber } from './ledger';
 import type { RichNoteBlock, SharedTrip } from '../types/trip';
 
 /**
@@ -113,14 +113,14 @@ export async function buildTripWorkbook(trip: SharedTrip): Promise<XlsxType.Work
     ['Metric', 'Amount (IDR)', 'Notes', '', ''],
     ['Combined Collected (Pool + Fundraise)', ledger.combinedCollected, '', '', ''],
     ['Combined Net Cash Balance', ledger.combinedNetBalance, 'Inflows minus all expenses', '', ''],
-    ['Unallocated Cash (Ready to Assign)', ledger.combinedUnallocated, `Pool ${ledger.poolUnallocated.toLocaleString('en-US')} + Fundraise ${ledger.fundraiseUnallocated.toLocaleString('en-US')}`, '', ''],
+    ['Unallocated Cash (Ready to Assign)', ledger.combinedUnallocated, `Pool Rp ${formatIDRNumber(ledger.poolUnallocated)} + Fundraise Rp ${formatIDRNumber(ledger.fundraiseUnallocated)}`, '', ''],
     ['Pool Target', ledger.poolTarget, `${ledger.activeMemberCount} active riders`, '', ''],
     ['Pool Collected (IN)', ledger.poolCollected, `${ledger.poolProgressPct}% of target`, '', ''],
-    ['Pool Allocated to Pockets', ledger.poolAllocated, `Free: ${ledger.poolUnallocated.toLocaleString('en-US')}`, '', ''],
+    ['Pool Allocated to Pockets', ledger.poolAllocated, `Free: Rp ${formatIDRNumber(ledger.poolUnallocated)}`, '', ''],
     ['Pool Direct Spent (OUT)', ledger.poolSpent, '', '', ''],
     ['Fundraise Target', ledger.fundraiseTarget, '', '', ''],
     ['Fundraise Collected (IN)', ledger.fundraiseCollected, `${ledger.fundraiseProgressPct}% of goal`, '', ''],
-    ['Fundraise Allocated to Pockets', ledger.fundraiseAllocated, `Free: ${ledger.fundraiseUnallocated.toLocaleString('en-US')}`, '', ''],
+    ['Fundraise Allocated to Pockets', ledger.fundraiseAllocated, `Free: Rp ${formatIDRNumber(ledger.fundraiseUnallocated)}`, '', ''],
     ['Total Spent (Direct + Pockets)', ledger.totalSpent, '', '', ''],
     ['Pending Reimburse', ledger.pendingReimburseTotal, `${ledger.pendingReimburseItems.length} unpaid`, '', ''],
     [],

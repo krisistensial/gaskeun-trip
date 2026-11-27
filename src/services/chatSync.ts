@@ -277,6 +277,55 @@ export async function fetchRemoteChatMessages(
   }
 }
 
+/**
+ * Fetches older chat messages strictly earlier than beforeIso for top-of-stream pagination.
+ */
+export async function fetchOlderRemoteChatMessages(
+  tripCode: string,
+  beforeIso: string,
+  limit = 80,
+): Promise<
+  | { ok: true; messages: ChatMessage[]; hasMore: boolean }
+  | { ok: false; error: string; tableMissing?: boolean }
+> {
+  const client = getSupabaseClient();
+  const normCode = tripCode.trim().toUpperCase();
+  if (!client || !normCode || !beforeIso) {
+    return { ok: false, error: 'Cloud sync is not configured.' };
+  }
+
+  try {
+    const safeLimit = Math.max(10, Math.min(150, limit));
+    const { data, error } = await client
+      .from('trip_messages')
+      .select('*')
+      .eq('trip_code', normCode)
+      .lt('created_at', beforeIso)
+      .order('created_at', { ascending: false })
+      .limit(safeLimit + 1);
+
+    if (error) {
+      return {
+        ok: false,
+        error: formatSupabaseError(error),
+        tableMissing: isMissingTableError(error),
+      };
+    }
+
+    const rows = Array.isArray(data) ? (data as TripMessageRow[]) : [];
+    const hasMore = rows.length > safeLimit;
+    const trimmed = hasMore ? rows.slice(0, safeLimit) : rows;
+    const mapped = trimmed.map(mapRowToChatMessage).reverse();
+    return { ok: true, messages: mapped, hasMore };
+  } catch (err) {
+    return {
+      ok: false,
+      error: formatSupabaseError(err),
+      tableMissing: isMissingTableError(err),
+    };
+  }
+}
+
 export async function upsertRemoteChatMessage(
   msg: ChatMessage,
 ): Promise<{ ok: boolean; tableMissing?: boolean; error?: string }> {

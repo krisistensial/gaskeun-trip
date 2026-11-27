@@ -34,7 +34,11 @@ export function ExpandingGlassDock({
   const isHidden = hidden || hasOverlay;
 
   return (
-    <div className={`gk-dock-wrap ${isHidden ? 'gk-dock-wrap--hidden' : ''}`} aria-hidden={isHidden}>
+    <div
+      data-tour="glass-dock"
+      className={`gk-dock-wrap ${isHidden ? 'gk-dock-wrap--hidden' : ''}`}
+      aria-hidden={isHidden}
+    >
       <LiquidGlassSurface
         cornerRadius={30}
         displacementScale={34}

@@ -4,6 +4,7 @@ import type {
   ChatPoll,
   ChatReadReceipt,
   ChatReplyPreview,
+  ChatWallpaperConfig,
   TripMember,
 } from '../types/trip';
 
@@ -527,6 +528,7 @@ export function toggleMessageReaction(
 export function mergeChatMessages(
   existing: readonly ChatMessage[],
   incoming: readonly ChatMessage[],
+  maxMessages = MAX_CHAT_MESSAGES,
 ): ChatMessage[] {
   const byId = new Map<string, ChatMessage>();
 
@@ -553,20 +555,52 @@ export function mergeChatMessages(
   const sorted = Array.from(byId.values()).sort((a, b) =>
     a.createdAt.localeCompare(b.createdAt),
   );
-  return sorted.length > MAX_CHAT_MESSAGES
-    ? sorted.slice(sorted.length - MAX_CHAT_MESSAGES)
+  return Number.isFinite(maxMessages) && sorted.length > maxMessages
+    ? sorted.slice(sorted.length - maxMessages)
     : sorted;
 }
 
 export function buildReplyPreview(msg: ChatMessage): ChatReplyPreview {
   return {
     id: msg.id,
+    senderId: msg.senderId,
     senderName: msg.senderName,
     kind: msg.kind,
     text: msg.deleted ? 'Message unsent' : msg.text,
     ...(msg.stickerId ? { stickerId: msg.stickerId } : {}),
     ...(msg.stickerUrl ? { stickerUrl: msg.stickerUrl } : {}),
   };
+}
+
+/**
+ * Resolves the display author label for a quoted reply (WhatsApp/IG style):
+ * shows "You" whenever the quoted message belongs to the currently active viewer,
+ * supporting both modern replies (with senderId) and legacy replies (via message ID or name match).
+ */
+export function resolveReplyAuthorLabel(
+  replyTo: ChatReplyPreview,
+  activeMemberId: string | null,
+  activeMemberName: string,
+  messagesById?: ReadonlyMap<string, ChatMessage>,
+): string {
+  if (activeMemberId && activeMemberId !== 'guest') {
+    if (replyTo.senderId && replyTo.senderId === activeMemberId) {
+      return 'You';
+    }
+    const referenced = messagesById?.get(replyTo.id);
+    if (referenced && referenced.senderId === activeMemberId) {
+      return 'You';
+    }
+    if (
+      !replyTo.senderId &&
+      !referenced &&
+      activeMemberName.trim() &&
+      replyTo.senderName.trim().toLowerCase() === activeMemberName.trim().toLowerCase()
+    ) {
+      return 'You';
+    }
+  }
+  return replyTo.senderName;
 }
 
 export function countTotalReactions(reactions: Record<string, string[]>): Array<{
@@ -768,14 +802,24 @@ export function computeChatMessageTickStatus(params: {
   readReceipts?: Record<string, ChatReadReceipt>;
   members: readonly TripMember[];
   activeMemberId: string | null;
+  chatHistoryForNewMembers?: boolean;
 }): ChatTickStatus {
   if (params.isPending) return 'pending';
 
-  const otherCrew = params.members.filter(
-    (m) =>
-      m.id !== params.message.senderId &&
-      (!params.activeMemberId || m.id !== params.activeMemberId),
-  );
+  const allowHistory = params.chatHistoryForNewMembers !== false;
+  const msgMs = Date.parse(params.message.createdAt);
+
+  const otherCrew = params.members.filter((m) => {
+    if (m.id === params.message.senderId) return false;
+    if (params.activeMemberId && m.id === params.activeMemberId) return false;
+    if (!allowHistory && m.joinedAt && Number.isFinite(msgMs)) {
+      const joinedMs = Date.parse(m.joinedAt);
+      if (Number.isFinite(joinedMs) && joinedMs > msgMs) {
+        return false;
+      }
+    }
+    return true;
+  });
   if (otherCrew.length === 0) return 'sent';
 
   const seenMembers = getMessageSeenByMembers(
@@ -1158,4 +1202,150 @@ export function searchChatTimelineIds(
     }
   }
   return hits;
+}
+
+/* ==========================================================================
+   New Crew Chat History Cutoff & Host-Configurable Chat Wallpapers
+   ========================================================================== */
+
+/**
+ * Filters chat messages according to the Host's chat history policy:
+ * - When allowHistoryForNewMembers is true (default): returns all messages.
+ * - When false and the active member has a joinedAt timestamp: returns only
+ *   messages sent on or after their joinedAt timestamp.
+ */
+export function filterVisibleMessagesForMember(
+  messages: readonly ChatMessage[],
+  member: TripMember | undefined,
+  allowHistoryForNewMembers = true,
+): ChatMessage[] {
+  if (allowHistoryForNewMembers !== false || !member?.joinedAt) {
+    return [...messages];
+  }
+  const joinedMs = Date.parse(member.joinedAt);
+  if (!Number.isFinite(joinedMs)) {
+    return [...messages];
+  }
+  return messages.filter((m) => {
+    const msgMs = Date.parse(m.createdAt);
+    return !Number.isFinite(msgMs) || msgMs >= joinedMs;
+  });
+}
+
+/**
+ * Filters chat polls according to the same new-member chat history cutoff policy.
+ */
+export function filterVisiblePollsForMember(
+  polls: readonly ChatPoll[],
+  member: TripMember | undefined,
+  allowHistoryForNewMembers = true,
+): ChatPoll[] {
+  if (allowHistoryForNewMembers !== false || !member?.joinedAt) {
+    return [...polls];
+  }
+  const joinedMs = Date.parse(member.joinedAt);
+  if (!Number.isFinite(joinedMs)) {
+    return [...polls];
+  }
+  return polls.filter((p) => {
+    const pollMs = Date.parse(p.createdAt);
+    return !Number.isFinite(pollMs) || pollMs >= joinedMs;
+  });
+}
+
+export interface ChatWallpaperPreset {
+  id: string;
+  label: string;
+  swatchBg: string;
+  layerBg: string;
+  layerSize?: string;
+}
+
+const MATCHA_DOODLE_SVG = encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160' fill='none' stroke='%232D4A42' stroke-opacity='0.22' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'>" +
+    "<circle cx='28' cy='28' r='10'/><path d='M28 18v20M18 28h20'/>" +
+    "<path d='M108 26c6-8 18-8 22 0 4 8-4 18-11 23-7-5-15-15-11-23z'/><circle cx='119' cy='28' r='3'/>" +
+    "<path d='M36 108h24l5 12H31l5-12z'/><circle cx='39' cy='124' r='4'/><circle cx='57' cy='124' r='4'/>" +
+    "<path d='M104 106l12-16 12 16 8-10 10 18H96l8-8z'/>" +
+    "<circle cx='78' cy='68' r='6'/><path d='M78 56v4M78 76v4M66 68h4M86 68h4'/>" +
+    "<path d='M18 72c4-4 10-4 14 0s10 4 14 0'/>" +
+    "<path d='M118 68c5-4 11-4 16 0'/>" +
+    "<rect x='64' y='128' width='22' height='14' rx='4'/><circle cx='75' cy='135' r='3.5'/>" +
+  "</svg>",
+);
+
+const STARRY_BOTANICAL_SVG = encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140' fill='none' stroke='%233A6357' stroke-opacity='0.20' stroke-width='1.5' stroke-linecap='round'>" +
+    "<path d='M24 38c8-14 22-14 28-4-6 10-20 14-28 4z'/><path d='M24 38l24-4'/>" +
+    "<path d='M92 98c8-14 22-14 28-4-6 10-20 14-28 4z'/><path d='M92 98l24-4'/>" +
+    "<path d='M96 26l3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7z'/>" +
+    "<path d='M36 96l2.5 5.5 5.5 2.5-5.5 2.5-2.5 5.5-2.5-5.5-5.5-2.5 5.5-2.5 2.5-5.5z'/>" +
+    "<circle cx='70' cy='66' r='3'/><circle cx='122' cy='58' r='2'/>" +
+  "</svg>",
+);
+
+export const CHAT_WALLPAPER_PRESETS: readonly ChatWallpaperPreset[] = [
+  {
+    id: 'default',
+    label: 'Clean Glass',
+    swatchBg: 'linear-gradient(145deg, #F6F8F5 0%, #E7F0EA 100%)',
+    layerBg: 'none',
+  },
+  {
+    id: 'matcha-doodle',
+    label: 'Roadtrip Doodle',
+    swatchBg: `url("data:image/svg+xml,${MATCHA_DOODLE_SVG}"), linear-gradient(155deg, #EBF4EE 0%, #DCEAE1 100%)`,
+    layerBg: `url("data:image/svg+xml,${MATCHA_DOODLE_SVG}"), linear-gradient(155deg, #E8F2EC 0%, #D9EAE0 100%)`,
+    layerSize: '160px 160px, cover',
+  },
+  {
+    id: 'botanical-sage',
+    label: 'Matcha Leaves',
+    swatchBg: `url("data:image/svg+xml,${STARRY_BOTANICAL_SVG}"), linear-gradient(160deg, #F0F6F2 0%, #DFEDE4 100%)`,
+    layerBg: `url("data:image/svg+xml,${STARRY_BOTANICAL_SVG}"), linear-gradient(160deg, #EDF5F0 0%, #DCECE2 100%)`,
+    layerSize: '140px 140px, cover',
+  },
+  {
+    id: 'warm-sunset',
+    label: 'Golden Hour',
+    swatchBg: 'linear-gradient(155deg, #FDF4E3 0%, #F7DFC2 55%, #E7EFEA 100%)',
+    layerBg: 'radial-gradient(circle at 82% 18%, rgba(255, 206, 134, 0.55), transparent 52%), linear-gradient(165deg, #FEF6E8 0%, #F5E1C8 50%, #E2ECE6 100%)',
+  },
+  {
+    id: 'sage-aurora',
+    label: 'Sage Aurora',
+    swatchBg: 'linear-gradient(145deg, #D5EBE0 0%, #C5DFD5 50%, #EAF3EC 100%)',
+    layerBg: 'radial-gradient(circle at 18% 22%, rgba(92, 165, 138, 0.42), transparent 54%), radial-gradient(circle at 84% 78%, rgba(169, 214, 191, 0.55), transparent 58%), linear-gradient(160deg, #E6F2EC 0%, #CEE5DA 100%)',
+  },
+  {
+    id: 'forest-twilight',
+    label: 'Forest Mist',
+    swatchBg: 'linear-gradient(155deg, #2D4A42 0%, #4A7468 60%, #7BA294 100%)',
+    layerBg: 'radial-gradient(circle at 20% 18%, rgba(154, 206, 184, 0.28), transparent 50%), linear-gradient(165deg, #243E37 0%, #3E665B 55%, #6A9486 100%)',
+  },
+];
+
+export function clampWallpaperOpacity(value: number): number {
+  if (!Number.isFinite(value)) return 0.55;
+  return Math.round(Math.max(0.1, Math.min(1, value)) * 100) / 100;
+}
+
+export function getChatWallpaperPreset(presetId?: string): ChatWallpaperPreset | undefined {
+  if (!presetId) return undefined;
+  return CHAT_WALLPAPER_PRESETS.find((p) => p.id === presetId);
+}
+
+export function normalizeChatWallpaper(
+  wallpaper?: ChatWallpaperConfig | null,
+): ChatWallpaperConfig | undefined {
+  if (!wallpaper) return undefined;
+  const imageUrl = wallpaper.imageUrl?.trim();
+  const presetId = wallpaper.presetId?.trim();
+  if (!imageUrl && (!presetId || presetId === 'default')) {
+    return undefined;
+  }
+  return {
+    ...(imageUrl ? { imageUrl } : { presetId }),
+    opacity: clampWallpaperOpacity(wallpaper.opacity),
+  };
 }

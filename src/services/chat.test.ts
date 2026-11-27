@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildChatTimeline,
+  buildReplyPreview,
   CHAT_QUICK_REACTIONS,
   computeChatMessageTickStatus,
   computeLatestSeenAnchors,
@@ -9,7 +10,10 @@ import {
   countUnreadMessages,
   createStickerChatMessage,
   createTextChatMessage,
+  clampWallpaperOpacity,
   extractMentionedMemberIds,
+  filterVisibleMessagesForMember,
+  filterVisiblePollsForMember,
   formatChatDayDivider,
   getActiveMentionQuery,
   getMessageDeliveredToMembers,
@@ -22,6 +26,8 @@ import {
   mergeChatMessages,
   mergeChatPolls,
   mergeChatReadReceipts,
+  normalizeChatWallpaper,
+  resolveReplyAuthorLabel,
   saveChatLastRead,
   searchBuiltInStickers,
   searchChatTimelineIds,
@@ -503,5 +509,139 @@ describe('Crew Chat pure helpers (text, stickers, emoji reactions, unread)', () 
     expect(broadcastSpy).toHaveBeenCalledWith(msg);
     expect(pushSpy).toHaveBeenCalledTimes(1);
     expect(getPendingChatMessageIds('SOLO-27')).toEqual([]);
+  });
+
+  it('filters chat history for newly added crew when Host turns new-member history OFF and excludes late joiners from older blue ticks', () => {
+    const oldMember = {
+      id: 'm-kris',
+      name: 'Kris',
+      initials: 'K',
+      role: 'driver' as const,
+      status: 'confirmed' as const,
+      avatarBg: '#E3EDE6',
+      avatarColor: '#2D4A42',
+      isCreator: true,
+    };
+    const existingCrew = {
+      id: 'm-rani',
+      name: 'Rani',
+      initials: 'R',
+      role: 'passenger' as const,
+      status: 'confirmed' as const,
+      avatarBg: '#E3EDE6',
+      avatarColor: '#2D4A42',
+    };
+    const lateJoiner = {
+      id: 'm-bima',
+      name: 'Bima',
+      initials: 'B',
+      role: 'passenger' as const,
+      status: 'confirmed' as const,
+      avatarBg: '#E3EDE6',
+      avatarColor: '#2D4A42',
+      joinedAt: '2026-11-27T12:00:00.000Z',
+    };
+
+    const olderMsg = createTextChatMessage({
+      tripCode: 'SOLO-27',
+      senderId: 'm-kris',
+      senderName: 'Kris',
+      text: 'Day 1 message',
+      nowIso: '2026-11-27T10:00:00.000Z',
+    })!;
+    const newerMsg = createTextChatMessage({
+      tripCode: 'SOLO-27',
+      senderId: 'm-kris',
+      senderName: 'Kris',
+      text: 'Welcome Bima!',
+      nowIso: '2026-11-27T12:05:00.000Z',
+    })!;
+
+    // ON (default): late joiner sees all messages
+    expect(filterVisibleMessagesForMember([olderMsg, newerMsg], lateJoiner, true)).toHaveLength(2);
+    // OFF: late joiner only sees messages on/after joinedAt
+    const filtered = filterVisibleMessagesForMember([olderMsg, newerMsg], lateJoiner, false);
+    expect(filtered.map((m) => m.id)).toEqual([newerMsg.id]);
+
+    // Polls follow the same policy
+    const oldPoll = createChatPoll({
+      tripCode: 'SOLO-27',
+      question: 'Makan siang?',
+      optionLabels: ['Sate', 'Soto'],
+      createdBy: 'm-kris',
+      createdByName: 'Kris',
+      nowIso: '2026-11-27T09:00:00.000Z',
+    })!;
+    expect(filterVisiblePollsForMember([oldPoll], lateJoiner, true)).toHaveLength(1);
+    expect(filterVisiblePollsForMember([oldPoll], lateJoiner, false)).toHaveLength(0);
+
+    // Tick status: olderMsg turns blue when Rani has read it even if lateJoiner hasn't, when history is OFF
+    const members = [oldMember, existingCrew, lateJoiner];
+    const receipts = {
+      'm-rani': { memberId: 'm-rani', lastReadAt: '2026-11-27T10:15:00.000Z' },
+    };
+    expect(
+      computeChatMessageTickStatus({
+        message: olderMsg,
+        readReceipts: receipts,
+        members,
+        activeMemberId: 'm-kris',
+        chatHistoryForNewMembers: false,
+      }),
+    ).toBe('read');
+    expect(
+      computeChatMessageTickStatus({
+        message: olderMsg,
+        readReceipts: receipts,
+        members,
+        activeMemberId: 'm-kris',
+        chatHistoryForNewMembers: true,
+      }),
+    ).toBe('delivered');
+  });
+
+  it('normalizes and clamps Host chat wallpaper configs cleanly', () => {
+    expect(clampWallpaperOpacity(0.02)).toBe(0.1);
+    expect(clampWallpaperOpacity(1.5)).toBe(1);
+    expect(normalizeChatWallpaper({ presetId: 'default', opacity: 0.7 })).toBeUndefined();
+    expect(normalizeChatWallpaper({ presetId: 'matcha-doodle', opacity: 0.65 })).toEqual({
+      presetId: 'matcha-doodle',
+      opacity: 0.65,
+    });
+    expect(
+      normalizeChatWallpaper({
+        imageUrl: 'https://example.supabase.co/storage/v1/object/public/trip-assets/wp.jpg',
+        opacity: 0.4,
+      }),
+    ).toEqual({
+      imageUrl: 'https://example.supabase.co/storage/v1/object/public/trip-assets/wp.jpg',
+      opacity: 0.4,
+    });
+  });
+
+  it('displays "You" for reply quotes targeting the active member (both modern and legacy replies)', () => {
+    const doraMsg = createTextChatMessage({
+      tripCode: 'SOLO-27',
+      senderId: 'm-dora',
+      senderName: 'Dora',
+      text: 'emg mau ngirim foto apa yang mungkin?',
+      nowIso: '2026-11-27T15:30:00.000Z',
+    })!;
+    const preview = buildReplyPreview(doraMsg);
+    expect(preview.senderId).toBe('m-dora');
+
+    const map = new Map([[doraMsg.id, doraMsg]]);
+    expect(resolveReplyAuthorLabel(preview, 'm-dora', 'Dora', map)).toBe('You');
+    expect(resolveReplyAuthorLabel(preview, 'm-chika', 'Chika', map)).toBe('Dora');
+
+    const legacyPreview = {
+      id: doraMsg.id,
+      senderName: 'Dora',
+      kind: 'text' as const,
+      text: doraMsg.text,
+    };
+    expect(resolveReplyAuthorLabel(legacyPreview, 'm-dora', 'Dora', map)).toBe('You');
+    expect(resolveReplyAuthorLabel({ ...legacyPreview, id: 'old-id' }, 'm-dora', 'Dora')).toBe('You');
+    expect(resolveReplyAuthorLabel(legacyPreview, 'm-chika', 'Chika', map)).toBe('Dora');
   });
 });
