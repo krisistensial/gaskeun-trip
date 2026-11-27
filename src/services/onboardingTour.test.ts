@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildOnboardingTourSteps,
   buildTourStorageKey,
   hasCompletedTour,
   markTourCompleted,
@@ -65,5 +66,34 @@ describe('onboardingTour service', () => {
     const ids = new Set(ONBOARDING_TOUR_STEPS.map((s) => s.id));
     expect(ids.size).toBe(ONBOARDING_TOUR_STEPS.length);
     expect(ONBOARDING_TOUR_STEPS.some((s) => s.requiresDock)).toBe(true);
+  });
+
+  it('dynamically tailors edit steps to match each member permission scope', () => {
+    const viewerSteps = buildOnboardingTourSteps({
+      isHost: false,
+      canEditCrew: false,
+      canEditPlan: false,
+      canEditWallet: false,
+      canEditPrep: false,
+    });
+    expect(viewerSteps.some((s) => s.id === 'plan-add')).toBe(false);
+    expect(viewerSteps.some((s) => s.id === 'wallet-add')).toBe(false);
+    expect(viewerSteps.some((s) => s.id === 'album-gdrive')).toBe(true);
+    expect(viewerSteps.some((s) => s.id === 'album-upload')).toBe(true);
+    expect(viewerSteps.some((s) => s.id === 'prep-bags')).toBe(true);
+    expect(viewerSteps.some((s) => s.id === 'prep-add')).toBe(true);
+
+    const planEditorSteps = buildOnboardingTourSteps({
+      isHost: false,
+      canEditPlan: true,
+      canEditWallet: false,
+    });
+    expect(planEditorSteps.some((s) => s.id === 'plan-add')).toBe(true);
+    expect(planEditorSteps.some((s) => s.id === 'wallet-add')).toBe(false);
+
+    const hostSteps = buildOnboardingTourSteps({ isHost: true });
+    expect(hostSteps.some((s) => s.id === 'plan-add')).toBe(true);
+    expect(hostSteps.some((s) => s.id === 'wallet-add')).toBe(true);
+    expect(hostSteps.find((s) => s.id === 'home-profile')?.roleTag).toBe('Host Control');
   });
 });

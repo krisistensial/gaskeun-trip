@@ -625,7 +625,7 @@ export function PrepScreen({
 
       {/* Personal Only: Bags & Packing Locations Bar (Layer 2 Private) */}
       {tab === 'personal' && (
-        <GlassCard variant="clear" padding="sm" className="prep-bags-card">
+        <div data-tour="prep-bags"><GlassCard variant="clear" padding="sm" className="prep-bags-card">
           <div className="prep-bags-card__head">
             <span className="gk-field__label" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               <Briefcase size={12} strokeWidth={2.2} color="var(--brand-matcha)" />
@@ -696,7 +696,7 @@ export function PrepScreen({
               </button>
             )}
           </div>
-        </GlassCard>
+        </GlassCard></div>
       )}
 
       {/* Subtle Edit Mode Banner (Add button now floats at bottom-right for 1-thumb reach) */}
@@ -849,6 +849,7 @@ export function PrepScreen({
           size="lg"
           portal
           ariaLabel={tab === 'personal' ? 'Add personal packing item' : 'Add group prep task'}
+          dataTour="prep-add"
           className="floating-glass-fab"
           onClick={() => openAddItemSheet()}
         />

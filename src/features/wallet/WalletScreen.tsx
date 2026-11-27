@@ -1157,6 +1157,7 @@ export function WalletScreen({
           size="lg"
           portal
           ariaLabel="Add transaction"
+          dataTour="wallet-add"
           className="floating-glass-fab"
           onClick={handleOpenFab}
         />

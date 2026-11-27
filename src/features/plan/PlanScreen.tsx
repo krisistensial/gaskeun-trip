@@ -828,6 +828,7 @@ export function PlanScreen({
           <div className="plan-header-actions">
             <button
               type="button"
+              data-tour="plan-map"
               className="plan-map-btn tactile"
               aria-label="Open offline route map"
               title="Offline route map"
@@ -1417,6 +1418,7 @@ export function PlanScreen({
           size="lg"
           portal
           ariaLabel="Add itinerary stop"
+          dataTour="plan-add"
           className="floating-glass-fab"
           onClick={handleAddNewStop}
         />

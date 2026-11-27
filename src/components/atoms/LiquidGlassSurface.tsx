@@ -30,16 +30,17 @@ export function sanitizeSvgFilterId(rawId: string): string {
 }
 
 /**
- * Generates an RGBA displacement map (data URL) for `<feDisplacementMap>` shaping
- * a convex rounded-capsule optical bezel:
- * - Neutral (128, 128) in the flat center so icons & text remain tack-sharp
- * - Smooth outward normal curve near the rounded rim so passing content bends cleanly
+ * Generates an RGBA optical displacement map (data URL) for `<feDisplacementMap>`
+ * modeling an Apple Liquid Glass convex squircle meniscus:
+ * - Optically flat neutral (128, 128) center so text & icons stay razor-sharp
+ * - Steep Snell's-law curved rim bezel (`bezelWidth` px) that visibly magnifies
+ *   and curves underlying cards, borders, and icons around rounded corners
  */
 export function buildConvexLensMapDataUrl(
   width: number,
   height: number,
   cornerRadius: number,
-  bezelWidth = 18,
+  bezelWidth = 16,
 ): string {
   if (typeof document === 'undefined') return '';
   const w = Math.max(16, Math.round(width));
@@ -57,7 +58,7 @@ export function buildConvexLensMapDataUrl(
   const r = Math.min(cornerRadius, halfW, halfH);
   const bx = Math.max(0, halfW - r);
   const by = Math.max(0, halfH - r);
-  const bezel = Math.max(6, Math.min(bezelWidth, Math.min(halfW, halfH)));
+  const bezel = Math.max(8, Math.min(bezelWidth, Math.min(halfW, halfH) * 0.72));
 
   for (let y = 0; y < h; y++) {
     const py = y + 0.5 - halfH;
@@ -94,15 +95,21 @@ export function buildConvexLensMapDataUrl(
       let dx = 0;
       let dy = 0;
       if (distInside < bezel) {
-        const t = 1 - distInside / bezel; // 1 at rim -> 0 inward
-        const dome = Math.sin(t * Math.PI * 0.5) * t;
-        dx = -nx * dome;
-        dy = -ny * dome;
+        // u: 0 at outer glass edge -> 1 at flat interior boundary
+        const u = Math.min(1, distInside / bezel);
+        // Apple-style convex squircle meniscus slope: steep optical bend across the rim
+        const t = 1 - u;
+        const meniscus = Math.pow(t, 1.25) * (0.42 + 0.58 * Math.sin(t * Math.PI * 0.5));
+        // Slight outward corner curl boost right along curved corners
+        const cornerFactor = qx > 0 && qy > 0 ? 1.12 : 1.0;
+        const strength = Math.min(1, meniscus * cornerFactor);
+        dx = -nx * strength;
+        dy = -ny * strength;
       }
 
       const idx = (y * w + x) * 4;
-      data[idx] = Math.max(0, Math.min(255, Math.round(128 + dx * 126)));
-      data[idx + 1] = Math.max(0, Math.min(255, Math.round(128 + dy * 126)));
+      data[idx] = Math.max(0, Math.min(255, Math.round(128 + dx * 127)));
+      data[idx + 1] = Math.max(0, Math.min(255, Math.round(128 + dy * 127)));
       data[idx + 2] = 128;
       data[idx + 3] = 255;
     }
@@ -120,6 +127,9 @@ export interface LiquidGlassSurfaceProps {
   children: ReactNode;
   cornerRadius?: number;
   displacementScale?: number;
+  bezelWidth?: number;
+  /** Subtle RGB prism edge dispersion ratio (0 disables chromatic split; 0.08–0.12 mimics real optical glass) */
+  chromaticAberration?: number;
   blurAmount?: number;
   saturation?: number;
   className?: string;
@@ -128,18 +138,21 @@ export interface LiquidGlassSurfaceProps {
 }
 
 /**
- * Crystal-clear Optical Liquid Glass wrapper:
- * - On Chromium (Chrome Android/Desktop, Edge), applies `<feDisplacementMap>` via CSS
- *   `backdrop-filter: url(#lens)` directly onto live DOM pixels behind the glass —
- *   preserving crystal transparency while optically bending cards, borders, and shapes.
- * - On Safari/iOS, Firefox, and reduced-motion devices, renders clean CSS Crystal Liquid.
+ * Apple-Grade Optical Liquid Glass wrapper:
+ * - On Chromium (Chrome Android/Desktop, Edge), applies multi-channel Snell's-law
+ *   `<feDisplacementMap>` with RGB chromatic dispersion via `backdrop-filter: url(#lens)`
+ *   directly onto live DOM pixels behind the glass — visibly curving & refracting borders,
+ *   cards, and icons around the rounded glass rim while keeping center clarity crisp.
+ * - On Safari/iOS, Firefox, and reduced-motion devices, renders refined double-bevel CSS Liquid Glass.
  */
 export function LiquidGlassSurface({
   children,
   cornerRadius = 30,
-  displacementScale = 34,
-  blurAmount = 1.6,
-  saturation = 195,
+  displacementScale = 54,
+  bezelWidth = 16,
+  chromaticAberration = 0.1,
+  blurAmount = 0.65,
+  saturation = 215,
   className = '',
   fallbackClassName = '',
   style,
@@ -148,8 +161,8 @@ export function LiquidGlassSurface({
   const reactId = useId();
   const filterId = useMemo(() => sanitizeSvgFilterId(reactId), [reactId]);
   const [size, setSize] = useState<{ width: number; height: number }>({
-    width: cornerRadius >= 900 ? 48 : 344,
-    height: cornerRadius >= 900 ? 48 : 60,
+    width: cornerRadius >= 900 ? 56 : 340,
+    height: cornerRadius >= 900 ? 56 : 56,
   });
 
   const enabled = canUseSvgLiquidGlass();
@@ -179,8 +192,8 @@ export function LiquidGlassSurface({
 
   const lensMapUrl = useMemo(() => {
     if (!enabled) return '';
-    return buildConvexLensMapDataUrl(size.width, size.height, cornerRadius, 20);
-  }, [enabled, size.width, size.height, cornerRadius]);
+    return buildConvexLensMapDataUrl(size.width, size.height, cornerRadius, bezelWidth);
+  }, [enabled, size.width, size.height, cornerRadius, bezelWidth]);
 
   if (!enabled || !lensMapUrl) {
     return (
@@ -191,6 +204,10 @@ export function LiquidGlassSurface({
   }
 
   const effectiveRadius = Math.min(cornerRadius, size.height / 2);
+  const ca = Math.max(0, Math.min(0.2, chromaticAberration));
+  const scaleR = Math.round(displacementScale * (1 + ca) * 10) / 10;
+  const scaleG = displacementScale;
+  const scaleB = Math.round(displacementScale * (1 - ca) * 10) / 10;
 
   return (
     <div
@@ -198,8 +215,8 @@ export function LiquidGlassSurface({
       className={`gk-lens-host ${className}`.trim()}
       style={{
         borderRadius: `${effectiveRadius}px`,
-        backdropFilter: `url(#${filterId}) blur(${blurAmount}px) saturate(${saturation}%) brightness(1.05)`,
-        WebkitBackdropFilter: `url(#${filterId}) blur(${blurAmount}px) saturate(${saturation}%) brightness(1.05)`,
+        backdropFilter: `url(#${filterId}) blur(${blurAmount}px) saturate(${saturation}%) brightness(1.06)`,
+        WebkitBackdropFilter: `url(#${filterId}) blur(${blurAmount}px) saturate(${saturation}%) brightness(1.06)`,
         ...style,
       }}
     >
@@ -215,23 +232,73 @@ export function LiquidGlassSurface({
           >
             <feImage
               href={lensMapUrl}
-              x="0%"
-              y="0%"
+              x="0"
+              y="0"
               width="100%"
               height="100%"
               preserveAspectRatio="none"
               result="LENS_MAP"
             />
-            <feDisplacementMap
-              in="SourceGraphic"
-              in2="LENS_MAP"
-              scale={displacementScale}
-              xChannelSelector="R"
-              yChannelSelector="G"
-            />
+            {ca > 0 ? (
+              <>
+                <feDisplacementMap
+                  in="SourceGraphic"
+                  in2="LENS_MAP"
+                  scale={scaleR}
+                  xChannelSelector="R"
+                  yChannelSelector="G"
+                  result="DISP_R"
+                />
+                <feColorMatrix
+                  in="DISP_R"
+                  type="matrix"
+                  values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"
+                  result="CH_R"
+                />
+                <feDisplacementMap
+                  in="SourceGraphic"
+                  in2="LENS_MAP"
+                  scale={scaleG}
+                  xChannelSelector="R"
+                  yChannelSelector="G"
+                  result="DISP_G"
+                />
+                <feColorMatrix
+                  in="DISP_G"
+                  type="matrix"
+                  values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0"
+                  result="CH_G"
+                />
+                <feDisplacementMap
+                  in="SourceGraphic"
+                  in2="LENS_MAP"
+                  scale={scaleB}
+                  xChannelSelector="R"
+                  yChannelSelector="G"
+                  result="DISP_B"
+                />
+                <feColorMatrix
+                  in="DISP_B"
+                  type="matrix"
+                  values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0"
+                  result="CH_B"
+                />
+                <feBlend in="CH_R" in2="CH_G" mode="screen" result="RG" />
+                <feBlend in="RG" in2="CH_B" mode="screen" />
+              </>
+            ) : (
+              <feDisplacementMap
+                in="SourceGraphic"
+                in2="LENS_MAP"
+                scale={displacementScale}
+                xChannelSelector="R"
+                yChannelSelector="G"
+              />
+            )}
           </filter>
         </defs>
       </svg>
+      <div className="gk-lens-caustic" aria-hidden="true" />
       <div className="gk-lens-rim" aria-hidden="true" />
       <div className="gk-lens-content">{children}</div>
     </div>

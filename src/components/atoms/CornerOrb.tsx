@@ -18,6 +18,8 @@ export interface CornerOrbProps {
   className?: string;
   /** Render floating bottom-right orb directly in document.body so ancestor transforms/overflow never trap fixed positioning */
   portal?: boolean;
+  /** Optional guided tour target attribute */
+  dataTour?: string;
 }
 
 export function CornerOrb({
@@ -29,6 +31,7 @@ export function CornerOrb({
   onClick,
   className = '',
   portal = false,
+  dataTour,
 }: CornerOrbProps) {
   const hasOverlay = useHasActiveOverlay();
   const isFloatingFab = portal || className.includes('floating-glass-fab');
@@ -53,12 +56,17 @@ export function CornerOrb({
       return null;
     }
     const fabNode = (
-      <div className={`floating-glass-fab ${className.replace('floating-glass-fab', '').trim()}`.trim()}>
+      <div
+        data-tour={dataTour}
+        className={`floating-glass-fab ${className.replace('floating-glass-fab', '').trim()}`.trim()}
+      >
         <LiquidGlassSurface
           cornerRadius={999}
-          displacementScale={28}
-          blurAmount={1.5}
-          saturation={195}
+          displacementScale={52}
+          bezelWidth={16}
+          chromaticAberration={0.11}
+          blurAmount={0.6}
+          saturation={215}
           className="gk-orb-lgr-host"
           fallbackClassName="gk-orb gk-orb--lg"
         >
@@ -79,6 +87,7 @@ export function CornerOrb({
   return (
     <button
       type="button"
+      data-tour={dataTour}
       className={[
         'gk-orb',
         size === 'lg' ? 'gk-orb--lg' : '',

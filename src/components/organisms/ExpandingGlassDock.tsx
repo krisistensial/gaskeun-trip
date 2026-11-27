@@ -56,9 +56,11 @@ export function ExpandingGlassDock({
       >
         <LiquidGlassSurface
           cornerRadius={30}
-          displacementScale={34}
-          blurAmount={1.8}
-          saturation={195}
+          displacementScale={56}
+          bezelWidth={16}
+          chromaticAberration={0.11}
+          blurAmount={0.65}
+          saturation={215}
           className="gk-dock-lgr-host"
           fallbackClassName="gk-dock-fallback"
         >
@@ -96,9 +98,11 @@ export function ExpandingGlassDock({
         >
           <LiquidGlassSurface
             cornerRadius={999}
-            displacementScale={32}
-            blurAmount={1.8}
-            saturation={195}
+            displacementScale={60}
+            bezelWidth={18}
+            chromaticAberration={0.12}
+            blurAmount={0.55}
+            saturation={220}
             className="gk-dock-chat-lgr-host"
             fallbackClassName="gk-dock-chat-fallback"
           >

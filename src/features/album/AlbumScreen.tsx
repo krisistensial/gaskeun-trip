@@ -548,6 +548,7 @@ export function AlbumScreen({
                     href={driveFolderUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    data-tour="album-gdrive"
                     aria-label="Open Google Drive folder"
                     title="Open Google Drive folder"
                     className="album-sync-orb tactile"
@@ -582,6 +583,7 @@ export function AlbumScreen({
                 ) : (
                   <button
                     type="button"
+                    data-tour="album-gdrive"
                     aria-label="Connect Google Drive folder"
                     title="Connect Google Drive folder"
                     className="album-sync-orb tactile"
@@ -690,17 +692,19 @@ export function AlbumScreen({
                   </button>
                 ) : null}
 
-                <Button
-                  variant="matcha"
-                  size="sm"
-                  leftIcon={<Upload size={14} strokeWidth={2} />}
-                  onClick={() => {
-                    triggerFeedback('tap');
-                    setImageSourceOpen(true);
-                  }}
-                >
-                  Upload
-                </Button>
+                <span data-tour="album-upload" style={{ display: 'inline-flex' }}>
+                  <Button
+                    variant="matcha"
+                    size="sm"
+                    leftIcon={<Upload size={14} strokeWidth={2} />}
+                    onClick={() => {
+                      triggerFeedback('tap');
+                      setImageSourceOpen(true);
+                    }}
+                  >
+                    Upload
+                  </Button>
+                </span>
               </div>
             </div>
 

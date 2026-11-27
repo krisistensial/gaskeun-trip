@@ -2572,6 +2572,13 @@ export default function App() {
           open={tourOpen && route === 'hub' && !chatOpen && !activeRouteTarget}
           tripTitle={activeTrip.title}
           memberName={activeMemberName}
+          access={{
+            isHost,
+            canEditCrew,
+            canEditPlan,
+            canEditWallet,
+            canEditPrep,
+          }}
           onNavigateTab={(tab) => setActiveTab(tab)}
           onRevealDock={() => setHasRevealedDock(true)}
           onFinish={() => {
