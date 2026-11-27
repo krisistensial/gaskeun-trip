@@ -56,11 +56,12 @@ describe('onboardingTour service', () => {
     expect(hasCompletedTour('SOLO-27', 'm-kris')).toBe(false);
   });
 
-  it('bypasses auto-tour for guest sessions and exposes valid tour steps', () => {
+  it('bypasses auto-tour for guest sessions and tours all 5 app pages', () => {
     expect(hasCompletedTour('SOLO-27', 'guest')).toBe(true);
     expect(hasCompletedTour('SOLO-27', null)).toBe(true);
 
-    expect(ONBOARDING_TOUR_STEPS.length).toBeGreaterThanOrEqual(5);
+    const tabs = new Set(ONBOARDING_TOUR_STEPS.map((s) => s.tab));
+    expect(tabs).toEqual(new Set(['home', 'plan', 'wallet', 'album', 'prep']));
     const ids = new Set(ONBOARDING_TOUR_STEPS.map((s) => s.id));
     expect(ids.size).toBe(ONBOARDING_TOUR_STEPS.length);
     expect(ONBOARDING_TOUR_STEPS.some((s) => s.requiresDock)).toBe(true);

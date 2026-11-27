@@ -8,6 +8,7 @@ import {
   type OnboardingTourStep,
 } from '../../services/onboardingTour';
 import { useBackHandler } from '../../services/pwaHistory';
+import type { DockTabId } from '../../types/trip';
 import './OnboardingTour.css';
 
 export interface OnboardingTourProps {
@@ -15,6 +16,8 @@ export interface OnboardingTourProps {
   tripTitle: string;
   memberName: string;
   steps?: readonly OnboardingTourStep[];
+  /** Switches the active main tab automatically when stepping across Home/Plan/Wallet/Album/Prep */
+  onNavigateTab?: (tab: DockTabId) => void;
   /** Called before measuring a step that requires the Floating Glass Dock to be revealed */
   onRevealDock?: () => void;
   onFinish: () => void;
@@ -30,7 +33,7 @@ interface SpotlightRect {
 }
 
 const TOOLTIP_WIDTH_MAX = 348;
-const TOOLTIP_EST_HEIGHT = 210;
+const TOOLTIP_EST_HEIGHT = 216;
 const EDGE_MARGIN = 14;
 
 export function OnboardingTour({
@@ -38,6 +41,7 @@ export function OnboardingTour({
   tripTitle,
   memberName,
   steps = ONBOARDING_TOUR_STEPS,
+  onNavigateTab,
   onRevealDock,
   onFinish,
   onSkip,
@@ -74,20 +78,18 @@ export function OnboardingTour({
     'onboarding-tour',
   );
 
-  const measureTarget = useCallback(() => {
+  const measureTarget = useCallback((): boolean => {
     if (!open || stage !== 'tour' || !activeStep) {
       setRect(null);
-      return;
+      return false;
     }
     const el = document.querySelector<HTMLElement>(activeStep.targetSelector);
     if (!el) {
-      setRect(null);
-      return;
+      return false;
     }
     const r = el.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) {
-      setRect(null);
-      return;
+      return false;
     }
     const pad = activeStep.spotlightPadding ?? 8;
     const vw = window.innerWidth;
@@ -103,6 +105,7 @@ export function OnboardingTour({
       height: Math.max(28, bottom - top),
       radius: activeStep.spotlightRadius ?? 22,
     });
+    return true;
   }, [open, stage, activeStep]);
 
   useEffect(() => {
@@ -111,39 +114,60 @@ export function OnboardingTour({
     if (activeStep.requiresDock) {
       onRevealDock?.();
     }
+    onNavigateTab?.(activeStep.tab);
 
-    const scrollAndMeasure = () => {
+    let scrolledToTarget = false;
+    const tryScrollAndMeasure = () => {
       const el = document.querySelector<HTMLElement>(activeStep.targetSelector);
       if (el) {
-        if (activeStep.scrollBlock === 'start') {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        } else if (activeStep.scrollBlock !== 'nearest') {
-          el.scrollIntoView({
-            behavior: 'smooth',
-            block: activeStep.scrollBlock ?? 'center',
-          });
+        if (!scrolledToTarget) {
+          scrolledToTarget = true;
+          if (activeStep.scrollBlock === 'start') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } else if (activeStep.scrollBlock !== 'nearest') {
+            el.scrollIntoView({
+              behavior: 'smooth',
+              block: activeStep.scrollBlock ?? 'center',
+            });
+          }
         }
+        measureTarget();
+        return true;
       }
-      measureTarget();
+      return false;
     };
 
-    scrollAndMeasure();
-    const t1 = window.setTimeout(measureTarget, 120);
-    const t2 = window.setTimeout(measureTarget, 360);
-    const t3 = window.setTimeout(measureTarget, 620);
+    tryScrollAndMeasure();
+
+    // Retry gracefully while lazy-loaded tab screens mount & settle
+    let attempts = 0;
+    const pollId = window.setInterval(() => {
+      attempts += 1;
+      const found = tryScrollAndMeasure();
+      if (found && attempts >= 5) {
+        window.clearInterval(pollId);
+      } else if (attempts >= 22) {
+        window.clearInterval(pollId);
+      }
+    }, 90);
+
+    const t1 = window.setTimeout(measureTarget, 140);
+    const t2 = window.setTimeout(measureTarget, 420);
+    const t3 = window.setTimeout(measureTarget, 760);
 
     const onViewportChange = () => measureTarget();
     window.addEventListener('resize', onViewportChange);
     window.addEventListener('scroll', onViewportChange, { passive: true });
 
     return () => {
+      window.clearInterval(pollId);
       window.clearTimeout(t1);
       window.clearTimeout(t2);
       window.clearTimeout(t3);
       window.removeEventListener('resize', onViewportChange);
       window.removeEventListener('scroll', onViewportChange);
     };
-  }, [open, stage, activeStep, onRevealDock, measureTarget]);
+  }, [open, stage, activeStep, onNavigateTab, onRevealDock, measureTarget]);
 
   useLayoutEffect(() => {
     if (!tooltipRef.current) return;
@@ -211,8 +235,8 @@ export function OnboardingTour({
               Welcome, {memberName || 'Crew'}!
             </h2>
             <p className="gk-tour-welcome-sub">
-              You&apos;re in <strong>{tripTitle}</strong>. Let&apos;s take a quick{' '}
-              {steps.length}-step tour so you know where everything lives.
+              You&apos;re in <strong>{tripTitle}</strong>. Let&apos;s take a quick tour across{' '}
+              <strong>Home, Plan, Wallet, Album, and Prep</strong> so you know everything you can do.
             </p>
             <div className="gk-tour-welcome-actions">
               <Button
@@ -270,7 +294,7 @@ export function OnboardingTour({
           >
             <div className="gk-tour-tooltip__head">
               <span className="gk-tour-tooltip__counter">
-                Step {stepIdx + 1} of {steps.length}
+                Step {stepIdx + 1} of {steps.length} · {activeStep.tabLabel}
               </span>
               <button
                 type="button"

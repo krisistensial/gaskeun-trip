@@ -822,7 +822,7 @@ export function PlanScreen({
   return (
     <div className="plan-root">
       {/* FROZEN HEADER: Title, Offline Route Map Icon + Trail|Table Switcher, Day Pills, Filters */}
-      <div className="plan-frozen-header">
+      <div data-tour="plan-overview" className="plan-frozen-header">
         <header className="plan-header">
           <h1 className="plan-title">Plan</h1>
           <div className="plan-header-actions">

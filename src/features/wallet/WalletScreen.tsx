@@ -409,6 +409,7 @@ export function WalletScreen({
       {/* 5 Sub-Tab Pills (Combined · Pool · Fundraise · Spent · Personal) */}
       <div
         ref={subtabsRef}
+        data-tour="wallet-overview"
         className="wallet-subtabs"
         data-fade={subtabsFade.dataFade}
         role="tablist"

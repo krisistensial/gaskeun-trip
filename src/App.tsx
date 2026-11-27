@@ -2567,18 +2567,23 @@ export default function App() {
             document.body,
           )}
         <OnboardingTour
-          open={tourOpen && route === 'hub' && !chatOpen && !activeRouteTarget && activeTab === 'home'}
+          open={tourOpen && route === 'hub' && !chatOpen && !activeRouteTarget}
           tripTitle={activeTrip.title}
           memberName={activeMemberName}
+          onNavigateTab={(tab) => setActiveTab(tab)}
           onRevealDock={() => setHasRevealedDock(true)}
           onFinish={() => {
             markTourCompleted(activeTrip.code, activeMemberId);
             setTourOpen(false);
+            setActiveTab('home');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             showToast('You are all set! Have an awesome trip', 'success');
           }}
           onSkip={() => {
             markTourCompleted(activeTrip.code, activeMemberId);
             setTourOpen(false);
+            setActiveTab('home');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         />
       </div>

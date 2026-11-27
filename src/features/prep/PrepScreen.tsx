@@ -582,7 +582,7 @@ export function PrepScreen({
       </header>
 
       {/* Dual Segmented Pill: Personal (Local, PIN-Free) | Group (Shared, Editor-Gated) */}
-      <div className="prep-seg" role="tablist" aria-label="Checklist scope">
+      <div data-tour="prep-overview" className="prep-seg" role="tablist" aria-label="Checklist scope">
         <button
           type="button"
           role="tab"

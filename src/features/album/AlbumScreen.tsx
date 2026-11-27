@@ -463,7 +463,7 @@ export function AlbumScreen({
   return (
     <div className="album-root">
       {/* Header with Photos | Ideas Segmented Pill Switcher (identical style to Plan Trail | Table) */}
-      <header className="album-header">
+      <header data-tour="album-overview" className="album-header">
         <h1 className="album-title">Album</h1>
         <div className="album-view-switch" role="tablist" aria-label="Album section">
           <button
