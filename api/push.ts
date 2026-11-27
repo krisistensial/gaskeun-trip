@@ -33,6 +33,8 @@ interface PushRequestBody {
   title?: string;
   body?: string;
   tag?: string;
+  messageId?: string;
+  groupKind?: 'chat' | 'trip';
   renotify?: boolean;
   openChat?: boolean;
   url?: string;
@@ -165,10 +167,20 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return;
   }
 
+  const groupKind = payload.groupKind || (payload.openChat ? 'chat' : 'trip');
+  const resolvedTag = payload.forceShow
+    ? payload.tag || `gaskeun-test-${tripCode}-${Date.now()}`
+    : groupKind === 'chat' || payload.openChat
+      ? `chat-${tripCode}`
+      : `trip-${tripCode}`;
+
   const notificationJson = JSON.stringify({
     title,
     body,
-    tag: payload.tag || `gaskeun-${tripCode}-${Date.now()}`,
+    tripCode,
+    tag: resolvedTag,
+    messageId: payload.messageId ? String(payload.messageId).slice(0, 80) : undefined,
+    groupKind,
     renotify: payload.renotify !== false,
     openChat: Boolean(payload.openChat),
     url: payload.url || (payload.openChat ? '/?open=chat' : '/'),
@@ -192,7 +204,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
           },
           notificationJson,
           {
-            TTL: 86_400,
+            TTL: 604_800,
             urgency: 'high',
           },
         );

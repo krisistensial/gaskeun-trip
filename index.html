@@ -15,9 +15,83 @@
     <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png?v=3" />
     <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=3" />
     <title>GASKEUN! — Group Travel Hub</title>
+    <style>
+      .gk-boot-splash {
+        min-height: 100svh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background:
+          radial-gradient(circle at 20% 22%, rgba(203, 224, 206, 0.72), transparent 48%),
+          radial-gradient(circle at 82% 76%, rgba(245, 242, 228, 0.9), transparent 52%),
+          #F6F8F5;
+        font-family: ui-rounded, 'Segoe UI', system-ui, sans-serif;
+      }
+      .gk-boot-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 20px 26px 22px;
+        border-radius: 30px;
+        background: rgba(255, 255, 255, 0.74);
+        border: 1px solid rgba(255, 255, 255, 0.92);
+        box-shadow: 0 20px 44px -16px rgba(31, 45, 39, 0.16);
+      }
+      .gk-boot-scoot {
+        transform-origin: 112px 84px;
+        animation: gk-boot-bob 0.56s ease-in-out infinite;
+      }
+      .gk-boot-road {
+        animation: gk-boot-slide 0.62s linear infinite;
+      }
+      .gk-boot-puff {
+        animation: gk-boot-puff 0.9s ease-out infinite;
+      }
+      @keyframes gk-boot-bob {
+        0%, 100% { transform: translateY(0) rotate(0deg); }
+        50% { transform: translateY(-3px) rotate(-1.5deg); }
+      }
+      @keyframes gk-boot-slide {
+        from { transform: translateX(0); }
+        to { transform: translateX(-22px); }
+      }
+      @keyframes gk-boot-puff {
+        0% { opacity: 0.85; transform: translate(2px, 1px) scale(0.6); }
+        100% { opacity: 0; transform: translate(-22px, -10px) scale(1.4); }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="gk-boot-splash" role="status" aria-label="Loading GASKEUN">
+        <div class="gk-boot-card">
+          <svg width="176" height="90" viewBox="0 0 220 112" fill="none" aria-hidden="true">
+            <g class="gk-boot-road">
+              <line x1="-20" y1="95" x2="260" y2="95" stroke="#4A7468" stroke-opacity="0.32" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="10 12" />
+            </g>
+            <circle class="gk-boot-puff" cx="66" cy="80" r="5" fill="#E3EDE6" />
+            <g class="gk-boot-scoot">
+              <path d="M99 44c-8 1-14-3-20 0-3 1.5-5 4-8 3 4-5 8-8 14-8 5 0 9 2 14 1Z" fill="#E8A94E" />
+              <path d="M96 44c0-3 3-5 7-5h6c4 0 8 3 10 8l3 9h-22l-4-12Z" fill="#2D4A42" />
+              <rect x="88" y="42" width="9" height="14" rx="4.5" fill="#D99136" />
+              <circle cx="107" cy="31" r="10.5" fill="#4A7468" />
+              <path d="M107 20.5c5.8 0 10.5 4.7 10.5 10.5 0 1.4-.3 2.7-.8 3.9H107c-3.8 0-6.2-2.6-6.2-6.2 0-4.6 2.7-8.2 6.2-8.2Z" fill="#FFFFFF" fill-opacity="0.92" />
+              <path d="M72 78c0-11 8-19 20-19h17l8 16h12c3-14 6-24 10-29h6c-3 8-4 17-3 28 3 1 5 4 5 7v2H72v-5Z" fill="#4A7468" />
+              <rect x="83" y="54" width="24" height="7" rx="3.5" fill="#F5F2E4" />
+              <circle cx="143" cy="56" r="4.6" fill="#FFFDF5" stroke="#2D4A42" stroke-width="1.8" />
+              <circle cx="88" cy="84" r="10.5" fill="#182420" />
+              <circle cx="88" cy="84" r="5.5" fill="#E3EDE6" />
+              <circle cx="139" cy="84" r="10.5" fill="#182420" />
+              <circle cx="139" cy="84" r="5.5" fill="#E3EDE6" />
+            </g>
+          </svg>
+          <div style="font-size:13px;font-weight:700;letter-spacing:0.08em;color:#4A7468">GASKEUN!</div>
+          <div style="font-size:12px;font-weight:600;color:#546860">Warming up the scooters...</div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

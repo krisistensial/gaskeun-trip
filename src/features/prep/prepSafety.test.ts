@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PrepTask } from '../../types/trip';
+import type { PrepBag, PrepTask } from '../../types/trip';
 import {
   PREP_UNDO_LIMIT,
   advanceDeleteVerify,
@@ -13,7 +13,9 @@ import {
   createEmptyUndoStacks,
   popUndoSnapshot,
   pushUndoSnapshot,
+  removePersonalBagPreservingItems,
   setDeleteVerifyCheck,
+  sortPersonalBags,
   startDeleteVerify,
   startEditVerify,
   updateEditVerifyDraft,
@@ -133,5 +135,37 @@ describe('Prep Safety Guard — Multi-Step Undo Stack & 2-Step Verification', ()
     }
 
     expect(cancelEditVerify().stage).toBe('idle');
+  });
+
+  it('sorts pinned personal bags first, allows moving item bags in 2-step edit, and preserves items when deleting a bag', () => {
+    const bags: PrepBag[] = [
+      { id: 'b-1', name: 'Pocket', pinned: false, createdAt: '2026-11-27T08:00:00.000Z' },
+      { id: 'b-2', name: 'Camera Bag', pinned: true, createdAt: '2026-11-27T09:00:00.000Z' },
+      { id: 'b-3', name: 'Backpack', pinned: false, createdAt: '2026-11-27T07:00:00.000Z' },
+    ];
+    const sorted = sortPersonalBags(bags);
+    expect(sorted.map((b) => b.name)).toEqual(['Camera Bag', 'Backpack', 'Pocket']);
+
+    // Moving an item to a different bag counts as a valid edit even if title stays identical
+    const task: PrepTask = { id: 'pp-10', title: 'Sandisk 64GB', done: false, bagId: 'b-3' };
+    const editing = startEditVerify(task);
+    const moved = updateEditVerifyDraft(editing, { draftBagId: 'b-2' });
+    const review = advanceEditToConfirm(moved);
+    expect(review.error).toBeUndefined();
+    expect(review.next.stage).toBe('confirming');
+    if (review.next.stage === 'confirming') {
+      expect(review.next.draftBagId).toBe('b-2');
+    }
+
+    // Deleting a bag preserves items by unassigning their bagId
+    const items: PrepTask[] = [
+      { id: 'pp-10', title: 'Sandisk 64GB', done: false, bagId: 'b-2' },
+      { id: 'pp-11', title: 'Raincoat', done: true, bagId: 'b-3' },
+    ];
+    const { nextBags, nextTasks } = removePersonalBagPreservingItems(bags, items, 'b-2');
+    expect(nextBags.map((b) => b.id)).toEqual(['b-1', 'b-3']);
+    expect(nextTasks[0].bagId).toBeUndefined();
+    expect(nextTasks[0].title).toBe('Sandisk 64GB');
+    expect(nextTasks[1].bagId).toBe('b-3');
   });
 });

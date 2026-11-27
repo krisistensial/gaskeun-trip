@@ -29,6 +29,12 @@ body {
   -webkit-touch-callout: none;
 }
 
+/* Lock browser double-tap / pinch page zoom on all non-Home screens */
+html[data-page-zoom='off'],
+html[data-page-zoom='off'] body {
+  touch-action: manipulation;
+}
+
 input,
 textarea,
 select,

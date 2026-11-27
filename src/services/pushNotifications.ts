@@ -26,6 +26,8 @@ export interface BackgroundPushDispatchPayload {
   title: string;
   body: string;
   tag?: string;
+  messageId?: string;
+  groupKind?: 'chat' | 'trip';
   renotify?: boolean;
   openChat?: boolean;
   url?: string;
@@ -49,6 +51,42 @@ export interface ActivePushSwCheck {
 }
 
 let cachedVapidPublicKey: string | null = null;
+const PUSH_META_CACHE_NAME = 'gaskeun-push-meta-v1';
+const PUSH_META_CACHE_URL = '/__gaskeun_push_meta__';
+
+interface StoredPushMeta {
+  tripCode: string;
+  memberId: string;
+  supabaseUrl: string;
+  supabaseKey: string;
+  endpoint: string;
+  updatedAt: string;
+}
+
+async function saveSwPushSyncMeta(meta: StoredPushMeta): Promise<void> {
+  try {
+    if (typeof caches === 'undefined') return;
+    const cache = await caches.open(PUSH_META_CACHE_NAME);
+    await cache.put(
+      PUSH_META_CACHE_URL,
+      new Response(JSON.stringify(meta), {
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+  } catch {
+    // ignore storage/cache restrictions
+  }
+}
+
+async function clearSwPushSyncMeta(): Promise<void> {
+  try {
+    if (typeof caches === 'undefined') return;
+    const cache = await caches.open(PUSH_META_CACHE_NAME);
+    await cache.delete(PUSH_META_CACHE_URL);
+  } catch {
+    // ignore cleanup errors
+  }
+}
 
 export function resolvePushApiUrl(): string {
   const configured = String(import.meta.env.VITE_PUSH_API_URL ?? '').trim();
@@ -288,6 +326,21 @@ export async function ensureWebPushSubscription(
       return { ok: false, status: 'error', error: error.message };
     }
 
+    const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL ?? '')
+      .trim()
+      .replace(/\/+$/, '');
+    const supabaseKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
+    if (supabaseUrl && supabaseKey) {
+      await saveSwPushSyncMeta({
+        tripCode: cleanCode,
+        memberId: cleanMemberId,
+        supabaseUrl,
+        supabaseKey,
+        endpoint: keys.endpoint,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
     return { ok: true, status: 'subscribed' };
   } catch (err) {
     return {
@@ -313,6 +366,7 @@ export async function removeWebPushSubscription(): Promise<void> {
         .delete()
         .eq('endpoint', endpoint);
     }
+    await clearSwPushSyncMeta();
   } catch {
     // ignore cleanup failures
   }

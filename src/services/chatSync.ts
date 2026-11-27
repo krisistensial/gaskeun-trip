@@ -1,15 +1,92 @@
 import type {
+  ChatDeliveryReceipt,
   ChatMessage,
   ChatPoll,
   ChatReadReceipt,
   ChatReplyPreview,
 } from '../types/trip';
 import { MAX_CHAT_MESSAGES } from './chat';
+import {
+  dispatchBackgroundPush,
+  type BackgroundPushDispatchPayload,
+} from './pushNotifications';
 import { formatSupabaseError, getSupabaseClient } from './supabaseSync';
 
 const CHAT_CACHE_KEY_PREFIX = 'gaskeun_chat_cache_v1_';
 const CHAT_CLEARED_KEY_PREFIX = 'gaskeun_chat_cleared_v1_';
+const CHAT_PENDING_OUTBOX_PREFIX = 'gaskeun_chat_outbox_v1_';
 const MAX_CLEARED_CHAT_IDS = 400;
+const MAX_PENDING_CHAT_ITEMS = 60;
+
+export interface PendingChatOutboxItem {
+  message: ChatMessage;
+  pushPayload?: BackgroundPushDispatchPayload;
+}
+
+function getPendingChatKey(tripCode: string): string {
+  return `${CHAT_PENDING_OUTBOX_PREFIX}${tripCode.trim().toUpperCase()}`;
+}
+
+export function loadPendingChatQueue(tripCode: string): PendingChatOutboxItem[] {
+  try {
+    if (typeof localStorage === 'undefined' || !tripCode.trim()) return [];
+    const raw = localStorage.getItem(getPendingChatKey(tripCode));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? (parsed as PendingChatOutboxItem[]).filter((item) => Boolean(item?.message?.id))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function savePendingChatQueue(
+  tripCode: string,
+  items: readonly PendingChatOutboxItem[],
+): void {
+  try {
+    if (typeof localStorage === 'undefined' || !tripCode.trim()) return;
+    if (items.length === 0) {
+      localStorage.removeItem(getPendingChatKey(tripCode));
+      return;
+    }
+    const bounded =
+      items.length > MAX_PENDING_CHAT_ITEMS
+        ? items.slice(items.length - MAX_PENDING_CHAT_ITEMS)
+        : items;
+    localStorage.setItem(getPendingChatKey(tripCode), JSON.stringify(bounded));
+  } catch {
+    // ignore storage quota limits
+  }
+}
+
+export function enqueuePendingChatItem(
+  tripCode: string,
+  item: PendingChatOutboxItem,
+): PendingChatOutboxItem[] {
+  const existing = loadPendingChatQueue(tripCode).filter(
+    (entry) => entry.message.id !== item.message.id,
+  );
+  const next = [...existing, item];
+  savePendingChatQueue(tripCode, next);
+  return next;
+}
+
+export function removePendingChatItem(
+  tripCode: string,
+  messageId: string,
+): PendingChatOutboxItem[] {
+  const next = loadPendingChatQueue(tripCode).filter(
+    (entry) => entry.message.id !== messageId,
+  );
+  savePendingChatQueue(tripCode, next);
+  return next;
+}
+
+export function getPendingChatMessageIds(tripCode: string): string[] {
+  return loadPendingChatQueue(tripCode).map((entry) => entry.message.id);
+}
 
 function getClearedChatKey(tripCode: string, memberId: string | null): string {
   const normCode = tripCode.trim().toUpperCase();
@@ -293,14 +370,76 @@ export async function markMultipleRemoteChatDeleted(
   }
 }
 
+export async function flushPendingChatQueue(
+  tripCode: string,
+  options?: {
+    onBroadcast?: (message: ChatMessage) => void;
+    upsertFn?: typeof upsertRemoteChatMessage;
+    pushFn?: typeof dispatchBackgroundPush;
+  },
+): Promise<{
+  flushedIds: string[];
+  remainingIds: string[];
+  tableMissing: boolean;
+}> {
+  const queue = loadPendingChatQueue(tripCode);
+  if (queue.length === 0) {
+    return { flushedIds: [], remainingIds: [], tableMissing: false };
+  }
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return {
+      flushedIds: [],
+      remainingIds: queue.map((q) => q.message.id),
+      tableMissing: false,
+    };
+  }
+
+  const upsert = options?.upsertFn ?? upsertRemoteChatMessage;
+  const push = options?.pushFn ?? dispatchBackgroundPush;
+  const flushedIds: string[] = [];
+  const remaining: PendingChatOutboxItem[] = [];
+  let tableMissing = false;
+
+  for (let i = 0; i < queue.length; i++) {
+    const item = queue[i];
+    const res = await upsert(item.message);
+    if (res.ok) {
+      flushedIds.push(item.message.id);
+      options?.onBroadcast?.(item.message);
+      if (item.pushPayload) {
+        void push(item.pushPayload);
+      }
+    } else if (res.tableMissing) {
+      tableMissing = true;
+      flushedIds.push(item.message.id);
+      options?.onBroadcast?.(item.message);
+      if (item.pushPayload) {
+        void push(item.pushPayload);
+      }
+    } else {
+      remaining.push(...queue.slice(i));
+      break;
+    }
+  }
+
+  savePendingChatQueue(tripCode, remaining);
+  return {
+    flushedIds,
+    remainingIds: remaining.map((q) => q.message.id),
+    tableMissing,
+  };
+}
+
 export interface CrewChatSubscriptionHandlers {
   onMessage: (message: ChatMessage) => void;
   onReaction: (payload: { id: string; reactions: Record<string, string[]> }) => void;
   onDelete: (payload: { ids: string[] }) => void;
   onTyping: (payload: { memberId: string; memberName: string; isTyping: boolean }) => void;
+  onDelivered?: (receipt: ChatDeliveryReceipt) => void;
   onSeen?: (receipt: ChatReadReceipt) => void;
   onPoll?: (poll: ChatPoll) => void;
   onPin?: (payload: { messageId: string | null }) => void;
+  onReconnect?: () => void;
 }
 
 export interface CrewChatChannelController {
@@ -309,6 +448,7 @@ export interface CrewChatChannelController {
   broadcastReaction: (id: string, reactions: Record<string, string[]>) => void;
   broadcastDelete: (ids: string[]) => void;
   sendTypingPing: (isTyping: boolean) => void;
+  sendDeliveredReceipt: (receipt: ChatDeliveryReceipt) => void;
   sendSeenReceipt: (receipt: ChatReadReceipt) => void;
   broadcastPoll: (poll: ChatPoll) => void;
   broadcastPin: (messageId: string | null) => void;
@@ -329,6 +469,7 @@ export function subscribeToCrewChat(
       broadcastReaction: () => {},
       broadcastDelete: () => {},
       sendTypingPing: () => {},
+      sendDeliveredReceipt: () => {},
       sendSeenReceipt: () => {},
       broadcastPoll: () => {},
       broadcastPin: () => {},
@@ -336,6 +477,8 @@ export function subscribeToCrewChat(
   }
 
   let subscribed = false;
+  let hasSubscribedOnce = false;
+  let needsReconnectSync = false;
   const channel = client
     .channel(`trip-chat-${normCode}`, {
       config: { broadcast: { self: false } },
@@ -364,6 +507,11 @@ export function subscribeToCrewChat(
         handlers.onTyping(
           payload as { memberId: string; memberName: string; isTyping: boolean },
         );
+      }
+    })
+    .on('broadcast', { event: 'chat:delivered' }, ({ payload }) => {
+      if (payload && typeof payload === 'object' && 'memberId' in payload) {
+        handlers.onDelivered?.(payload as ChatDeliveryReceipt);
       }
     })
     .on('broadcast', { event: 'chat:seen' }, ({ payload }) => {
@@ -399,7 +547,19 @@ export function subscribeToCrewChat(
       },
     )
     .subscribe((status) => {
-      subscribed = status === 'SUBSCRIBED';
+      if (status === 'SUBSCRIBED') {
+        subscribed = true;
+        if (hasSubscribedOnce && needsReconnectSync) {
+          needsReconnectSync = false;
+          handlers.onReconnect?.();
+        }
+        hasSubscribedOnce = true;
+      } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+        subscribed = false;
+        if (hasSubscribedOnce) {
+          needsReconnectSync = true;
+        }
+      }
     });
 
   const emit = (event: string, payload: Record<string, unknown>) => {
@@ -423,6 +583,7 @@ export function subscribeToCrewChat(
         isTyping,
       });
     },
+    sendDeliveredReceipt: (receipt) => emit('chat:delivered', { ...receipt }),
     sendSeenReceipt: (receipt) => emit('chat:seen', { ...receipt }),
     broadcastPoll: (poll) => emit('chat:poll', { ...poll }),
     broadcastPin: (messageId) => emit('chat:pin', { messageId }),

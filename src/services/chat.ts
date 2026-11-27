@@ -1,4 +1,5 @@
 import type {
+  ChatDeliveryReceipt,
   ChatMessage,
   ChatPoll,
   ChatReadReceipt,
@@ -682,6 +683,123 @@ export function mergeChatReadReceipts(
     }
   }
   return next;
+}
+
+/**
+ * Merges per-member delivery receipts, always keeping the newest `lastDeliveredAt` timestamp.
+ */
+export function mergeChatDeliveryReceipts(
+  existing: Record<string, ChatDeliveryReceipt> | undefined,
+  incoming: Record<string, ChatDeliveryReceipt> | undefined,
+): Record<string, ChatDeliveryReceipt> {
+  const next: Record<string, ChatDeliveryReceipt> = { ...(existing ?? {}) };
+  for (const [memberId, rec] of Object.entries(incoming ?? {})) {
+    if (!rec?.lastDeliveredAt) continue;
+    const prev = next[memberId];
+    if (!prev || Date.parse(rec.lastDeliveredAt) > Date.parse(prev.lastDeliveredAt)) {
+      next[memberId] = rec;
+    }
+  }
+  return next;
+}
+
+export interface MessageDeliveredMemberInfo {
+  member: TripMember;
+  deliveredAt: string;
+}
+
+/**
+ * Returns all other crew members whose webapp has received (delivered or read)
+ * up through `message.createdAt`, sorted most-recent first.
+ */
+export function getMessageDeliveredToMembers(
+  message: ChatMessage,
+  deliveryReceipts: Record<string, ChatDeliveryReceipt> | undefined,
+  readReceipts: Record<string, ChatReadReceipt> | undefined,
+  members: readonly TripMember[],
+  activeMemberId: string | null,
+): MessageDeliveredMemberInfo[] {
+  if (message.deleted) return [];
+  const msgMs = Date.parse(message.createdAt);
+  if (!Number.isFinite(msgMs)) return [];
+
+  const list: MessageDeliveredMemberInfo[] = [];
+  for (const member of members) {
+    if (activeMemberId && member.id === activeMemberId) continue;
+    if (member.id === message.senderId) continue;
+
+    const delIso = deliveryReceipts?.[member.id]?.lastDeliveredAt;
+    const readIso = readReceipts?.[member.id]?.lastReadAt;
+    const delMs = delIso ? Date.parse(delIso) : NaN;
+    const readMs = readIso ? Date.parse(readIso) : NaN;
+
+    const deliveredOk = Number.isFinite(delMs) && delMs >= msgMs;
+    const readOk = Number.isFinite(readMs) && readMs >= msgMs;
+
+    if (deliveredOk || readOk) {
+      const effectiveAt =
+        deliveredOk && readOk
+          ? delMs <= readMs
+            ? delIso!
+            : readIso!
+          : deliveredOk
+            ? delIso!
+            : readIso!;
+      list.push({ member, deliveredAt: effectiveAt });
+    }
+  }
+
+  return list.sort((a, b) => b.deliveredAt.localeCompare(a.deliveredAt));
+}
+
+export type ChatTickStatus = 'pending' | 'sent' | 'delivered' | 'read';
+
+/**
+ * Computes true WhatsApp-style group message tick stages for own messages:
+ * - `pending`: queued locally while offline / waiting to reach server
+ * - `sent` (single gray ✓): sent from sender to server, not yet received by another crew webapp
+ * - `delivered` (double gray ✓✓): received by at least 1 other crew member's webapp (not all read yet)
+ * - `read` (double blue ✓✓): ALL other crew members in the trip have read the message
+ */
+export function computeChatMessageTickStatus(params: {
+  message: ChatMessage;
+  isPending?: boolean;
+  deliveryReceipts?: Record<string, ChatDeliveryReceipt>;
+  readReceipts?: Record<string, ChatReadReceipt>;
+  members: readonly TripMember[];
+  activeMemberId: string | null;
+}): ChatTickStatus {
+  if (params.isPending) return 'pending';
+
+  const otherCrew = params.members.filter(
+    (m) =>
+      m.id !== params.message.senderId &&
+      (!params.activeMemberId || m.id !== params.activeMemberId),
+  );
+  if (otherCrew.length === 0) return 'sent';
+
+  const seenMembers = getMessageSeenByMembers(
+    params.message,
+    params.readReceipts,
+    params.members,
+    params.activeMemberId,
+  );
+  if (seenMembers.length >= otherCrew.length) {
+    return 'read';
+  }
+
+  const deliveredMembers = getMessageDeliveredToMembers(
+    params.message,
+    params.deliveryReceipts,
+    params.readReceipts,
+    params.members,
+    params.activeMemberId,
+  );
+  if (deliveredMembers.length > 0 || seenMembers.length > 0) {
+    return 'delivered';
+  }
+
+  return 'sent';
 }
 
 export interface MessageSeenMemberInfo {

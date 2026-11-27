@@ -484,6 +484,15 @@
   right: 8px;
 }
 
+.album-card__badge .gk-badge--neutral {
+  background: rgba(24, 36, 32, 0.78);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(10, 20, 16, 0.28);
+}
+
 .album-card__caption {
   position: absolute;
   left: 0;
@@ -526,6 +535,32 @@
   border-radius: 22px;
   object-fit: contain;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.album-lightbox__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.album-lightbox__actions > .gk-btn {
+  flex: 1 1 0;
+  min-width: 108px;
+}
+
+.album-lightbox__actions > .gk-btn--danger {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* Guarantee every label, icon, and button text inside the dark photo detail lightbox is crisp white */
+.album-lightbox,
+.album-lightbox .gk-orb,
+.album-lightbox .gk-btn,
+.album-lightbox .gk-btn span,
+.album-lightbox .gk-btn svg {
+  color: #FFFFFF;
 }
 
 .album-upload-preview {

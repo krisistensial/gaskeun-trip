@@ -158,6 +158,30 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
+/* High-contrast dark-frosted glass pill with crisp pure white text/icon for dark lightboxes */
+.gk-btn--glass-on-dark {
+  background: rgba(255, 255, 255, 0.18);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.44);
+  box-shadow:
+    0 12px 28px -8px rgba(0, 0, 0, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.52);
+}
+
+.gk-btn--glass-on-dark svg,
+.gk-btn--glass-on-dark span {
+  color: #FFFFFF;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28));
+}
+
+.gk-btn--glass-on-dark:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.gk-btn--glass-on-dark::after {
+  opacity: 0.45;
+}
+
 .gk-btn--glass::after,
 .gk-day-pill::after,
 .gk-orb::after {
@@ -519,6 +543,24 @@
   width: 48px;
   height: 48px;
   color: var(--brand-matcha);
+}
+
+/* High-contrast crisp white icon orb over dark lightboxes & overlays */
+.gk-orb--on-dark {
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  color: #FFFFFF;
+  box-shadow:
+    0 10px 24px -6px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.gk-orb--on-dark svg {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
+}
+
+.gk-orb--on-dark:hover {
+  background: rgba(255, 255, 255, 0.26);
 }
 
 /* Floating Glass (+) FAB — always portaled to document.body at bottom-right above Dock */

@@ -1024,16 +1024,17 @@ export function AlbumScreen({
               onClick={(e) => e.stopPropagation()}
             >
               <div style={{ color: '#FFFFFF' }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: '#FFFFFF' }}>
                   {lightboxPhoto.caption}
                 </div>
-                <div style={{ fontSize: 12, opacity: 0.78 }}>
+                <div style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.88)' }}>
                   {lightboxPhoto.dayLabel} · {lightboxPhoto.uploaderName}
                   {lightboxPhoto.source === 'local' ? ' · Local' : ''}
                 </div>
               </div>
               <CornerOrb
                 kind="close"
+                surface="dark"
                 ariaLabel="Close lightbox"
                 onClick={() => setLightboxPhoto(null)}
               />
@@ -1047,12 +1048,12 @@ export function AlbumScreen({
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+            <div className="album-lightbox__actions" onClick={(e) => e.stopPropagation()}>
               <Button
                 variant="danger"
                 size="md"
                 aria-label="Delete photo"
-                leftIcon={<Trash2 size={16} strokeWidth={2} />}
+                leftIcon={<Trash2 size={16} strokeWidth={2.1} />}
                 onClick={() => setConfirmDelete(true)}
               >
                 Delete
@@ -1063,7 +1064,7 @@ export function AlbumScreen({
                   size="md"
                   fullWidth
                   disabled={pushingLocal}
-                  leftIcon={<CloudUpload size={16} strokeWidth={2} />}
+                  leftIcon={<CloudUpload size={16} strokeWidth={2.1} />}
                   onClick={() => void handlePushLightboxPhoto()}
                 >
                   {pushingLocal ? 'Pushing...' : 'Push to Drive'}
@@ -1071,9 +1072,10 @@ export function AlbumScreen({
               )}
               <Button
                 variant="glass"
+                surface="dark"
                 size="md"
                 fullWidth={lightboxPhoto.source !== 'local' || !hasSyncScript}
-                leftIcon={<Download size={16} strokeWidth={2} />}
+                leftIcon={<Download size={16} strokeWidth={2.2} />}
                 onClick={() => handleDownload(lightboxPhoto)}
               >
                 Download

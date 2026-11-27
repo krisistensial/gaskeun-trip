@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
   ArrowRight,
+  Briefcase,
   Check,
   Lock,
   Pencil,
   Plus,
+  Star,
   Trash2,
   Undo2,
   Users,
@@ -14,6 +16,7 @@ import {
 import {
   Avatar,
   Button,
+  ConfirmDialog,
   CornerOrb,
   EmptyState,
   GlassCard,
@@ -21,9 +24,10 @@ import {
   LiquidBottomSheet,
 } from '../../components/atoms';
 import { useRegisterOverlay } from '../../context/OverlayContext';
+import { useHorizontalScrollFade } from '../../hooks/useHorizontalScrollFade';
 import { triggerFeedback } from '../../services/feedback';
 import { useBackHandler } from '../../services/pwaHistory';
-import type { PrepTask, SharedTrip, TripMember } from '../../types/trip';
+import type { PrepBag, PrepTask, SharedTrip, TripMember } from '../../types/trip';
 import {
   advanceDeleteVerify,
   advanceEditToConfirm,
@@ -36,7 +40,9 @@ import {
   createEmptyUndoStacks,
   popUndoSnapshot,
   pushUndoSnapshot,
+  removePersonalBagPreservingItems,
   setDeleteVerifyCheck,
+  sortPersonalBags,
   startDeleteVerify,
   startEditVerify,
   updateEditVerifyDraft,
@@ -51,11 +57,13 @@ import './prep.css';
 export interface PrepScreenProps {
   trip: SharedTrip;
   personalPrep: PrepTask[];
+  personalBags?: PrepBag[];
   canEdit: boolean;
   viewOnlyMode?: boolean;
   onOpenMenu: () => void;
   onRequestUnlockPin: () => void;
   onUpdatePersonalPrep: (tasks: PrepTask[], toastMsg?: string) => void;
+  onUpdatePersonalBags?: (bags: PrepBag[], tasksOverride?: PrepTask[], toastMsg?: string) => void;
   onUpdateGroupPrep: (tasks: PrepTask[], toastMsg?: string) => void;
 }
 
@@ -69,14 +77,24 @@ interface UndoToastState {
 export function PrepScreen({
   trip,
   personalPrep,
+  personalBags = [],
   canEdit,
   onOpenMenu,
   onRequestUnlockPin,
   onUpdatePersonalPrep,
+  onUpdatePersonalBags,
   onUpdateGroupPrep,
 }: PrepScreenProps) {
   const [tab, setTab] = useState<PrepScope>('personal');
   const [isEditMode, setIsEditMode] = useState(false);
+
+  // Personal Bags filter & editor states (Strictly Layer 2 private)
+  const [selectedBagFilter, setSelectedBagFilter] = useState<string>('all');
+  const [bagSheetOpen, setBagSheetOpen] = useState(false);
+  const [editingBag, setEditingBag] = useState<PrepBag | null>(null);
+  const [bagNameDraft, setBagNameDraft] = useState('');
+  const [bagPinnedDraft, setBagPinnedDraft] = useState(false);
+  const [deletingBag, setDeletingBag] = useState<PrepBag | null>(null);
 
   // Multi-step undo stacks (max 20 per scope: personal & group)
   const [undoStacks, setUndoStacks] = useState<PrepUndoStacks>(() => createEmptyUndoStacks());
@@ -87,10 +105,11 @@ export function PrepScreen({
     token: 0,
   });
 
-  // Add Item Sheet state (only accessible in Edit Mode)
+  // Add Item Sheet state (reachable anytime from bottom-right floating + button)
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newAssigneeId, setNewAssigneeId] = useState<string>(trip.members[0]?.id ?? '');
+  const [newBagId, setNewBagId] = useState<string>('');
 
   // Group PIC picker sheet (only in Edit Mode)
   const [picPickerTaskId, setPicPickerTaskId] = useState<string | null>(null);
@@ -99,6 +118,10 @@ export function PrepScreen({
   const [deleteState, setDeleteState] = useState<DeleteVerifyState>({ stage: 'idle' });
   const [editState, setEditState] = useState<EditVerifyState>({ stage: 'idle' });
   const [editError, setEditError] = useState<string>('');
+
+  const bagFilterRef = useRef<HTMLDivElement | null>(null);
+  const sortedBags = useMemo(() => sortPersonalBags(personalBags), [personalBags]);
+  const bagFilterFade = useHorizontalScrollFade(bagFilterRef, [sortedBags.length, tab]);
 
   useRegisterOverlay(deleteState.stage !== 'idle');
   useBackHandler(
@@ -109,6 +132,13 @@ export function PrepScreen({
   );
 
   const canEditActiveTab = tab === 'personal' || canEdit;
+
+  // Reset selected bag filter if the selected bag was removed
+  useEffect(() => {
+    if (selectedBagFilter !== 'all' && !sortedBags.some((b) => b.id === selectedBagFilter)) {
+      setSelectedBagFilter('all');
+    }
+  }, [selectedBagFilter, sortedBags]);
 
   // Exit edit mode safely when switching to Group without editor permission or enabling View-Only Mode
   useEffect(() => {
@@ -121,7 +151,7 @@ export function PrepScreen({
     }
   }, [canEditActiveTab]);
 
-  // 5-second auto-dismiss timer for floating Undo toast
+  // 5-second auto-dismiss timer for top Undo toast
   useEffect(() => {
     if (!undoToast.open) return;
     const id = window.setTimeout(() => {
@@ -135,11 +165,29 @@ export function PrepScreen({
     [trip.members],
   );
 
+  const bagById = useMemo(
+    () => new Map<string, PrepBag>(sortedBags.map((b) => [b.id, b])),
+    [sortedBags],
+  );
+
   const activeTasks = tab === 'personal' ? personalPrep : trip.groupPrep;
   const doneCount = activeTasks.filter((t) => t.done).length;
   const totalCount = activeTasks.length;
   const readyPct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
   const hasUndo = canUndoScope(undoStacks, tab);
+
+  const visibleBags = useMemo(
+    () =>
+      selectedBagFilter === 'all'
+        ? sortedBags
+        : sortedBags.filter((b) => b.id === selectedBagFilter),
+    [sortedBags, selectedBagFilter],
+  );
+
+  const unassignedPersonalTasks = useMemo(
+    () => personalPrep.filter((t) => !t.bagId || !bagById.has(t.bagId)),
+    [personalPrep, bagById],
+  );
 
   const commitChangeWithUndo = (
     scope: PrepScope,
@@ -195,6 +243,96 @@ export function PrepScreen({
     setEditError('');
   };
 
+  const openAddItemSheet = (preselectedBagId?: string) => {
+    guardGroupEdit(() => {
+      triggerFeedback('tap');
+      setNewTitle('');
+      if (tab === 'personal') {
+        const defaultBag =
+          preselectedBagId !== undefined
+            ? preselectedBagId
+            : selectedBagFilter !== 'all'
+              ? selectedBagFilter
+              : sortedBags[0]?.id ?? '';
+        setNewBagId(defaultBag);
+      }
+      setAddSheetOpen(true);
+    });
+  };
+
+  const openCreateBagSheet = () => {
+    triggerFeedback('tap');
+    setEditingBag(null);
+    setBagNameDraft('');
+    setBagPinnedDraft(sortedBags.length === 0);
+    setBagSheetOpen(true);
+  };
+
+  const openRenameBagSheet = (bag: PrepBag) => {
+    triggerFeedback('tap');
+    setEditingBag(bag);
+    setBagNameDraft(bag.name);
+    setBagPinnedDraft(Boolean(bag.pinned));
+    setBagSheetOpen(true);
+  };
+
+  const handleSaveBagSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const cleanName = bagNameDraft.trim();
+    if (!cleanName || !onUpdatePersonalBags) return;
+
+    triggerFeedback('success');
+    if (editingBag) {
+      const nextBags = personalBags.map((b) =>
+        b.id === editingBag.id ? { ...b, name: cleanName, pinned: bagPinnedDraft } : b,
+      );
+      onUpdatePersonalBags(nextBags, undefined, `Renamed bag to "${cleanName}"`);
+    } else {
+      const createdBag: PrepBag = {
+        id: `bag-${Date.now().toString(36)}`,
+        name: cleanName,
+        pinned: bagPinnedDraft,
+        createdAt: new Date().toISOString(),
+      };
+      onUpdatePersonalBags([...personalBags, createdBag], undefined, `Added "${cleanName}"`);
+      if (addSheetOpen) {
+        setNewBagId(createdBag.id);
+      }
+    }
+    setBagSheetOpen(false);
+    setEditingBag(null);
+    setBagNameDraft('');
+  };
+
+  const handleToggleBagPin = (bag: PrepBag) => {
+    if (!onUpdatePersonalBags) return;
+    triggerFeedback('toggle');
+    const nextPinned = !bag.pinned;
+    const nextBags = personalBags.map((b) =>
+      b.id === bag.id ? { ...b, pinned: nextPinned } : b,
+    );
+    onUpdatePersonalBags(
+      nextBags,
+      undefined,
+      nextPinned ? `Pinned "${bag.name}" to top` : `Unpinned "${bag.name}"`,
+    );
+  };
+
+  const handleConfirmDeleteBag = () => {
+    if (!deletingBag || !onUpdatePersonalBags) return;
+    triggerFeedback('warning');
+    const { nextBags, nextTasks } = removePersonalBagPreservingItems(
+      personalBags,
+      personalPrep,
+      deletingBag.id,
+    );
+    onUpdatePersonalBags(nextBags, nextTasks, `Removed "${deletingBag.name}"`);
+    if (selectedBagFilter === deletingBag.id) {
+      setSelectedBagFilter('all');
+    }
+    setDeletingBag(null);
+  };
+
   const handleToggle = (task: PrepTask) => {
     guardGroupEdit(() => {
       const next = activeTasks.map((t) => (t.id === task.id ? { ...t, done: !t.done } : t));
@@ -228,14 +366,21 @@ export function PrepScreen({
 
     guardGroupEdit(() => {
       triggerFeedback('success');
+      const resolvedBagId = tab === 'personal' && newBagId ? newBagId : undefined;
       const created: PrepTask = {
         id: `${tab === 'personal' ? 'pp' : 'gp'}-${Date.now().toString(36)}`,
         title: clean,
         done: false,
         assigneeId: tab === 'group' ? newAssigneeId || undefined : undefined,
+        ...(resolvedBagId ? { bagId: resolvedBagId } : {}),
       };
       const next = [...activeTasks, created];
-      commitChangeWithUndo(tab, next, `Added "${clean}"`);
+      const bagLabel = resolvedBagId ? bagById.get(resolvedBagId)?.name : undefined;
+      commitChangeWithUndo(
+        tab,
+        next,
+        bagLabel ? `Added "${clean}" to ${bagLabel}` : `Added "${clean}"`,
+      );
       setNewTitle('');
       setAddSheetOpen(false);
     });
@@ -267,7 +412,7 @@ export function PrepScreen({
 
   const handleConfirmEditSave = () => {
     if (!canCommitEdit(editState) || editState.stage !== 'confirming') return;
-    const { task, draftTitle, draftAssigneeId } = editState;
+    const { task, draftTitle, draftAssigneeId, draftBagId } = editState;
     const cleanTitle = draftTitle.trim();
     guardGroupEdit(() => {
       triggerFeedback('success');
@@ -277,6 +422,7 @@ export function PrepScreen({
               ...t,
               title: cleanTitle,
               assigneeId: tab === 'group' ? draftAssigneeId : t.assigneeId,
+              bagId: tab === 'personal' ? draftBagId || undefined : t.bagId,
             }
           : t,
       );
@@ -287,6 +433,74 @@ export function PrepScreen({
   };
 
   const editValidation = editState.stage === 'editing' ? validateEditVerifyDraft(editState) : null;
+
+  const renderTaskRow = (task: PrepTask) => {
+    const pic = task.assigneeId ? memberById.get(task.assigneeId) : undefined;
+    const canCheckRow = tab === 'personal' || canEdit;
+    return (
+      <div
+        key={task.id}
+        className={`prep-item ${task.done ? 'prep-item--done' : ''} ${
+          isEditMode ? 'prep-item--editing' : ''
+        }`}
+      >
+        <button
+          type="button"
+          disabled={!canCheckRow}
+          aria-label={`Mark ${task.title} ${task.done ? 'incomplete' : 'complete'}`}
+          className={`prep-check ${task.done ? 'prep-check--done' : ''}`}
+          onClick={() => canCheckRow && handleToggle(task)}
+        >
+          {task.done && <Check size={13} strokeWidth={2.6} />}
+        </button>
+
+        <span className="prep-item__text">{task.title}</span>
+
+        {tab === 'group' && (
+          <button
+            type="button"
+            disabled={!isEditMode || !canEdit}
+            aria-label={pic ? `Assigned to ${pic.name}` : 'Assign member'}
+            onClick={() => isEditMode && canEdit && setPicPickerTaskId(task.id)}
+            className={`prep-pic-btn ${isEditMode && canEdit ? 'prep-pic-btn--editable' : ''}`}
+          >
+            <Avatar
+              initials={pic?.initials ?? '+'}
+              name={pic?.name}
+              src={pic?.avatarDataUrl}
+              size="sm"
+              bg={pic?.avatarBg ?? '#EAEFED'}
+              color={pic?.avatarColor ?? '#546860'}
+            />
+          </button>
+        )}
+
+        {isEditMode && canEditActiveTab && (
+          <div className="prep-row-actions">
+            <button
+              type="button"
+              className="prep-icon-btn prep-icon-btn--edit tactile"
+              aria-label={`Edit ${task.title}`}
+              onClick={() => {
+                setEditError('');
+                setEditState(startEditVerify(task));
+              }}
+            >
+              <Pencil size={14} strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              className="prep-icon-btn prep-icon-btn--delete tactile"
+              aria-label={`Delete ${task.title}`}
+              onClick={() => setDeleteState(startDeleteVerify(task))}
+            >
+              <Trash2 size={14} strokeWidth={2} />
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="prep-root">
@@ -359,128 +573,238 @@ export function PrepScreen({
         </div>
       </GlassCard>
 
-      {/* Edit Mode Action Bar (+ Add Item only shown in Edit Mode) */}
+      {/* Personal Only: Bags & Packing Locations Bar (Layer 2 Private) */}
+      {tab === 'personal' && (
+        <GlassCard variant="clear" padding="sm" className="prep-bags-card">
+          <div className="prep-bags-card__head">
+            <span className="gk-field__label" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <Briefcase size={12} strokeWidth={2.2} color="var(--brand-matcha)" />
+              <span>BAGS &amp; PLACES</span>
+            </span>
+            <span className="prep-bags-card__count">
+              {sortedBags.length} {sortedBags.length === 1 ? 'bag' : 'bags'}
+            </span>
+          </div>
+
+          <div
+            ref={bagFilterRef}
+            data-fade={bagFilterFade.dataFade}
+            className="prep-bag-strip"
+            role="tablist"
+            aria-label="Filter personal items by bag"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selectedBagFilter === 'all'}
+              className={`prep-bag-pill tactile ${
+                selectedBagFilter === 'all' ? 'prep-bag-pill--active' : ''
+              }`}
+              onClick={() => {
+                triggerFeedback('tap');
+                setSelectedBagFilter('all');
+              }}
+            >
+              All
+            </button>
+
+            {sortedBags.map((bag) => {
+              const active = selectedBagFilter === bag.id;
+              return (
+                <button
+                  key={bag.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={`prep-bag-pill tactile ${active ? 'prep-bag-pill--active' : ''}`}
+                  onClick={() => {
+                    triggerFeedback('tap');
+                    setSelectedBagFilter((prev) => (prev === bag.id ? 'all' : bag.id));
+                  }}
+                >
+                  {bag.pinned && (
+                    <Star
+                      size={11.5}
+                      strokeWidth={2.2}
+                      fill={active ? '#FFE099' : '#D99136'}
+                      color={active ? '#FFE099' : '#D99136'}
+                    />
+                  )}
+                  <span>{bag.name}</span>
+                </button>
+              );
+            })}
+
+            {onUpdatePersonalBags && (
+              <button
+                type="button"
+                className="prep-bag-pill prep-bag-pill--add tactile"
+                onClick={openCreateBagSheet}
+              >
+                <Plus size={12.5} strokeWidth={2.4} />
+                <span>Bag</span>
+              </button>
+            )}
+          </div>
+        </GlassCard>
+      )}
+
+      {/* Subtle Edit Mode Banner (Add button now floats at bottom-right for 1-thumb reach) */}
       {isEditMode && canEditActiveTab && (
         <div className="prep-edit-bar">
-          <span className="prep-edit-bar__hint">Tap pencil to edit or trash to remove</span>
-          <Button
-            variant="matcha"
-            size="sm"
-            leftIcon={<Plus size={14} strokeWidth={2.2} />}
-            onClick={() => {
-              setNewTitle('');
-              setAddSheetOpen(true);
-            }}
-          >
-            Add Item
-          </Button>
+          <span className="prep-edit-bar__hint">
+            Tap pencil to edit, move bag, or trash to remove
+          </span>
         </div>
       )}
 
-      {/* Checklist Items (Clean Read-Only Text by Default — Zero Accidental Typing or Deletion) */}
-      {activeTasks.length === 0 ? (
+      {/* Checklist Content: Grouped by Bags in Personal tab, flat list in Group tab */}
+      {tab === 'personal' ? (
+        sortedBags.length === 0 && personalPrep.length === 0 ? (
+          <EmptyState
+            icon={<Briefcase size={20} strokeWidth={1.8} />}
+            title="Your packing list is clear"
+            description="Tap + Bag to organize by backpack or pouch, or tap the + button below to add items."
+            action={
+              onUpdatePersonalBags ? (
+                <Button
+                  variant="matcha"
+                  size="sm"
+                  leftIcon={<Plus size={14} strokeWidth={2.2} />}
+                  onClick={openCreateBagSheet}
+                >
+                  Add First Bag
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <div className="prep-bag-groups">
+            {visibleBags.map((bag) => {
+              const bagItems = personalPrep.filter((t) => t.bagId === bag.id);
+              const bagDone = bagItems.filter((t) => t.done).length;
+              const allBagDone = bagItems.length > 0 && bagDone === bagItems.length;
+
+              return (
+                <section key={bag.id} className="prep-bag-section" aria-label={bag.name}>
+                  <div className="prep-bag-head">
+                    <div className="prep-bag-head__left">
+                      <button
+                        type="button"
+                        className={`prep-bag-star tactile ${bag.pinned ? 'prep-bag-star--on' : ''}`}
+                        aria-label={bag.pinned ? `Unpin ${bag.name}` : `Pin ${bag.name} to top`}
+                        onClick={() => handleToggleBagPin(bag)}
+                      >
+                        <Star
+                          size={16}
+                          strokeWidth={2}
+                          fill={bag.pinned ? '#D99136' : 'none'}
+                        />
+                      </button>
+                      <h2 className="prep-bag-head__title">{bag.name}</h2>
+                      <span
+                        className={`prep-bag-head__stat ${
+                          allBagDone ? 'prep-bag-head__stat--done' : ''
+                        }`}
+                      >
+                        {bagDone}/{bagItems.length}
+                      </span>
+                    </div>
+
+                    <div className="prep-bag-head__actions">
+                      <button
+                        type="button"
+                        className="prep-bag-mini-btn prep-bag-mini-btn--add tactile"
+                        aria-label={`Add item to ${bag.name}`}
+                        title={`Add to ${bag.name}`}
+                        onClick={() => openAddItemSheet(bag.id)}
+                      >
+                        <Plus size={14} strokeWidth={2.4} />
+                      </button>
+                      {onUpdatePersonalBags && (
+                        <>
+                          <button
+                            type="button"
+                            className="prep-bag-mini-btn tactile"
+                            aria-label={`Rename ${bag.name}`}
+                            title="Rename bag"
+                            onClick={() => openRenameBagSheet(bag)}
+                          >
+                            <Pencil size={13} strokeWidth={2} />
+                          </button>
+                          <button
+                            type="button"
+                            className="prep-bag-mini-btn prep-bag-mini-btn--delete tactile"
+                            aria-label={`Remove ${bag.name}`}
+                            title="Remove bag"
+                            onClick={() => {
+                              triggerFeedback('tap');
+                              setDeletingBag(bag);
+                            }}
+                          >
+                            <Trash2 size={13} strokeWidth={2} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {bagItems.length === 0 ? (
+                    <div className="prep-bag-empty">
+                      <span>No items in this bag yet.</span>
+                    </div>
+                  ) : (
+                    <div className="prep-list">{bagItems.map(renderTaskRow)}</div>
+                  )}
+                </section>
+              );
+            })}
+
+            {selectedBagFilter === 'all' && unassignedPersonalTasks.length > 0 && (
+              <section className="prep-bag-section" aria-label="Unassigned items">
+                <div className="prep-bag-head">
+                  <div className="prep-bag-head__left">
+                    <h2 className="prep-bag-head__title prep-bag-head__title--muted">
+                      Unassigned
+                    </h2>
+                    <span className="prep-bag-head__stat">
+                      {unassignedPersonalTasks.filter((t) => t.done).length}/
+                      {unassignedPersonalTasks.length}
+                    </span>
+                  </div>
+                </div>
+                <div className="prep-list">{unassignedPersonalTasks.map(renderTaskRow)}</div>
+              </section>
+            )}
+          </div>
+        )
+      ) : activeTasks.length === 0 ? (
         <EmptyState
-          icon={
-            tab === 'personal' ? (
-              <Lock size={20} strokeWidth={1.8} />
-            ) : (
-              <Users size={20} strokeWidth={1.8} />
-            )
-          }
-          title={tab === 'personal' ? 'Your packing list is clear' : 'No group tasks yet'}
+          icon={<Users size={20} strokeWidth={1.8} />}
+          title="No group tasks yet"
           description={
             canEditActiveTab
-              ? isEditMode
-                ? 'Tap Add Item above to create your first checklist entry.'
-                : 'Tap Edit in the top right to add or manage items safely.'
+              ? 'Tap the + button below to add your first shared crew task.'
               : 'Shared crew prep tasks will appear here.'
-          }
-          action={
-            canEditActiveTab && !isEditMode ? (
-              <Button
-                variant="glass"
-                size="sm"
-                leftIcon={<Pencil size={13} strokeWidth={2} />}
-                onClick={() => setIsEditMode(true)}
-              >
-                Edit List
-              </Button>
-            ) : undefined
           }
         />
       ) : (
-        <div className="prep-list">
-          {activeTasks.map((task) => {
-            const pic = task.assigneeId ? memberById.get(task.assigneeId) : undefined;
-            const canCheckRow = tab === 'personal' || canEdit;
-            return (
-              <div
-                key={task.id}
-                className={`prep-item ${task.done ? 'prep-item--done' : ''} ${
-                  isEditMode ? 'prep-item--editing' : ''
-                }`}
-              >
-                <button
-                  type="button"
-                  disabled={!canCheckRow}
-                  aria-label={`Mark ${task.title} ${task.done ? 'incomplete' : 'complete'}`}
-                  className={`prep-check ${task.done ? 'prep-check--done' : ''}`}
-                  onClick={() => canCheckRow && handleToggle(task)}
-                >
-                  {task.done && <Check size={13} strokeWidth={2.6} />}
-                </button>
-
-                <span className="prep-item__text">{task.title}</span>
-
-                {tab === 'group' && (
-                  <button
-                    type="button"
-                    disabled={!isEditMode || !canEdit}
-                    aria-label={pic ? `Assigned to ${pic.name}` : 'Assign member'}
-                    onClick={() => isEditMode && canEdit && setPicPickerTaskId(task.id)}
-                    className={`prep-pic-btn ${isEditMode && canEdit ? 'prep-pic-btn--editable' : ''}`}
-                  >
-                    <Avatar
-                      initials={pic?.initials ?? '+'}
-                      name={pic?.name}
-                      src={pic?.avatarDataUrl}
-                      size="sm"
-                      bg={pic?.avatarBg ?? '#EAEFED'}
-                      color={pic?.avatarColor ?? '#546860'}
-                    />
-                  </button>
-                )}
-
-                {isEditMode && canEditActiveTab && (
-                  <div className="prep-row-actions">
-                    <button
-                      type="button"
-                      className="prep-icon-btn prep-icon-btn--edit tactile"
-                      aria-label={`Edit ${task.title}`}
-                      onClick={() => {
-                        setEditError('');
-                        setEditState(startEditVerify(task));
-                      }}
-                    >
-                      <Pencil size={14} strokeWidth={2} />
-                    </button>
-                    <button
-                      type="button"
-                      className="prep-icon-btn prep-icon-btn--delete tactile"
-                      aria-label={`Delete ${task.title}`}
-                      onClick={() => setDeleteState(startDeleteVerify(task))}
-                    >
-                      <Trash2 size={14} strokeWidth={2} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <div className="prep-list">{activeTasks.map(renderTaskRow)}</div>
       )}
 
-      {/* Add Prep Item Sheet (Only opened via + Add Item in Edit Mode) */}
+      {/* Floating Bottom-Right Glass (+) FAB — always reachable even with a long packing list */}
+      {canEditActiveTab && (
+        <CornerOrb
+          kind="add"
+          size="lg"
+          portal
+          ariaLabel={tab === 'personal' ? 'Add personal packing item' : 'Add group prep task'}
+          className="floating-glass-fab"
+          onClick={() => openAddItemSheet()}
+        />
+      )}
+
+      {/* Add Prep Item Sheet */}
       <LiquidBottomSheet
         open={addSheetOpen}
         title="Add Prep Item"
@@ -498,6 +822,48 @@ export function PrepScreen({
             onChange={(e) => setNewTitle(e.target.value)}
             autoFocus
           />
+
+          {tab === 'personal' && (
+            <div>
+              <div className="gk-field__label" style={{ marginBottom: 6 }}>
+                BAG / PLACE (OPTIONAL)
+              </div>
+              <div className="prep-assignee-strip">
+                <button
+                  type="button"
+                  className={`prep-bag-choice tactile ${
+                    !newBagId ? 'prep-bag-choice--active' : ''
+                  }`}
+                  onClick={() => setNewBagId('')}
+                >
+                  Unassigned
+                </button>
+                {sortedBags.map((bag) => (
+                  <button
+                    key={bag.id}
+                    type="button"
+                    className={`prep-bag-choice tactile ${
+                      newBagId === bag.id ? 'prep-bag-choice--active' : ''
+                    }`}
+                    onClick={() => setNewBagId(bag.id)}
+                  >
+                    {bag.pinned && <Star size={11} strokeWidth={2.2} fill="#D99136" color="#D99136" />}
+                    <span>{bag.name}</span>
+                  </button>
+                ))}
+                {onUpdatePersonalBags && (
+                  <button
+                    type="button"
+                    className="prep-bag-choice prep-bag-choice--new tactile"
+                    onClick={openCreateBagSheet}
+                  >
+                    <Plus size={12} strokeWidth={2.4} />
+                    <span>New Bag</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {tab === 'group' && trip.members.length > 0 && (
             <div>
@@ -540,6 +906,75 @@ export function PrepScreen({
         </form>
       </LiquidBottomSheet>
 
+      {/* Add / Rename Personal Bag Sheet */}
+      <LiquidBottomSheet
+        open={bagSheetOpen}
+        title={editingBag ? 'Rename Bag / Place' : 'New Bag / Place'}
+        subtitle="Keep track of where each personal item is packed"
+        onClose={() => {
+          setBagSheetOpen(false);
+          setEditingBag(null);
+        }}
+      >
+        <form className="prep-sheet-form" onSubmit={handleSaveBagSubmit}>
+          <Input
+            id="prep-bag-name"
+            label="Bag or Spot Name"
+            placeholder="e.g. Camera Bag, Backpack, Jacket Pocket"
+            value={bagNameDraft}
+            onChange={(e) => setBagNameDraft(e.target.value)}
+            autoFocus
+          />
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={bagPinnedDraft}
+            className={`prep-bag-pin-row tactile ${
+              bagPinnedDraft ? 'prep-bag-pin-row--on' : ''
+            }`}
+            onClick={() => {
+              triggerFeedback('toggle');
+              setBagPinnedDraft((prev) => !prev);
+            }}
+          >
+            <span className="prep-bag-pin-row__left">
+              <Star
+                size={16}
+                strokeWidth={2.1}
+                fill={bagPinnedDraft ? '#D99136' : 'none'}
+                color={bagPinnedDraft ? '#D99136' : 'var(--text-secondary)'}
+              />
+              <span>Pin this bag to the top</span>
+            </span>
+            <span
+              className={`menu-toggle-switch ${
+                bagPinnedDraft ? 'menu-toggle-switch--amber' : ''
+              }`}
+              aria-hidden="true"
+            >
+              <span className="menu-toggle-switch__knob" />
+            </span>
+          </button>
+
+          <div className="gk-dialog__actions" style={{ marginTop: 4 }}>
+            <Button
+              variant="glass"
+              size="md"
+              onClick={() => {
+                setBagSheetOpen(false);
+                setEditingBag(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="matcha" size="md" disabled={!bagNameDraft.trim()}>
+              {editingBag ? 'Save Bag' : 'Create Bag'}
+            </Button>
+          </div>
+        </form>
+      </LiquidBottomSheet>
+
       {/* Edit Prep Item Sheet with 2-Step Verification (Before -> After Summary) */}
       <LiquidBottomSheet
         open={editState.stage !== 'idle'}
@@ -574,6 +1009,46 @@ export function PrepScreen({
                 setEditState((prev) => updateEditVerifyDraft(prev, { draftTitle: e.target.value }));
               }}
             />
+
+            {tab === 'personal' && sortedBags.length > 0 && (
+              <div>
+                <div className="gk-field__label" style={{ marginBottom: 6 }}>
+                  BAG / PLACE
+                </div>
+                <div className="prep-assignee-strip">
+                  <button
+                    type="button"
+                    className={`prep-bag-choice tactile ${
+                      !editState.draftBagId ? 'prep-bag-choice--active' : ''
+                    }`}
+                    onClick={() => {
+                      setEditError('');
+                      setEditState((prev) => updateEditVerifyDraft(prev, { draftBagId: undefined }));
+                    }}
+                  >
+                    Unassigned
+                  </button>
+                  {sortedBags.map((bag) => (
+                    <button
+                      key={bag.id}
+                      type="button"
+                      className={`prep-bag-choice tactile ${
+                        editState.draftBagId === bag.id ? 'prep-bag-choice--active' : ''
+                      }`}
+                      onClick={() => {
+                        setEditError('');
+                        setEditState((prev) => updateEditVerifyDraft(prev, { draftBagId: bag.id }));
+                      }}
+                    >
+                      {bag.pinned && (
+                        <Star size={11} strokeWidth={2.2} fill="#D99136" color="#D99136" />
+                      )}
+                      <span>{bag.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {tab === 'group' && trip.members.length > 0 && (
               <div>
@@ -644,6 +1119,13 @@ export function PrepScreen({
               <div className="prep-diff-col">
                 <span className="gk-field__label">BEFORE</span>
                 <span className="prep-diff-before">{editState.task.title}</span>
+                {tab === 'personal' && (
+                  <span className="prep-diff-meta">
+                    {editState.task.bagId
+                      ? bagById.get(editState.task.bagId)?.name ?? 'Unassigned'
+                      : 'Unassigned'}
+                  </span>
+                )}
                 {tab === 'group' && (
                   <span className="prep-diff-meta">
                     {editState.task.assigneeId
@@ -656,6 +1138,13 @@ export function PrepScreen({
               <div className="prep-diff-col">
                 <span className="gk-field__label">AFTER</span>
                 <span className="prep-diff-after">{editState.draftTitle}</span>
+                {tab === 'personal' && (
+                  <span className="prep-diff-meta">
+                    {editState.draftBagId
+                      ? bagById.get(editState.draftBagId)?.name ?? 'Unassigned'
+                      : 'Unassigned'}
+                  </span>
+                )}
                 {tab === 'group' && (
                   <span className="prep-diff-meta">
                     {editState.draftAssigneeId
@@ -728,6 +1217,17 @@ export function PrepScreen({
           </div>
         )}
       </LiquidBottomSheet>
+
+      {/* Delete Bag Confirmation Dialog (keeps all packed items safe as Unassigned) */}
+      <ConfirmDialog
+        open={Boolean(deletingBag)}
+        title={deletingBag ? `Remove "${deletingBag.name}"?` : 'Remove bag?'}
+        description="Your items inside this bag will NOT be deleted — they will simply move to Unassigned."
+        confirmLabel="Remove Bag"
+        destructive
+        onCancel={() => setDeletingBag(null)}
+        onConfirm={handleConfirmDeleteBag}
+      />
 
       {/* 2-Step Verification Delete Dialog (Portaled to document.body) */}
       {deleteState.stage !== 'idle' &&
@@ -812,7 +1312,7 @@ export function PrepScreen({
           document.body,
         )}
 
-      {/* 5-Second Floating Undo Toast */}
+      {/* 5-Second Floating Top Undo Toast (Top-mounted so bottom FAB & list items stay unobstructed) */}
       {undoToast.open &&
         typeof document !== 'undefined' &&
         createPortal(

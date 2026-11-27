@@ -3,6 +3,7 @@ import type {
   AlbumPhoto,
   LocalPersonalData,
   OfflineQueueItem,
+  PrepBag,
   PrepTask,
   SharedTrip,
   Transaction,
@@ -203,6 +204,15 @@ export async function clearOfflineQueueItem(id: string): Promise<void> {
    LAYER 2: LOCAL PERSONAL DATA
    =========================== */
 
+export function createDefaultPersonalBags(): PrepBag[] {
+  const now = new Date().toISOString();
+  return [
+    { id: 'bag-backpack', name: 'Backpack', pinned: true, createdAt: now },
+    { id: 'bag-daypack', name: 'Sling Bag', createdAt: now },
+    { id: 'bag-pocket', name: 'Pocket', createdAt: now },
+  ];
+}
+
 function createEmptyLocalPersonal(tripId: string): LocalPersonalData {
   return {
     tripId,
@@ -210,11 +220,12 @@ function createEmptyLocalPersonal(tripId: string): LocalPersonalData {
     coverBlob: null,
     personalTransactions: [],
     personalPrep: [
-      { id: 'pp-1', title: 'ID Card / KTP', done: true, category: 'Docs' },
-      { id: 'pp-2', title: 'Powerbank', done: false, category: 'Tech' },
-      { id: 'pp-3', title: 'Rain poncho', done: false, category: 'Ride' },
-      { id: 'pp-4', title: 'Walking shoes', done: false, category: 'Wear' },
+      { id: 'pp-1', title: 'ID Card / KTP', done: true, category: 'Docs', bagId: 'bag-pocket' },
+      { id: 'pp-2', title: 'Powerbank', done: false, category: 'Tech', bagId: 'bag-daypack' },
+      { id: 'pp-3', title: 'Rain poncho', done: false, category: 'Ride', bagId: 'bag-backpack' },
+      { id: 'pp-4', title: 'Walking shoes', done: false, category: 'Wear', bagId: 'bag-backpack' },
     ],
+    personalBags: createDefaultPersonalBags(),
     localAlbumPhotos: [],
     updatedAt: new Date().toISOString(),
   };
@@ -277,6 +288,21 @@ export async function savePersonalPrep(
 ): Promise<LocalPersonalData> {
   const current = await getLocalPersonal(tripId);
   const next: LocalPersonalData = { ...current, personalPrep };
+  await saveLocalPersonal(next);
+  return next;
+}
+
+export async function savePersonalBags(
+  tripId: string,
+  personalBags: PrepBag[],
+  personalPrepOverride?: PrepTask[],
+): Promise<LocalPersonalData> {
+  const current = await getLocalPersonal(tripId);
+  const next: LocalPersonalData = {
+    ...current,
+    personalBags,
+    ...(personalPrepOverride !== undefined ? { personalPrep: personalPrepOverride } : {}),
+  };
   await saveLocalPersonal(next);
   return next;
 }

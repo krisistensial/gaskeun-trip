@@ -194,12 +194,22 @@ export interface Transaction {
   updatedAt: string;
 }
 
+export interface PrepBag {
+  id: string;
+  name: string;
+  /** Pin favorite / primary bag to the top of the Personal Prep list */
+  pinned?: boolean;
+  createdAt: string;
+}
+
 export interface PrepTask {
   id: string;
   title: string;
   done: boolean;
   assigneeId?: string;
   category?: string;
+  /** Optional Layer-2 personal bag/location ID where this item is packed */
+  bagId?: string;
 }
 
 export interface FinanceConfig {
@@ -333,6 +343,12 @@ export interface ChatReadReceipt {
   lastMessageId?: string;
 }
 
+export interface ChatDeliveryReceipt {
+  memberId: string;
+  lastDeliveredAt: string; // ISO
+  lastMessageId?: string;
+}
+
 export interface ChatPollOption {
   id: string;
   label: string;
@@ -400,6 +416,8 @@ export interface SharedTrip {
   pinnedChatMessageId?: string;
   /** Per-member read receipts (`Seen by`) synced via Realtime Broadcast + Layer 1 */
   chatReadReceipts?: Record<string, ChatReadReceipt>;
+  /** Per-member delivery receipts (received by another crew webapp) synced via Realtime Broadcast + Layer 1 */
+  chatDeliveryReceipts?: Record<string, ChatDeliveryReceipt>;
   /** Foreground Live GPS & 1-Tap Convoy Check-In Pins keyed by memberId */
   crewLivePins?: Record<string, CrewLivePin>;
   updatedAt: string;
@@ -413,6 +431,8 @@ export interface LocalPersonalData {
   coverBlob?: Blob | null;
   personalTransactions: Transaction[];
   personalPrep: PrepTask[];
+  /** Private per-device bags & packing spots (Layer 2 only — never synced) */
+  personalBags?: PrepBag[];
   localAlbumPhotos?: AlbumPhoto[];
   updatedAt: string;
 }

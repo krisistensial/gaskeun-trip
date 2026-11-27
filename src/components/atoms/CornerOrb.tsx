@@ -10,6 +10,8 @@ export type CornerOrbKind = 'menu' | 'back' | 'close' | 'add' | 'custom';
 export interface CornerOrbProps {
   kind?: CornerOrbKind;
   size?: 'md' | 'lg';
+  /** Use 'dark' when rendering over dark overlays, lightboxes, or dark photo headers */
+  surface?: 'light' | 'dark';
   icon?: ReactNode;
   ariaLabel: string;
   onClick?: () => void;
@@ -21,6 +23,7 @@ export interface CornerOrbProps {
 export function CornerOrb({
   kind = 'menu',
   size = 'md',
+  surface = 'light',
   icon,
   ariaLabel,
   onClick,
@@ -36,7 +39,7 @@ export function CornerOrb({
       case 'back':
         return <ChevronLeft size={20} strokeWidth={1.8} />;
       case 'close':
-        return <X size={19} strokeWidth={1.8} />;
+        return <X size={19} strokeWidth={surface === 'dark' ? 2.25 : 1.8} />;
       case 'add':
         return <Plus size={22} strokeWidth={2} />;
       case 'menu':
@@ -76,7 +79,14 @@ export function CornerOrb({
   return (
     <button
       type="button"
-      className={`gk-orb ${size === 'lg' ? 'gk-orb--lg' : ''} ${className}`.trim()}
+      className={[
+        'gk-orb',
+        size === 'lg' ? 'gk-orb--lg' : '',
+        surface === 'dark' ? 'gk-orb--on-dark' : '',
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
       aria-label={ariaLabel}
       onClick={onClick}
     >

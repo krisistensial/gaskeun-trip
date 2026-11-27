@@ -5,6 +5,7 @@ export { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog';
 export { CornerOrb, type CornerOrbKind, type CornerOrbProps } from './CornerOrb';
 export { DayPill, type DayPillProps, type DayPillVariant } from './DayPill';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
+export { GaskeunLoader, type GaskeunLoaderProps } from './GaskeunLoader';
 export { GlassCard, type GlassCardProps, type GlassPadding, type GlassVariant } from './GlassCard';
 export { Input, type InputProps, type InputStatus } from './Input';
 export { LiquidBottomSheet, type LiquidBottomSheetProps } from './LiquidBottomSheet';

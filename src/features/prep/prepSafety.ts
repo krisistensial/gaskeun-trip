@@ -1,4 +1,4 @@
-import type { PrepTask } from '../../types/trip';
+import type { PrepBag, PrepTask } from '../../types/trip';
 
 export type PrepScope = 'personal' | 'group';
 
@@ -116,8 +116,20 @@ export function cancelDeleteVerify(): DeleteVerifyState {
 
 export type EditVerifyState =
   | { stage: 'idle' }
-  | { stage: 'editing'; task: PrepTask; draftTitle: string; draftAssigneeId?: string }
-  | { stage: 'confirming'; task: PrepTask; draftTitle: string; draftAssigneeId?: string };
+  | {
+      stage: 'editing';
+      task: PrepTask;
+      draftTitle: string;
+      draftAssigneeId?: string;
+      draftBagId?: string;
+    }
+  | {
+      stage: 'confirming';
+      task: PrepTask;
+      draftTitle: string;
+      draftAssigneeId?: string;
+      draftBagId?: string;
+    };
 
 export function startEditVerify(task: PrepTask): EditVerifyState {
   return {
@@ -125,12 +137,17 @@ export function startEditVerify(task: PrepTask): EditVerifyState {
     task: { ...task },
     draftTitle: task.title,
     draftAssigneeId: task.assigneeId,
+    draftBagId: task.bagId,
   };
 }
 
 export function updateEditVerifyDraft(
   state: EditVerifyState,
-  patch: { draftTitle?: string; draftAssigneeId?: string | undefined },
+  patch: {
+    draftTitle?: string;
+    draftAssigneeId?: string | undefined;
+    draftBagId?: string | undefined;
+  },
 ): EditVerifyState {
   if (state.stage === 'idle') return state;
   return {
@@ -139,6 +156,7 @@ export function updateEditVerifyDraft(
     draftTitle: patch.draftTitle !== undefined ? patch.draftTitle : state.draftTitle,
     draftAssigneeId:
       'draftAssigneeId' in patch ? patch.draftAssigneeId : state.draftAssigneeId,
+    draftBagId: 'draftBagId' in patch ? patch.draftBagId : state.draftBagId,
   };
 }
 
@@ -154,7 +172,8 @@ export function validateEditVerifyDraft(
   }
   const sameTitle = cleanTitle === state.task.title.trim();
   const sameAssignee = (state.draftAssigneeId || undefined) === (state.task.assigneeId || undefined);
-  if (sameTitle && sameAssignee) {
+  const sameBag = (state.draftBagId || undefined) === (state.task.bagId || undefined);
+  if (sameTitle && sameAssignee && sameBag) {
     return { ok: false, error: 'Make a change before saving' };
   }
   return { ok: true, cleanTitle };
@@ -174,6 +193,7 @@ export function advanceEditToConfirm(
       task: state.task,
       draftTitle: validation.cleanTitle,
       draftAssigneeId: state.draftAssigneeId,
+      draftBagId: state.draftBagId,
     },
   };
 }
@@ -185,6 +205,36 @@ export function backEditToForm(state: EditVerifyState): EditVerifyState {
     task: state.task,
     draftTitle: state.draftTitle,
     draftAssigneeId: state.draftAssigneeId,
+    draftBagId: state.draftBagId,
+  };
+}
+
+/* --- Personal Bags / Packing Locations Pure Helpers (Layer 2) --- */
+
+/**
+ * Sorts personal bags with pinned (starred) bags first, preserving creation order within each group.
+ */
+export function sortPersonalBags(bags: readonly PrepBag[]): PrepBag[] {
+  return [...bags].sort((a, b) => {
+    const ap = a.pinned ? 1 : 0;
+    const bp = b.pinned ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+}
+
+/**
+ * Removes a personal bag and cleanly unassigns (bagId: undefined) any items that lived inside it
+ * so zero packed items are ever lost when a bag is removed.
+ */
+export function removePersonalBagPreservingItems(
+  bags: readonly PrepBag[],
+  tasks: readonly PrepTask[],
+  bagId: string,
+): { nextBags: PrepBag[]; nextTasks: PrepTask[] } {
+  return {
+    nextBags: bags.filter((b) => b.id !== bagId),
+    nextTasks: tasks.map((t) => (t.bagId === bagId ? { ...t, bagId: undefined } : t)),
   };
 }
 

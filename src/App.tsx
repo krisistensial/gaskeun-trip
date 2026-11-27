@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import seedData from './data/seed-solo-jogja-2027.json';
-import { Avatar, ConfirmDialog, Toast, type ToastTone } from './components/atoms';
+import { Avatar, ConfirmDialog, GaskeunLoader, Toast, type ToastTone } from './components/atoms';
 import { ExpandingGlassDock } from './components/organisms/ExpandingGlassDock';
 import { TripMenuSheet, type HomePhase } from './components/organisms/TripMenuSheet';
 import { OverlayProvider } from './context/OverlayContext';
@@ -19,12 +19,14 @@ import { LandingGateScreen } from './features/gate/LandingGateScreen';
 import { WhoAreYouScreen } from './features/gate/WhoAreYouScreen';
 import { HomeScreen } from './features/home/HomeScreen';
 import {
+  createDefaultPersonalBags,
   ensureSeedTrip,
   getLocalPersonal,
   getSharedTripByCode,
   listSharedTrips,
   saveLocalAlbumPhotos,
   saveLocalPersonal,
+  savePersonalBags,
   savePersonalPrep,
   saveSharedTrip,
   setActiveMemberLocal,
@@ -39,6 +41,7 @@ import {
   createTextChatMessage,
   extractMentionedMemberIds,
   loadChatLastRead,
+  mergeChatDeliveryReceipts,
   mergeChatMessages,
   mergeChatPolls,
   mergeChatReadReceipts,
@@ -48,11 +51,15 @@ import {
 } from './services/chat';
 import {
   appendClearedChatIds,
+  enqueuePendingChatItem,
   fetchRemoteChatMessages,
+  flushPendingChatQueue,
+  getPendingChatMessageIds,
   loadClearedChatIds,
   loadLocalChatCache,
   markMultipleRemoteChatDeleted,
   patchRemoteChatReaction,
+  removePendingChatItem,
   saveLocalChatCache,
   subscribeToCrewChat,
   upsertRemoteChatMessage,
@@ -67,6 +74,7 @@ import {
 } from './services/crewRadar';
 import { triggerFeedback } from './services/feedback';
 import {
+  clearDeviceNotificationsByTag,
   formatChatNotificationCopy,
   formatTripUpdateNotificationCopy,
   shouldFireOsNotification,
@@ -75,6 +83,7 @@ import {
 import {
   dispatchBackgroundPush,
   ensureWebPushSubscription,
+  type BackgroundPushDispatchPayload,
 } from './services/pushNotifications';
 import { uploadSharedImage } from './services/mediaUploader';
 import {
@@ -106,12 +115,14 @@ import {
 import { buildInviteUrl } from './services/tripFactory';
 import type {
   AlbumPhoto,
+  ChatDeliveryReceipt,
   ChatMessage,
   ChatReadReceipt,
   ChatReplyPreview,
   DockTabId,
   LocalPersonalData,
   OnlinePresenceUser,
+  PrepBag,
   PrepTask,
   RouteTarget,
   SharedTrip,
@@ -223,6 +234,12 @@ export default function App() {
   const [chatReadReceipts, setChatReadReceipts] = useState<
     Record<string, ChatReadReceipt>
   >({});
+  const [chatDeliveryReceipts, setChatDeliveryReceipts] = useState<
+    Record<string, ChatDeliveryReceipt>
+  >({});
+  const [pendingChatIds, setPendingChatIds] = useState<Set<string>>(
+    () => new Set(getPendingChatMessageIds(pilotSeed.code)),
+  );
   const [chatLastReadIso, setChatLastReadIso] = useState<string>('');
   const [chatTypingMap, setChatTypingMap] = useState<
     Record<string, { memberName: string; expiresAt: number }>
@@ -264,6 +281,11 @@ export default function App() {
   const notifyIncomingChatRef = useRef<
     (incoming: ChatMessage, currentCode: string, fromFetch?: boolean) => void
   >(() => {});
+  const chatDeliveryReceiptsRef = useRef<Record<string, ChatDeliveryReceipt>>(chatDeliveryReceipts);
+  chatDeliveryReceiptsRef.current = chatDeliveryReceipts;
+  const acknowledgeChatDeliveredRef = useRef<(incoming: readonly ChatMessage[]) => void>(() => {});
+  const flushPendingChatRef = useRef<(code: string) => Promise<void>>(async () => {});
+  const lastPushSyncMsRef = useRef<number>(0);
   const lastTripNotifMsRef = useRef<number>(0);
   const lastPushTripBroadcastMsRef = useRef<number>(0);
   const shellRef = useRef<HTMLElement | null>(null);
@@ -484,6 +506,50 @@ export default function App() {
     };
   }, [route, activeTab, activeRouteTarget, chatOpen]);
 
+  // Allow browser page zoom strictly on the Home screen; lock pinch & double-tap zoom on every other page.
+  const allowPageZoom =
+    route === 'hub' && activeTab === 'home' && !activeRouteTarget && !chatOpen;
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const viewportMeta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    if (viewportMeta) {
+      viewportMeta.setAttribute(
+        'content',
+        allowPageZoom
+          ? 'width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content'
+          : 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content',
+      );
+    }
+    document.documentElement.dataset.pageZoom = allowPageZoom ? 'on' : 'off';
+
+    if (allowPageZoom) return;
+
+    const isInternalPinchAllowed = (target: EventTarget | null) =>
+      target instanceof Element &&
+      Boolean(target.closest('.cropper-frame, .leaflet-container'));
+
+    const blockPinch = (e: TouchEvent) => {
+      if (e.touches.length > 1 && !isInternalPinchAllowed(e.target)) {
+        e.preventDefault();
+      }
+    };
+    const blockGesture = (e: Event) => {
+      if (!isInternalPinchAllowed(e.target)) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('touchstart', blockPinch, { passive: false });
+    document.addEventListener('touchmove', blockPinch, { passive: false });
+    document.addEventListener('gesturestart', blockGesture, { passive: false });
+    return () => {
+      document.removeEventListener('touchstart', blockPinch);
+      document.removeEventListener('touchmove', blockPinch);
+      document.removeEventListener('gesturestart', blockGesture);
+    };
+  }, [allowPageZoom]);
+
   // Realtime Supabase subscription for active trip (`postgres_changes` on `shared_trips`)
   useEffect(() => {
     if (route !== 'hub' && route !== 'who') return;
@@ -521,7 +587,10 @@ export default function App() {
             void showDeviceNotification({
               title: copy.title,
               body: copy.body,
-              tag: `trip-${remoteTrip.code}-${nextTopLog.id}`,
+              tag: `trip-${remoteTrip.code}`,
+              messageId: nextTopLog.id,
+              groupKind: 'trip',
+              renotify: true,
             });
           } else if (
             !shouldFireOsNotification(isHidden, hasFocus) &&
@@ -535,6 +604,9 @@ export default function App() {
           const knownIds = new Set(chatMessagesRef.current.map((m) => m.id));
           const unseenFallback = remoteTrip.chatMessages.filter((m) => !knownIds.has(m.id));
           const newestFallback = unseenFallback[unseenFallback.length - 1];
+          if (unseenFallback.length > 0) {
+            acknowledgeChatDeliveredRef.current(unseenFallback);
+          }
           if (newestFallback) {
             notifyIncomingChatRef.current(newestFallback, remoteTrip.code, true);
           }
@@ -556,20 +628,28 @@ export default function App() {
       lastAutoPullMsRef.current = now;
       const current = activeTripRef.current;
       void syncActiveTripFromCloud(current.code, current, { force: false, notify: false });
-      if (route === 'hub' && current.code && !useSharedTripChatFallbackRef.current) {
+      if (route === 'hub' && current.code) {
         const pullCode = current.code;
-        void fetchRemoteChatMessages(pullCode).then((res) => {
-          if (!res.ok || activeTripRef.current.code !== pullCode) return;
-          setChatMessages((prev) => {
-            const prevIds = new Set(prev.map((m) => m.id));
-            const merged = mergeChatMessages(prev, res.messages);
-            saveLocalChatCache(pullCode, merged);
-            const freshIncoming = res.messages.filter((m) => !prevIds.has(m.id));
-            const newest = freshIncoming[freshIncoming.length - 1];
-            if (newest) notifyIncomingChatRef.current(newest, pullCode, true);
-            return merged;
+        if (now - lastPushSyncMsRef.current >= 60_000) {
+          lastPushSyncMsRef.current = now;
+          void ensureWebPushSubscription(pullCode, activeMemberIdRef.current);
+        }
+        void flushPendingChatRef.current(pullCode);
+        if (!useSharedTripChatFallbackRef.current) {
+          void fetchRemoteChatMessages(pullCode).then((res) => {
+            if (!res.ok || activeTripRef.current.code !== pullCode) return;
+            acknowledgeChatDeliveredRef.current(res.messages);
+            setChatMessages((prev) => {
+              const prevIds = new Set(prev.map((m) => m.id));
+              const merged = mergeChatMessages(prev, res.messages);
+              saveLocalChatCache(pullCode, merged);
+              const freshIncoming = res.messages.filter((m) => !prevIds.has(m.id));
+              const newest = freshIncoming[freshIncoming.length - 1];
+              if (newest) notifyIncomingChatRef.current(newest, pullCode, true);
+              return merged;
+            });
           });
-        });
+        }
       }
     };
 
@@ -585,16 +665,39 @@ export default function App() {
     };
   }, [route, syncActiveTripFromCloud]);
 
-  // Automatically flush offline Layer-1 mutation queue and pull latest when connectivity returns
+  // Automatically flush offline queues, re-register Web Push, and pull missed chats when connectivity returns
   useEffect(() => {
     const handleOnline = () => {
+      const current = activeTripRef.current;
+      const code = current?.code;
+      if (code) {
+        lastPushSyncMsRef.current = Date.now();
+        void ensureWebPushSubscription(code, activeMemberIdRef.current);
+        void flushPendingChatRef.current(code);
+      }
       void flushOfflineMutationQueue().then((flushedCount) => {
         if (flushedCount > 0) {
           showToast('Synced', 'success');
         }
-        const current = activeTripRef.current;
-        if (current?.code) {
-          void syncActiveTripFromCloud(current.code, current, { force: false, notify: false });
+        const latest = activeTripRef.current;
+        if (latest?.code) {
+          void syncActiveTripFromCloud(latest.code, latest, { force: false, notify: false });
+          if (!useSharedTripChatFallbackRef.current) {
+            const pullCode = latest.code;
+            void fetchRemoteChatMessages(pullCode).then((res) => {
+              if (!res.ok || activeTripRef.current.code !== pullCode) return;
+              acknowledgeChatDeliveredRef.current(res.messages);
+              setChatMessages((prev) => {
+                const prevIds = new Set(prev.map((m) => m.id));
+                const merged = mergeChatMessages(prev, res.messages);
+                saveLocalChatCache(pullCode, merged);
+                const freshIncoming = res.messages.filter((m) => !prevIds.has(m.id));
+                const newest = freshIncoming[freshIncoming.length - 1];
+                if (newest) notifyIncomingChatRef.current(newest, pullCode, true);
+                return merged;
+              });
+            });
+          }
         }
       });
     };
@@ -759,16 +862,19 @@ export default function App() {
     );
   }, [route, activeTrip.code, activeMemberId]);
 
-  // Seed Crew Chat & Read Receipts from local cache + SharedTrip whenever trip/member changes
+  // Seed Crew Chat, Delivery & Read Receipts from local cache + SharedTrip whenever trip/member changes
   useEffect(() => {
     if (!activeTrip.code) {
       setChatMessages([]);
       setClearedChatIds([]);
       setChatReadReceipts({});
+      setChatDeliveryReceipts({});
+      setPendingChatIds(new Set());
       setChatLastReadIso('');
       return;
     }
     setClearedChatIds(loadClearedChatIds(activeTrip.code, activeMemberId));
+    setPendingChatIds(new Set(getPendingChatMessageIds(activeTrip.code)));
     setChatLastReadIso(loadChatLastRead(activeTrip.code, activeMemberId ?? 'guest'));
     setChatMessages((prev) => {
       const cached = loadLocalChatCache(activeTrip.code);
@@ -781,7 +887,16 @@ export default function App() {
     setChatReadReceipts((prev) =>
       mergeChatReadReceipts(prev, activeTrip.chatReadReceipts),
     );
-  }, [activeTrip.code, activeTrip.chatMessages, activeTrip.chatReadReceipts, activeMemberId]);
+    setChatDeliveryReceipts((prev) =>
+      mergeChatDeliveryReceipts(prev, activeTrip.chatDeliveryReceipts),
+    );
+  }, [
+    activeTrip.code,
+    activeTrip.chatMessages,
+    activeTrip.chatReadReceipts,
+    activeTrip.chatDeliveryReceipts,
+    activeMemberId,
+  ]);
 
   const notifyIncomingChat = useCallback(
     (incoming: ChatMessage, currentCode: string, fromFetch = false) => {
@@ -829,16 +944,19 @@ export default function App() {
         senderName: incoming.senderName,
         kind: incoming.kind,
         text: incoming.text,
-        unreadFromOthers: Math.max(1, unreadChatCountRef.current + 1),
+        unreadFromOthers: 1,
         isMentioned,
       });
 
-      // Alert OS tray when backgrounded OR unfocused — focused foreground uses the single in-app banner
+      // Alert OS tray when backgrounded OR unfocused — grouped into 1 expandable WA-style chat card per trip
       if (shouldFireOsNotification(isHidden, hasFocus)) {
         void showDeviceNotification({
           title: copy.title,
           body: copy.body,
-          tag: `chat-${currentCode}-${incoming.id}`,
+          tag: `chat-${currentCode}`,
+          messageId: incoming.id,
+          groupKind: 'chat',
+          openChat: true,
           renotify: true,
         });
       }
@@ -878,10 +996,12 @@ export default function App() {
     const code = activeTrip.code;
     let alive = true;
 
+    void flushPendingChatRef.current(code);
     void fetchRemoteChatMessages(code).then((res) => {
       if (!alive) return;
       if (res.ok) {
         useSharedTripChatFallbackRef.current = false;
+        acknowledgeChatDeliveredRef.current(res.messages);
         setChatMessages((prev) => {
           const prevIds = new Set(prev.map((m) => m.id));
           const merged = mergeChatMessages(prev, res.messages);
@@ -902,6 +1022,7 @@ export default function App() {
 
     const controller = subscribeToCrewChat(code, sender, {
       onMessage: (incoming) => {
+        acknowledgeChatDeliveredRef.current([incoming]);
         setChatMessages((prev) => {
           const alreadyKnown = prev.some((m) => m.id === incoming.id);
           const next = mergeChatMessages(prev, [incoming]);
@@ -940,10 +1061,35 @@ export default function App() {
           return next;
         });
       },
+      onDelivered: (receipt) => {
+        setChatDeliveryReceipts((prev) =>
+          mergeChatDeliveryReceipts(prev, { [receipt.memberId]: receipt }),
+        );
+      },
       onSeen: (receipt) => {
         setChatReadReceipts((prev) =>
           mergeChatReadReceipts(prev, { [receipt.memberId]: receipt }),
         );
+      },
+      onReconnect: () => {
+        if (!alive) return;
+        void ensureWebPushSubscription(code, activeMemberIdRef.current);
+        void flushPendingChatRef.current(code);
+        if (!useSharedTripChatFallbackRef.current) {
+          void fetchRemoteChatMessages(code).then((res) => {
+            if (!alive || !res.ok || activeTripRef.current.code !== code) return;
+            acknowledgeChatDeliveredRef.current(res.messages);
+            setChatMessages((prev) => {
+              const prevIds = new Set(prev.map((m) => m.id));
+              const merged = mergeChatMessages(prev, res.messages);
+              saveLocalChatCache(code, merged);
+              const freshIncoming = res.messages.filter((m) => !prevIds.has(m.id));
+              const newest = freshIncoming[freshIncoming.length - 1];
+              if (newest) notifyIncomingChat(newest, code, true);
+              return merged;
+            });
+          });
+        }
       },
       onPoll: (incomingPoll) => {
         const alreadyKnown = (activeTripRef.current.chatPolls ?? []).some(
@@ -970,10 +1116,19 @@ export default function App() {
               ? document.hasFocus()
               : true;
           if (shouldFireOsNotification(isHidden, hasFocus)) {
+            const pollCopy = formatChatNotificationCopy({
+              tripTitle: tripSnapshot.title || code,
+              senderName: incomingPoll.createdByName,
+              kind: 'poll',
+              text: incomingPoll.question,
+            });
             void showDeviceNotification({
-              title: `${tripSnapshot.title || code} • ${incomingPoll.createdByName}`,
-              body: `Started a poll: ${incomingPoll.question}`,
-              tag: `poll-${code}-${incomingPoll.id}`,
+              title: pollCopy.title,
+              body: pollCopy.body,
+              tag: `chat-${code}`,
+              messageId: incomingPoll.id,
+              groupKind: 'chat',
+              openChat: true,
               renotify: true,
             });
           }
@@ -1079,6 +1234,7 @@ export default function App() {
 
     saveChatLastRead(code, memberKey, latestIso);
     setChatLastReadIso(latestIso);
+    void clearDeviceNotificationsByTag(`chat-${code}`);
 
     if (activeMemberId && activeMemberId !== 'guest' && latestMsg) {
       const prevReceipt = chatReadReceipts[activeMemberId];
@@ -1192,12 +1348,70 @@ export default function App() {
           senderId: actor.id,
           title: copy.title,
           body: copy.body,
-          tag: `trip-${next.code}-${latestLog.id}`,
+          tag: `trip-${next.code}`,
+          messageId: latestLog.id,
+          groupKind: 'trip',
         });
       }
       return next;
     });
     if (toastMsg) showToast(toastMsg, 'success');
+  };
+
+  acknowledgeChatDeliveredRef.current = (incomingMsgs: readonly ChatMessage[]) => {
+    const memberId = activeMemberIdRef.current;
+    if (!memberId || memberId === 'guest' || incomingMsgs.length === 0) return;
+
+    let latestMsg: ChatMessage | null = null;
+    let latestMs = 0;
+    for (const m of incomingMsgs) {
+      if (!m || m.deleted || m.senderId === memberId) continue;
+      const ms = Date.parse(m.createdAt);
+      if (Number.isFinite(ms) && ms > latestMs) {
+        latestMs = ms;
+        latestMsg = m;
+      }
+    }
+    if (!latestMsg) return;
+
+    const prevReceipt = chatDeliveryReceiptsRef.current[memberId];
+    const prevMs = prevReceipt?.lastDeliveredAt ? Date.parse(prevReceipt.lastDeliveredAt) : 0;
+    if (Number.isFinite(prevMs) && latestMs <= prevMs) return;
+
+    const nextReceipt: ChatDeliveryReceipt = {
+      memberId,
+      lastDeliveredAt: latestMsg.createdAt,
+      lastMessageId: latestMsg.id,
+    };
+    setChatDeliveryReceipts((prev) =>
+      mergeChatDeliveryReceipts(prev, { [memberId]: nextReceipt }),
+    );
+    chatChannelRef.current?.sendDeliveredReceipt(nextReceipt);
+    handleUpdateTrip(
+      (prev) => ({
+        ...prev,
+        chatDeliveryReceipts: mergeChatDeliveryReceipts(prev.chatDeliveryReceipts, {
+          [memberId]: nextReceipt,
+        }),
+      }),
+      undefined,
+      { skipLog: true },
+    );
+  };
+
+  flushPendingChatRef.current = async (code: string) => {
+    const res = await flushPendingChatQueue(code, {
+      onBroadcast: (msg) => chatChannelRef.current?.broadcastMessage(msg),
+    });
+    setPendingChatIds(new Set(res.remainingIds));
+    if (res.tableMissing) {
+      useSharedTripChatFallbackRef.current = true;
+      handleUpdateTrip(
+        (prev) => ({ ...prev, chatMessages: chatMessagesRef.current }),
+        undefined,
+        { skipLog: true },
+      );
+    }
   };
 
   const handleClearEditLog = () => {
@@ -1399,6 +1613,16 @@ export default function App() {
     if (toastMsg) showToast(toastMsg, 'success');
   };
 
+  const handleUpdatePersonalBags = async (
+    bags: PrepBag[],
+    tasksOverride?: PrepTask[],
+    toastMsg?: string,
+  ) => {
+    const nextLocal = await savePersonalBags(activeTrip.id, bags, tasksOverride);
+    setLocalData(nextLocal);
+    if (toastMsg) showToast(toastMsg, 'success');
+  };
+
   const handleSaveLocalAlbumPhotos = async (photos: AlbumPhoto[], toastMsg?: string) => {
     const nextLocal = await saveLocalAlbumPhotos(activeTrip.id, photos);
     setLocalData(nextLocal);
@@ -1465,6 +1689,55 @@ export default function App() {
     });
   };
 
+  const dispatchOutgoingChatMessage = (
+    msg: ChatMessage,
+    pushPayload: BackgroundPushDispatchPayload,
+  ) => {
+    const code = activeTrip.code;
+    const next = mergeChatMessages(chatMessages, [msg]);
+    setChatMessages(next);
+    saveLocalChatCache(code, next);
+
+    enqueuePendingChatItem(code, { message: msg, pushPayload });
+    setPendingChatIds((prev) => {
+      const copy = new Set(prev);
+      copy.add(msg.id);
+      return copy;
+    });
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return;
+    }
+
+    chatChannelRef.current?.broadcastMessage(msg);
+    void upsertRemoteChatMessage(msg).then((res) => {
+      if (res.ok) {
+        removePendingChatItem(code, msg.id);
+        setPendingChatIds((prev) => {
+          const copy = new Set(prev);
+          copy.delete(msg.id);
+          return copy;
+        });
+        void dispatchBackgroundPush(pushPayload);
+      } else if (res.tableMissing || useSharedTripChatFallbackRef.current) {
+        useSharedTripChatFallbackRef.current = true;
+        removePendingChatItem(code, msg.id);
+        setPendingChatIds((prev) => {
+          const copy = new Set(prev);
+          copy.delete(msg.id);
+          return copy;
+        });
+        handleUpdateTrip(
+          (prev) => ({ ...prev, chatMessages: mergeChatMessages(prev.chatMessages ?? [], [msg]) }),
+          undefined,
+          { skipLog: true },
+        );
+        void dispatchBackgroundPush(pushPayload);
+      }
+      // On transient network error, keep queued in pendingChatOutbox so online/reconnect retries cleanly
+    });
+  };
+
   const handleSendChatText = (text: string, replyTo?: ChatReplyPreview) => {
     const msg = createTextChatMessage({
       tripCode: activeTrip.code,
@@ -1474,10 +1747,6 @@ export default function App() {
       replyTo,
     });
     if (!msg) return;
-    const next = mergeChatMessages(chatMessages, [msg]);
-    setChatMessages(next);
-    chatChannelRef.current?.broadcastMessage(msg);
-    persistChatMutation(next, () => upsertRemoteChatMessage(msg));
     const mentionedIds = extractMentionedMemberIds(msg.text, activeTrip.members);
     const pushCopy = formatChatNotificationCopy({
       tripTitle: activeTrip.title || activeTrip.code,
@@ -1487,12 +1756,14 @@ export default function App() {
       unreadFromOthers: 1,
       isMentioned: mentionedIds.length > 0,
     });
-    void dispatchBackgroundPush({
+    dispatchOutgoingChatMessage(msg, {
       tripCode: activeTrip.code,
       senderId: msg.senderId,
       title: pushCopy.title,
       body: pushCopy.body,
-      tag: `chat-${activeTrip.code}-${msg.id}`,
+      tag: `chat-${activeTrip.code}`,
+      messageId: msg.id,
+      groupKind: 'chat',
       renotify: true,
       openChat: true,
     });
@@ -1512,10 +1783,6 @@ export default function App() {
       replyTo,
     });
     if (!msg) return;
-    const next = mergeChatMessages(chatMessages, [msg]);
-    setChatMessages(next);
-    chatChannelRef.current?.broadcastMessage(msg);
-    persistChatMutation(next, () => upsertRemoteChatMessage(msg));
     const pushCopy = formatChatNotificationCopy({
       tripTitle: activeTrip.title || activeTrip.code,
       senderName: msg.senderName,
@@ -1523,12 +1790,14 @@ export default function App() {
       text: msg.text,
       unreadFromOthers: 1,
     });
-    void dispatchBackgroundPush({
+    dispatchOutgoingChatMessage(msg, {
       tripCode: activeTrip.code,
       senderId: msg.senderId,
       title: pushCopy.title,
       body: pushCopy.body,
-      tag: `chat-${activeTrip.code}-${msg.id}`,
+      tag: `chat-${activeTrip.code}`,
+      messageId: msg.id,
+      groupKind: 'chat',
       renotify: true,
       openChat: true,
     });
@@ -1612,12 +1881,20 @@ export default function App() {
       'Poll posted',
       { skipLog: true },
     );
+    const pollPushCopy = formatChatNotificationCopy({
+      tripTitle: activeTrip.title || activeTrip.code,
+      senderName: poll.createdByName,
+      kind: 'poll',
+      text: poll.question,
+    });
     void dispatchBackgroundPush({
       tripCode: activeTrip.code,
       senderId: poll.createdBy,
-      title: `${activeTrip.title || activeTrip.code} • ${poll.createdByName}`,
-      body: `Started a poll: ${poll.question}`,
-      tag: `poll-${activeTrip.code}-${poll.id}`,
+      title: pollPushCopy.title,
+      body: pollPushCopy.body,
+      tag: `chat-${activeTrip.code}`,
+      messageId: poll.id,
+      groupKind: 'chat',
       renotify: true,
       openChat: true,
     });
@@ -1807,13 +2084,7 @@ export default function App() {
             />
           )}
 
-          <Suspense
-            fallback={
-              <div className="route-suspense-shell" aria-busy="true" aria-label="Loading view">
-                <div className="route-suspense-pill" />
-              </div>
-            }
-          >
+          <Suspense fallback={<GaskeunLoader />}>
             {route === 'create' && (
               <CreateTripScreen
                 onCreated={handleTripCreated}
@@ -1864,6 +2135,8 @@ export default function App() {
                 polls={activeTrip.chatPolls ?? []}
                 pinnedMessageId={activeTrip.pinnedChatMessageId}
                 readReceipts={chatReadReceipts}
+                deliveryReceipts={chatDeliveryReceipts}
+                pendingMessageIds={pendingChatIds}
                 activeMemberId={activeMemberId}
                 activeMember={activeMember}
                 activeMemberName={activeMemberName}
@@ -1944,6 +2217,11 @@ export default function App() {
               <PrepScreen
                 trip={activeTrip}
                 personalPrep={localData?.personalPrep ?? []}
+                personalBags={
+                  localData?.personalBags !== undefined
+                    ? localData.personalBags
+                    : createDefaultPersonalBags()
+                }
                 canEdit={canEditPrep}
                 viewOnlyMode={isViewOnlyActive}
                 onOpenMenu={() => setMenuOpen(true)}
@@ -1951,6 +2229,9 @@ export default function App() {
                   showToast('Ask your Trip Host for Group Prep edit access', 'info')
                 }
                 onUpdatePersonalPrep={(tasks, msg) => void handleUpdatePersonalPrep(tasks, msg)}
+                onUpdatePersonalBags={(bags, tasksOverride, msg) =>
+                  void handleUpdatePersonalBags(bags, tasksOverride, msg)
+                }
                 onUpdateGroupPrep={(tasks, msg) =>
                   handleUpdateTrip((prev) => ({ ...prev, groupPrep: tasks }), msg)
                 }

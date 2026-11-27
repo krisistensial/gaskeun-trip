@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildChatTimeline,
   CHAT_QUICK_REACTIONS,
+  computeChatMessageTickStatus,
   computeLatestSeenAnchors,
   createChatPoll,
   CREW_STICKER_PACK,
@@ -11,11 +12,13 @@ import {
   extractMentionedMemberIds,
   formatChatDayDivider,
   getActiveMentionQuery,
+  getMessageDeliveredToMembers,
   getMessageSeenByMembers,
   isGroupedWithPrevious,
   isSafeStickerUrl,
   loadChatLastRead,
   MAX_CHAT_MESSAGES,
+  mergeChatDeliveryReceipts,
   mergeChatMessages,
   mergeChatPolls,
   mergeChatReadReceipts,
@@ -34,7 +37,13 @@ import {
 } from './customStickers';
 import { searchEmojiCatalog } from './emojiCatalog';
 import { expandStickerSearchTerms } from './stickerSearch';
-import { appendClearedChatIds, loadClearedChatIds } from './chatSync';
+import {
+  appendClearedChatIds,
+  enqueuePendingChatItem,
+  flushPendingChatQueue,
+  getPendingChatMessageIds,
+  loadClearedChatIds,
+} from './chatSync';
 
 function createMemoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -375,5 +384,124 @@ describe('Crew Chat pure helpers (text, stickers, emoji reactions, unread)', () 
     expect(timeline.map((t) => t.kind)).toEqual(['message', 'poll']);
     expect(searchChatTimelineIds([m1], merged, 'gudeg')).toEqual([poll.id]);
     expect(searchChatTimelineIds([m1], merged, 'jam 8')).toEqual([m1.id]);
+  });
+
+  it('computes strict 3-stage group ticks: pending -> sent (1) -> delivered (2 gray) -> read by ALL crew (2 blue)', () => {
+    const members = [
+      { id: 'm-kris', name: 'Kris', initials: 'KR', role: 'driver' as const, status: 'confirmed' as const, avatarBg: '#E3EDE6', avatarColor: '#2D4A42', isCreator: true },
+      { id: 'm-rani', name: 'Rani', initials: 'RN', role: 'passenger' as const, status: 'confirmed' as const, avatarBg: '#E3EDE6', avatarColor: '#2D4A42' },
+      { id: 'm-anggi', name: 'Anggi', initials: 'AG', role: 'passenger' as const, status: 'confirmed' as const, avatarBg: '#E3EDE6', avatarColor: '#2D4A42' },
+    ];
+    const msg = createTextChatMessage({
+      tripCode: 'SOLO-27',
+      senderId: 'm-kris',
+      senderName: 'Kris',
+      text: 'Semua sudah siap?',
+      nowIso: '2026-11-27T10:00:00.000Z',
+    })!;
+
+    // Stage 0: Pending in offline outbox
+    expect(
+      computeChatMessageTickStatus({
+        message: msg,
+        isPending: true,
+        members,
+        activeMemberId: 'm-kris',
+      }),
+    ).toBe('pending');
+
+    // Stage 1: Single gray tick (sent to server, no other crew webapp received it yet)
+    expect(
+      computeChatMessageTickStatus({
+        message: msg,
+        isPending: false,
+        deliveryReceipts: {},
+        readReceipts: {},
+        members,
+        activeMemberId: 'm-kris',
+      }),
+    ).toBe('sent');
+
+    // Stage 2a: Double gray tick when 1 crew webapp receives it (delivered, not read)
+    const del1 = mergeChatDeliveryReceipts(undefined, {
+      'm-rani': { memberId: 'm-rani', lastDeliveredAt: '2026-11-27T10:00:05.000Z', lastMessageId: msg.id },
+    });
+    expect(getMessageDeliveredToMembers(msg, del1, {}, members, 'm-kris')).toHaveLength(1);
+    expect(
+      computeChatMessageTickStatus({
+        message: msg,
+        deliveryReceipts: del1,
+        readReceipts: {},
+        members,
+        activeMemberId: 'm-kris',
+      }),
+    ).toBe('delivered');
+
+    // Stage 2b: Still double gray tick when ONLY 1 of 2 other crew members has read it!
+    const readPartial = mergeChatReadReceipts(undefined, {
+      'm-rani': { memberId: 'm-rani', lastReadAt: '2026-11-27T10:01:00.000Z', lastMessageId: msg.id },
+    });
+    expect(
+      computeChatMessageTickStatus({
+        message: msg,
+        deliveryReceipts: del1,
+        readReceipts: readPartial,
+        members,
+        activeMemberId: 'm-kris',
+      }),
+    ).toBe('delivered');
+
+    // Stage 3: Double BLUE tick only once ALL other crew members (Rani + Anggi) have read it!
+    const readAll = mergeChatReadReceipts(readPartial, {
+      'm-anggi': { memberId: 'm-anggi', lastReadAt: '2026-11-27T10:02:00.000Z', lastMessageId: msg.id },
+    });
+    expect(
+      computeChatMessageTickStatus({
+        message: msg,
+        deliveryReceipts: del1,
+        readReceipts: readAll,
+        members,
+        activeMemberId: 'm-kris',
+      }),
+    ).toBe('read');
+  });
+
+  it('queues offline chat messages and flushes both persistence and background push when reconnected', async () => {
+    const msg = createTextChatMessage({
+      tripCode: 'SOLO-27',
+      senderId: 'm-kris',
+      senderName: 'Kris',
+      text: 'Pesan pas offline',
+      nowIso: '2026-11-27T10:10:00.000Z',
+    })!;
+
+    enqueuePendingChatItem('SOLO-27', {
+      message: msg,
+      pushPayload: {
+        tripCode: 'SOLO-27',
+        senderId: 'm-kris',
+        title: 'Solo – Jogja',
+        body: 'Kris: Pesan pas offline',
+        openChat: true,
+      },
+    });
+    expect(getPendingChatMessageIds('SOLO-27')).toEqual([msg.id]);
+
+    const broadcastSpy = vi.fn();
+    const pushSpy = vi.fn().mockResolvedValue(true);
+    const upsertSpy = vi.fn().mockResolvedValue({ ok: true });
+
+    const res = await flushPendingChatQueue('SOLO-27', {
+      onBroadcast: broadcastSpy,
+      upsertFn: upsertSpy,
+      pushFn: pushSpy,
+    });
+
+    expect(res.flushedIds).toEqual([msg.id]);
+    expect(res.remainingIds).toEqual([]);
+    expect(upsertSpy).toHaveBeenCalledWith(msg);
+    expect(broadcastSpy).toHaveBeenCalledWith(msg);
+    expect(pushSpy).toHaveBeenCalledTimes(1);
+    expect(getPendingChatMessageIds('SOLO-27')).toEqual([]);
   });
 });

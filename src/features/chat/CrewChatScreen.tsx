@@ -18,6 +18,7 @@ import {
   CheckSquare,
   ChevronDown,
   ChevronUp,
+  Clock,
   Copy,
   Eye,
   MessageCircle,
@@ -45,12 +46,14 @@ import {
   buildChatTimeline,
   buildReplyPreview,
   CHAT_QUICK_REACTIONS,
+  computeChatMessageTickStatus,
   countTotalReactions,
   CREW_STICKER_PACK,
   formatChatDayDivider,
   formatChatTime,
   getActiveMentionQuery,
   getChatDateKey,
+  getMessageDeliveredToMembers,
   getMessageSeenByMembers,
   getStickerById,
   isGroupedWithPrevious,
@@ -86,6 +89,7 @@ import { primeFeedbackAudio, triggerFeedback } from '../../services/feedback';
 import { useBackHandler } from '../../services/pwaHistory';
 import { CreateStickerSheet } from './CreateStickerSheet';
 import type {
+  ChatDeliveryReceipt,
   ChatMessage,
   ChatPoll,
   ChatReadReceipt,
@@ -108,6 +112,8 @@ export interface CrewChatScreenProps {
   polls?: ChatPoll[];
   pinnedMessageId?: string;
   readReceipts?: Record<string, ChatReadReceipt>;
+  deliveryReceipts?: Record<string, ChatDeliveryReceipt>;
+  pendingMessageIds?: ReadonlySet<string>;
   activeMemberId: string | null;
   activeMember?: TripMember;
   activeMemberName: string;
@@ -216,6 +222,8 @@ export function CrewChatScreen({
   polls = [],
   pinnedMessageId,
   readReceipts,
+  deliveryReceipts,
+  pendingMessageIds,
   activeMemberId,
   activeMemberName,
   isHost,
@@ -393,39 +401,7 @@ export function CrewChatScreen({
     };
   }, [holdTarget]);
 
-  // Disable pinch-zoom & double-tap zoom strictly while Crew Chat is mounted (restores cleanly on close)
-  useEffect(() => {
-    const viewportMeta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
-    const previousViewport = viewportMeta?.getAttribute('content') ?? null;
-    if (viewportMeta) {
-      viewportMeta.setAttribute(
-        'content',
-        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content',
-      );
-    }
-
-    const screenEl = screenRef.current;
-    const blockPinch = (e: TouchEvent) => {
-      if (e.touches.length > 1) {
-        e.preventDefault();
-      }
-    };
-    const blockGesture = (e: Event) => {
-      e.preventDefault();
-    };
-    screenEl?.addEventListener('touchstart', blockPinch, { passive: false });
-    screenEl?.addEventListener('touchmove', blockPinch, { passive: false });
-    screenEl?.addEventListener('gesturestart', blockGesture, { passive: false });
-
-    return () => {
-      if (viewportMeta && previousViewport !== null) {
-        viewportMeta.setAttribute('content', previousViewport);
-      }
-      screenEl?.removeEventListener('touchstart', blockPinch);
-      screenEl?.removeEventListener('touchmove', blockPinch);
-      screenEl?.removeEventListener('gesturestart', blockGesture);
-    };
-  }, []);
+  // Global page zoom lock is managed centrally in App.tsx (Home-only zoom).
 
   const memberById = useMemo(() => {
     const map = new Map<string, TripMember>();
@@ -937,7 +913,13 @@ export function CrewChatScreen({
   }, [holdTarget, readReceipts, trip.members, activeMemberId]);
 
   const seenSheetDetails = useMemo(() => {
-    if (!seenSheetMsg) return { seen: [], unseen: [] as TripMember[] };
+    if (!seenSheetMsg) {
+      return {
+        seen: [],
+        deliveredOnly: [] as Array<{ member: TripMember; deliveredAt: string }>,
+        unseen: [] as TripMember[],
+      };
+    }
     const seen = getMessageSeenByMembers(
       seenSheetMsg,
       readReceipts,
@@ -945,14 +927,24 @@ export function CrewChatScreen({
       activeMemberId,
     );
     const seenIds = new Set(seen.map((s) => s.member.id));
+    const deliveredAll = getMessageDeliveredToMembers(
+      seenSheetMsg,
+      deliveryReceipts,
+      readReceipts,
+      trip.members,
+      activeMemberId,
+    );
+    const deliveredOnly = deliveredAll.filter((d) => !seenIds.has(d.member.id));
+    const deliveredIds = new Set(deliveredOnly.map((d) => d.member.id));
     const unseen = trip.members.filter(
       (m) =>
         (!activeMemberId || m.id !== activeMemberId) &&
         m.id !== seenSheetMsg.senderId &&
-        !seenIds.has(m.id),
+        !seenIds.has(m.id) &&
+        !deliveredIds.has(m.id),
     );
-    return { seen, unseen };
-  }, [seenSheetMsg, readReceipts, trip.members, activeMemberId]);
+    return { seen, deliveredOnly, unseen };
+  }, [seenSheetMsg, readReceipts, deliveryReceipts, trip.members, activeMemberId]);
 
   const openHoldViaContextMenu = (msg: ChatMessage, isOwn: boolean) => {
     if (msg.deleted || selectMode) return;
@@ -962,29 +954,41 @@ export function CrewChatScreen({
 
   const renderWhatsAppTicks = (msg: ChatMessage, isOwn: boolean) => {
     if (!isOwn || msg.deleted) return null;
-    const seenByCount = getMessageSeenByMembers(
-      msg,
+    const status = computeChatMessageTickStatus({
+      message: msg,
+      isPending: Boolean(pendingMessageIds?.has(msg.id)),
+      deliveryReceipts,
       readReceipts,
-      trip.members,
+      members: trip.members,
       activeMemberId,
-    ).length;
-    if (seenByCount > 0) {
+    });
+    if (status === 'pending') {
+      return (
+        <Clock
+          size={11.5}
+          strokeWidth={2.2}
+          className="crew-chat-tick"
+          aria-label="Sending"
+        />
+      );
+    }
+    if (status === 'read') {
       return (
         <CheckCheck
           size={13}
           strokeWidth={2.3}
           className="crew-chat-tick crew-chat-tick--read"
-          aria-label="Read"
+          aria-label="Read by all crew"
         />
       );
     }
-    if (onlineOthers.length > 0 || (typeof navigator !== 'undefined' && navigator.onLine !== false)) {
+    if (status === 'delivered') {
       return (
         <CheckCheck
           size={13}
           strokeWidth={2.1}
           className="crew-chat-tick"
-          aria-label="Delivered"
+          aria-label="Delivered to crew"
         />
       );
     }
@@ -2606,11 +2610,68 @@ export function CrewChatScreen({
                       color: 'var(--brand-matcha)',
                     }}
                   >
-                    <CheckCheck size={14} strokeWidth={2.2} />
+                    <CheckCheck size={14} strokeWidth={2.3} color="#0284c7" />
                     <span>{formatChatTime(seenAt)}</span>
                   </div>
                 </div>
               ))
+            )}
+
+            {seenSheetDetails.deliveredOnly.length > 0 && (
+              <>
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  Delivered ({seenSheetDetails.deliveredOnly.length})
+                </div>
+                {seenSheetDetails.deliveredOnly.map(({ member, deliveredAt }) => (
+                  <div
+                    key={member.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '6px 10px',
+                      borderRadius: 14,
+                      background: 'rgba(255,255,255,0.62)',
+                      border: '1px solid rgba(45,74,66,0.06)',
+                    }}
+                  >
+                    <Avatar
+                      initials={member.initials}
+                      name={member.name}
+                      src={member.avatarDataUrl}
+                      size="sm"
+                      bg={member.avatarBg}
+                      color={member.avatarColor}
+                      variant="solid"
+                    />
+                    <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: '0.84rem' }}>
+                      {member.name}
+                    </div>
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      <CheckCheck size={14} strokeWidth={2.1} />
+                      <span>{formatChatTime(deliveredAt)}</span>
+                    </div>
+                  </div>
+                ))}
+              </>
             )}
 
             {seenSheetDetails.unseen.length > 0 && (
@@ -2625,7 +2686,7 @@ export function CrewChatScreen({
                     color: 'var(--text-muted)',
                   }}
                 >
-                  Not Yet ({seenSheetDetails.unseen.length})
+                  Not Yet Received ({seenSheetDetails.unseen.length})
                 </div>
                 {seenSheetDetails.unseen.map((member) => (
                   <div
