@@ -2394,6 +2394,8 @@ export default function App() {
           <ExpandingGlassDock
             activeTab={activeTab}
             hidden={dockHiddenForHero}
+            unreadChatCount={unreadChatCount}
+            onOpenChat={() => setChatOpen(true)}
             onChange={handleNavigateTab}
           />
         )}

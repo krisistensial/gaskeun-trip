@@ -1,15 +1,26 @@
 /* ==========================================================================
-   Expanding Glass Dock V4 — 5 Uniform Vector Icons, Safe on 360px Width
+   Expanding Glass Dock V5 — iOS 26 Liquid Glass Pill + Detached Chat Orb
+   Safe on 360px–430px+ Viewports, Aligned with Floating Bottom-Right FAB
    ========================================================================== */
 
-.gk-dock-wrap {
+.gk-dock-bar {
   position: fixed;
   left: 50%;
   bottom: calc(var(--safe-bottom) + 16px);
   transform: translateX(-50%);
   z-index: var(--z-dock);
-  width: min(calc(100% - 24px), 344px);
+  width: min(calc(100% - 24px), 406px);
   height: var(--dock-height);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.gk-dock-pill-slot {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
   display: flex;
   justify-content: center;
   pointer-events: none;
@@ -18,14 +29,25 @@
     opacity var(--dur-fast) ease;
 }
 
-.gk-dock-wrap--hidden {
-  transform: translate(-50%, 110px);
+.gk-dock-chat-slot {
+  position: relative;
+  width: var(--dock-height);
+  height: var(--dock-height);
+  flex-shrink: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dur-normal) var(--ease-spring),
+    opacity var(--dur-fast) ease;
+}
+
+.gk-dock-slot--hidden {
+  transform: translateY(110px);
   opacity: 0;
   pointer-events: none;
 }
 
-.gk-dock-wrap--hidden,
-.gk-dock-wrap--hidden * {
+.gk-dock-slot--hidden,
+.gk-dock-slot--hidden * {
   pointer-events: none !important;
 }
 
@@ -45,12 +67,12 @@
   pointer-events: auto;
   width: 100%;
   height: 100%;
-  padding: 6px 10px;
+  padding: 6px 8px;
   border-radius: 30px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
+  gap: 2px;
 }
 
 .gk-dock__item {
@@ -58,8 +80,8 @@
   align-items: center;
   justify-content: center;
   height: 44px;
-  min-width: 44px;
-  padding: 0 10px;
+  min-width: 42px;
+  padding: 0 8px;
   border-radius: 22px;
   color: var(--text-secondary);
   background: transparent;
@@ -83,8 +105,8 @@
     0 4px 12px -4px rgba(24, 42, 34, 0.18),
     inset 0 1px 0 #FFFFFF;
   color: var(--brand-forest);
-  padding: 0 15px;
-  gap: 7px;
+  padding: 0 13px;
+  gap: 6px;
 }
 
 .gk-dock__label {
@@ -102,6 +124,92 @@
 }
 
 .gk-dock__item--active .gk-dock__label {
-  max-width: 64px;
+  max-width: 60px;
   opacity: 1;
+}
+
+/* Detached Circular Liquid Glass Chat Orb */
+.gk-dock-chat-lgr-host {
+  pointer-events: auto;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.gk-dock-chat-fallback {
+  pointer-events: auto;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.56);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  box-shadow: 0 12px 30px -10px rgba(12, 32, 22, 0.22);
+}
+
+.gk-dock-chat-btn {
+  pointer-events: auto;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--brand-forest);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+
+.gk-dock-chat-btn:active {
+  transform: scale(0.92);
+}
+
+.gk-dock-chat-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  background: var(--accent-coral, #D65A4F);
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 19px;
+  text-align: center;
+  border: 2px solid rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 10px rgba(214, 90, 79, 0.38);
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* Compact 360px–380px viewport safety so all 5 tabs + detached Chat orb fit cleanly */
+@media (max-width: 384px) {
+  .gk-dock-bar {
+    gap: 8px;
+  }
+
+  .gk-dock {
+    padding: 6px 6px;
+    gap: 1px;
+  }
+
+  .gk-dock__item {
+    min-width: 36px;
+    padding: 0 6px;
+  }
+
+  .gk-dock__item--active {
+    padding: 0 10px;
+    gap: 5px;
+  }
+
+  .gk-dock__label {
+    font-size: 11.5px;
+  }
 }

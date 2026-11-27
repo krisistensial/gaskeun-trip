@@ -13,7 +13,6 @@ import {
   Images,
   LogOut,
   MapPin,
-  MessageCircle,
   Pencil,
   Plus,
   Settings2,
@@ -143,11 +142,9 @@ export function HomeScreen({
   activeMemberName,
   onlineMembers = [],
   radarPins = {},
-  unreadChatCount = 0,
   canEdit,
   viewOnlyMode = false,
   onOpenMenu,
-  onOpenChat,
   onOpenRadar,
   onOpenRecap,
   onSetConvoyStatus,
@@ -686,30 +683,6 @@ export function HomeScreen({
                   ))}
                 </span>
                 <span className="home-presence-live-dot" aria-hidden="true" />
-              </button>
-            )}
-            {onOpenChat && (
-              <button
-                type="button"
-                data-tour="home-chat"
-                className="home-chat-orb tactile"
-                aria-label={
-                  unreadChatCount > 0
-                    ? `Open crew chat (${unreadChatCount} unread)`
-                    : 'Open crew chat'
-                }
-                title="Crew Chat"
-                onClick={() => {
-                  triggerFeedback('tap');
-                  onOpenChat();
-                }}
-              >
-                <MessageCircle size={18} strokeWidth={1.9} />
-                {unreadChatCount > 0 && (
-                  <span className="home-chat-orb__badge">
-                    {unreadChatCount > 99 ? '99+' : unreadChatCount}
-                  </span>
-                )}
               </button>
             )}
             <button

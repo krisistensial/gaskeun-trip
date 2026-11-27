@@ -566,7 +566,7 @@
 /* Floating Glass (+) FAB — always portaled to document.body at bottom-right above Dock */
 .floating-glass-fab {
   position: fixed;
-  right: max(16px, calc(50% - 198px));
+  right: max(16px, calc(50% - 199px));
   bottom: calc(var(--dock-height) + var(--safe-bottom) + 26px);
   z-index: var(--z-fab);
   width: 48px;

@@ -37,12 +37,12 @@ export const ONBOARDING_TOUR_STEPS: readonly OnboardingTourStep[] = [
   {
     id: 'home-chat',
     tab: 'home',
-    tabLabel: 'Home',
+    tabLabel: 'Chat',
     targetSelector: '[data-tour="home-chat"]',
     title: 'Crew Chat, Stickers & Polls',
     description:
-      'Chat live with your crew, send transparent stickers, run quick polls, and see who is online right now.',
-    scrollBlock: 'start',
+      'Tap this floating glass orb from any page to chat live with your crew, send transparent stickers, or run quick polls.',
+    scrollBlock: 'nearest',
     spotlightPadding: 10,
     spotlightRadius: 999,
   },
