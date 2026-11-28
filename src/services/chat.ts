@@ -561,12 +561,17 @@ export function mergeChatMessages(
 }
 
 export function buildReplyPreview(msg: ChatMessage): ChatReplyPreview {
+  const collapsed = msg.deleted
+    ? 'Message unsent'
+    : msg.text.replace(/\s+/g, ' ').trim();
+  const previewText =
+    collapsed.length > 180 ? `${collapsed.slice(0, 179).trimEnd()}…` : collapsed;
   return {
     id: msg.id,
     senderId: msg.senderId,
     senderName: msg.senderName,
     kind: msg.kind,
-    text: msg.deleted ? 'Message unsent' : msg.text,
+    text: previewText,
     ...(msg.stickerId ? { stickerId: msg.stickerId } : {}),
     ...(msg.stickerUrl ? { stickerUrl: msg.stickerUrl } : {}),
   };

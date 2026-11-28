@@ -644,4 +644,17 @@ describe('Crew Chat pure helpers (text, stickers, emoji reactions, unread)', () 
     expect(resolveReplyAuthorLabel({ ...legacyPreview, id: 'old-id' }, 'm-dora', 'Dora')).toBe('You');
     expect(resolveReplyAuthorLabel(legacyPreview, 'm-chika', 'Chika', map)).toBe('Dora');
   });
+
+  it('collapses newlines and trims ultra-long messages in reply previews', () => {
+    const longMsg = createTextChatMessage({
+      tripCode: 'SOLO-27',
+      senderId: 'm-kris',
+      senderName: 'Kris',
+      text: `Baris pertama\n\nBaris kedua ${'panjang '.repeat(40)}`,
+    })!;
+    const preview = buildReplyPreview(longMsg);
+    expect(preview.text).not.toContain('\n');
+    expect(preview.text.length).toBeLessThanOrEqual(180);
+    expect(preview.text.endsWith('…')).toBe(true);
+  });
 });
