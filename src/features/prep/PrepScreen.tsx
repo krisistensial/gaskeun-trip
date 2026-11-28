@@ -146,12 +146,23 @@ export function PrepScreen({
   useEffect(() => {
     if (!canEditActiveTab) {
       setIsEditMode(false);
+    }
+  }, [canEditActiveTab]);
+
+  // Ensure all add/edit/bag/move/delete controls & sheets close whenever Edit Mode is off
+  useEffect(() => {
+    if (!isEditMode) {
       setAddSheetOpen(false);
+      setBagSheetOpen(false);
+      setEditingBag(null);
+      setDeletingBag(null);
+      setMovingTask(null);
       setPicPickerTaskId(null);
       setDeleteState(cancelDeleteVerify());
       setEditState(cancelEditVerify());
+      setEditError('');
     }
-  }, [canEditActiveTab]);
+  }, [isEditMode]);
 
   // 5-second auto-dismiss timer for top Undo toast
   useEffect(() => {
@@ -247,6 +258,7 @@ export function PrepScreen({
   };
 
   const openAddItemSheet = (preselectedBagId?: string) => {
+    if (!isEditMode) return;
     guardGroupEdit(() => {
       triggerFeedback('tap');
       setNewTitle('');
@@ -264,6 +276,7 @@ export function PrepScreen({
   };
 
   const openCreateBagSheet = () => {
+    if (!isEditMode) return;
     triggerFeedback('tap');
     setEditingBag(null);
     setBagNameDraft('');
@@ -272,6 +285,7 @@ export function PrepScreen({
   };
 
   const openRenameBagSheet = (bag: PrepBag) => {
+    if (!isEditMode) return;
     triggerFeedback('tap');
     setEditingBag(bag);
     setBagNameDraft(bag.name);
@@ -308,7 +322,7 @@ export function PrepScreen({
   };
 
   const handleToggleBagPin = (bag: PrepBag) => {
-    if (!onUpdatePersonalBags) return;
+    if (!isEditMode || !onUpdatePersonalBags) return;
     triggerFeedback('toggle');
     const nextPinned = !bag.pinned;
     const nextBags = personalBags.map((b) =>
@@ -476,22 +490,6 @@ export function PrepScreen({
 
         <span className="prep-item__text">{task.title}</span>
 
-        {tab === 'personal' && !isEditMode && (
-          <button
-            type="button"
-            className="prep-move-btn tactile"
-            aria-label={`Move ${task.title} to another bag`}
-            title="Move to another bag"
-            onClick={() => {
-              triggerFeedback('tap');
-              setMovingTask(task);
-            }}
-          >
-            <ArrowRightLeft size={12.5} strokeWidth={2.1} />
-            <span>Move</span>
-          </button>
-        )}
-
         {tab === 'group' && (
           <button
             type="button"
@@ -557,25 +555,32 @@ export function PrepScreen({
       <header className="prep-header">
         <h1 className="prep-title">Prep</h1>
         <div className="prep-header-actions">
-          <Button
-            variant="glass"
-            size="sm"
-            disabled={!hasUndo}
-            aria-label="Undo last prep change"
-            leftIcon={<Undo2 size={13} strokeWidth={2.1} />}
-            onClick={() => handleUndo(tab)}
-          >
-            Undo
-          </Button>
-          {canEditActiveTab && (
+          {isEditMode && canEditActiveTab && (
             <Button
-              variant={isEditMode ? 'matcha' : 'glass'}
+              variant="glass"
               size="sm"
-              leftIcon={isEditMode ? <Check size={13} strokeWidth={2.4} /> : <Pencil size={13} strokeWidth={2} />}
-              onClick={() => setIsEditMode((prev) => !prev)}
+              disabled={!hasUndo}
+              aria-label="Undo last prep change"
+              leftIcon={<Undo2 size={13} strokeWidth={2.1} />}
+              onClick={() => handleUndo(tab)}
             >
-              {isEditMode ? 'Done' : 'Edit'}
+              Undo
             </Button>
+          )}
+          {canEditActiveTab && (
+            <span data-tour="prep-add" style={{ display: 'inline-flex' }}>
+              <Button
+                variant={isEditMode ? 'matcha' : 'glass'}
+                size="sm"
+                leftIcon={isEditMode ? <Check size={13} strokeWidth={2.4} /> : <Pencil size={13} strokeWidth={2} />}
+                onClick={() => {
+                  triggerFeedback('tap');
+                  setIsEditMode((prev) => !prev);
+                }}
+              >
+                {isEditMode ? 'Done' : 'Edit'}
+              </Button>
+            </span>
           )}
           <CornerOrb kind="menu" ariaLabel="Trip menu" onClick={onOpenMenu} />
         </div>
@@ -685,7 +690,7 @@ export function PrepScreen({
               );
             })}
 
-            {onUpdatePersonalBags && (
+            {isEditMode && onUpdatePersonalBags && (
               <button
                 type="button"
                 className="prep-bag-pill prep-bag-pill--add tactile"
@@ -714,9 +719,13 @@ export function PrepScreen({
           <EmptyState
             icon={<Briefcase size={20} strokeWidth={1.8} />}
             title="Your packing list is clear"
-            description="Tap + Bag to organize by backpack or pouch, or tap the + button below to add items."
+            description={
+              isEditMode
+                ? 'Tap + Bag above or the + button below to start adding items.'
+                : 'Tap Edit above to add bags and packing items.'
+            }
             action={
-              onUpdatePersonalBags ? (
+              isEditMode && onUpdatePersonalBags ? (
                 <Button
                   variant="matcha"
                   size="sm"
@@ -729,7 +738,7 @@ export function PrepScreen({
             }
           />
         ) : (
-          <div className="prep-bag-groups">
+          <div className={`prep-bag-groups ${isEditMode ? 'prep-bag-groups--editing' : ''}`}>
             {visibleBags.map((bag) => {
               const bagItems = personalPrep.filter((t) => t.bagId === bag.id);
               const bagDone = bagItems.filter((t) => t.done).length;
@@ -739,18 +748,27 @@ export function PrepScreen({
                 <section key={bag.id} className="prep-bag-section" aria-label={bag.name}>
                   <div className="prep-bag-head">
                     <div className="prep-bag-head__left">
-                      <button
-                        type="button"
-                        className={`prep-bag-star tactile ${bag.pinned ? 'prep-bag-star--on' : ''}`}
-                        aria-label={bag.pinned ? `Unpin ${bag.name}` : `Pin ${bag.name} to top`}
-                        onClick={() => handleToggleBagPin(bag)}
-                      >
-                        <Star
-                          size={16}
-                          strokeWidth={2}
-                          fill={bag.pinned ? '#D99136' : 'none'}
-                        />
-                      </button>
+                      {isEditMode ? (
+                        <button
+                          type="button"
+                          className={`prep-bag-star tactile ${bag.pinned ? 'prep-bag-star--on' : ''}`}
+                          aria-label={bag.pinned ? `Unpin ${bag.name}` : `Pin ${bag.name} to top`}
+                          onClick={() => handleToggleBagPin(bag)}
+                        >
+                          <Star
+                            size={16}
+                            strokeWidth={2}
+                            fill={bag.pinned ? '#D99136' : 'none'}
+                          />
+                        </button>
+                      ) : bag.pinned ? (
+                        <span
+                          className="prep-bag-star prep-bag-star--on prep-bag-star--readonly"
+                          aria-label="Pinned bag"
+                        >
+                          <Star size={14} strokeWidth={2} fill="#D99136" />
+                        </span>
+                      ) : null}
                       <h2 className="prep-bag-head__title">{bag.name}</h2>
                       <span
                         className={`prep-bag-head__stat ${
@@ -761,42 +779,44 @@ export function PrepScreen({
                       </span>
                     </div>
 
-                    <div className="prep-bag-head__actions">
-                      <button
-                        type="button"
-                        className="prep-bag-mini-btn prep-bag-mini-btn--add tactile"
-                        aria-label={`Add item to ${bag.name}`}
-                        title={`Add to ${bag.name}`}
-                        onClick={() => openAddItemSheet(bag.id)}
-                      >
-                        <Plus size={14} strokeWidth={2.4} />
-                      </button>
-                      {onUpdatePersonalBags && (
-                        <>
-                          <button
-                            type="button"
-                            className="prep-bag-mini-btn tactile"
-                            aria-label={`Rename ${bag.name}`}
-                            title="Rename bag"
-                            onClick={() => openRenameBagSheet(bag)}
-                          >
-                            <Pencil size={13} strokeWidth={2} />
-                          </button>
-                          <button
-                            type="button"
-                            className="prep-bag-mini-btn prep-bag-mini-btn--delete tactile"
-                            aria-label={`Remove ${bag.name}`}
-                            title="Remove bag"
-                            onClick={() => {
-                              triggerFeedback('tap');
-                              setDeletingBag(bag);
-                            }}
-                          >
-                            <Trash2 size={13} strokeWidth={2} />
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    {isEditMode && (
+                      <div className="prep-bag-head__actions">
+                        <button
+                          type="button"
+                          className="prep-bag-mini-btn prep-bag-mini-btn--add tactile"
+                          aria-label={`Add item to ${bag.name}`}
+                          title={`Add to ${bag.name}`}
+                          onClick={() => openAddItemSheet(bag.id)}
+                        >
+                          <Plus size={14} strokeWidth={2.4} />
+                        </button>
+                        {onUpdatePersonalBags && (
+                          <>
+                            <button
+                              type="button"
+                              className="prep-bag-mini-btn tactile"
+                              aria-label={`Rename ${bag.name}`}
+                              title="Rename bag"
+                              onClick={() => openRenameBagSheet(bag)}
+                            >
+                              <Pencil size={13} strokeWidth={2} />
+                            </button>
+                            <button
+                              type="button"
+                              className="prep-bag-mini-btn prep-bag-mini-btn--delete tactile"
+                              aria-label={`Remove ${bag.name}`}
+                              title="Remove bag"
+                              onClick={() => {
+                                triggerFeedback('tap');
+                                setDeletingBag(bag);
+                              }}
+                            >
+                              <Trash2 size={13} strokeWidth={2} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {bagItems.length === 0 ? (
@@ -834,7 +854,9 @@ export function PrepScreen({
           title="No group tasks yet"
           description={
             canEditActiveTab
-              ? 'Tap the + button below to add your first shared crew task.'
+              ? isEditMode
+                ? 'Tap the + button below to add your first shared crew task.'
+                : 'Tap Edit above to add your first shared crew task.'
               : 'Shared crew prep tasks will appear here.'
           }
         />
@@ -842,14 +864,13 @@ export function PrepScreen({
         <div className="prep-list">{activeTasks.map(renderTaskRow)}</div>
       )}
 
-      {/* Floating Bottom-Right Glass (+) FAB — always reachable even with a long packing list */}
-      {canEditActiveTab && (
+      {/* Floating Bottom-Right Glass (+) FAB — strictly visible in Edit Mode to prevent accidental taps */}
+      {isEditMode && canEditActiveTab && (
         <CornerOrb
           kind="add"
           size="lg"
           portal
           ariaLabel={tab === 'personal' ? 'Add personal packing item' : 'Add group prep task'}
-          dataTour="prep-add"
           className="floating-glass-fab"
           onClick={() => openAddItemSheet()}
         />

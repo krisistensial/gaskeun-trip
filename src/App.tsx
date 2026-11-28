@@ -2275,7 +2275,7 @@ export default function App() {
               />
             )}
 
-            {route === 'hub' && !activeRouteTarget && activeTab === 'plan' && (
+            {route === 'hub' && !activeRouteTarget && !chatOpen && activeTab === 'plan' && (
               <PlanScreen
                 trip={activeTrip}
                 homePhase={phase}
@@ -2292,7 +2292,7 @@ export default function App() {
               />
             )}
 
-            {route === 'hub' && !activeRouteTarget && activeTab === 'wallet' && (
+            {route === 'hub' && !activeRouteTarget && !chatOpen && activeTab === 'wallet' && (
               <WalletScreen
                 trip={activeTrip}
                 personalTransactions={localData?.personalTransactions ?? []}
@@ -2309,7 +2309,7 @@ export default function App() {
               />
             )}
 
-            {route === 'hub' && !activeRouteTarget && activeTab === 'album' && (
+            {route === 'hub' && !activeRouteTarget && !chatOpen && activeTab === 'album' && (
               <AlbumScreen
                 trip={activeTrip}
                 localPhotos={localData?.localAlbumPhotos ?? []}
@@ -2328,7 +2328,7 @@ export default function App() {
               />
             )}
 
-            {route === 'hub' && !activeRouteTarget && activeTab === 'prep' && (
+            {route === 'hub' && !activeRouteTarget && !chatOpen && activeTab === 'prep' && (
               <PrepScreen
                 trip={activeTrip}
                 personalPrep={localData?.personalPrep ?? []}
@@ -2519,6 +2519,7 @@ export default function App() {
         />
 
         {chatHeadsUp &&
+          !chatOpen &&
           typeof document !== 'undefined' &&
           createPortal(
             <button

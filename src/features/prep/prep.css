@@ -168,7 +168,11 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding-bottom: 56px;
+  padding-bottom: 12px;
+}
+
+.prep-bag-groups--editing {
+  padding-bottom: 64px;
 }
 
 .prep-bag-section {
@@ -205,6 +209,12 @@
 
 .prep-bag-star--on {
   color: #D99136;
+}
+
+.prep-bag-star--readonly {
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
 }
 
 .prep-bag-head__title {

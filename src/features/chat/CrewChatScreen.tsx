@@ -364,7 +364,8 @@ export function CrewChatScreen({
     setConfirmBatchDelete(false);
   };
 
-  useRegisterOverlay(Boolean(holdTarget) || Boolean(seenSheetMsg) || confirmBatchDelete);
+  // Full-screen Crew Chat always registers as an active overlay so Dock & screen FABs never leak through
+  useRegisterOverlay(true);
   useBackHandler(
     Boolean(holdTarget),
     () => setHoldTarget(null),

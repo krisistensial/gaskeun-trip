@@ -280,9 +280,9 @@ export function buildOnboardingTourSteps(
       tab: 'prep',
       tabLabel: 'Prep',
       targetSelector: '[data-tour="prep-bags"]',
-      title: 'Organize by Bags & 1-Tap Move',
+      title: 'Filter Packing List by Bag',
       description:
-        'Create custom bags or pockets (Backpack, Camera Bag, Pouch) with + Bag, pin your main bag to the top, and tap Move on any item to switch bags in 1 tap.',
+        'Filter your private packing list by Backpack, Camera Bag, or Pouch at a glance. Pinned bags stay neatly at the top.',
       requiresDock: true,
       scrollBlock: 'center',
       spotlightPadding: 8,
@@ -293,13 +293,13 @@ export function buildOnboardingTourSteps(
       tab: 'prep',
       tabLabel: 'Prep',
       targetSelector: '[data-tour="prep-add"]',
-      title: 'Add Packing Items Anytime',
+      title: 'Tap Edit to Add, Move or Remove',
       description: canEditPrep
-        ? 'Tap this bottom-right + button anytime — even on a long list — to add a Personal item to a bag or add a shared Group task.'
-        : 'Tap this bottom-right + button anytime — even on a long packing list — to quickly add a new personal item and pick which bag it goes into.',
+        ? 'Prep stays clean and tap-safe by default. Tap Edit whenever you want to add (+), move between bags, rename, or remove Personal & Group items.'
+        : 'Prep stays clean and tap-safe by default. Tap Edit whenever you want to add (+), organize bags, move, or remove your personal items.',
       requiresDock: true,
-      scrollBlock: 'nearest',
-      spotlightPadding: 10,
+      scrollBlock: 'start',
+      spotlightPadding: 8,
       spotlightRadius: 999,
     },
   );

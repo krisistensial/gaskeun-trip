@@ -11,6 +11,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { Avatar, Badge, Button, CornerOrb, GlassCard } from '../../components/atoms';
+import { useRegisterOverlay } from '../../context/OverlayContext';
 import {
   CONVOY_STATUS_META,
   formatPinRelativeAge,
@@ -89,6 +90,7 @@ export function RouteMapView({
   onSelectPlanItem,
 }: RouteMapViewProps) {
   const mapElRef = useRef<HTMLDivElement | null>(null);
+  useRegisterOverlay(true);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const crewLayerRef = useRef<L.LayerGroup | null>(null);
   const watchIdRef = useRef<number | null>(null);

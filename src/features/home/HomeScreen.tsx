@@ -29,6 +29,7 @@ import {
   LiquidBottomSheet,
 } from '../../components/atoms';
 import type { HomePhase } from '../../components/organisms/TripMenuSheet';
+import { useHasActiveOverlay } from '../../context/OverlayContext';
 import { ImageSourceSheet } from '../../components/organisms/ImageSourceSheet';
 import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet';
 import {
@@ -191,6 +192,7 @@ export function HomeScreen({
     podId: string;
     row: CarBenchRow;
   } | null>(null);
+  const hasOverlay = useHasActiveOverlay();
   const [showCrewJump, setShowCrewJump] = useState(true);
   const [heroCropFile, setHeroCropFile] = useState<File | null>(null);
   const [spotlightPhotoErrorUrl, setSpotlightPhotoErrorUrl] = useState<string>('');
@@ -1569,7 +1571,7 @@ export function HomeScreen({
       </section>
 
       {/* Floating Jump Pill (Crew ↓) above Dock — stays hidden during initial full-screen countdown */}
-      {showCrewJump && isDockVisible && (
+      {showCrewJump && isDockVisible && !hasOverlay && (
         <button
           type="button"
           className="floating-crew-jump"
