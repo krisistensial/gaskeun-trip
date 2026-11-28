@@ -18,6 +18,9 @@ import './styles/ambient.css';
 import './styles/global.css';
 
 import App from './App';
+import { initPwaInstallCapture } from './services/pwaInstall';
+
+initPwaInstallCapture();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

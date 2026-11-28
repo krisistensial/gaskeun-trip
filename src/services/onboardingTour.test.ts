@@ -82,6 +82,12 @@ describe('onboardingTour service', () => {
     expect(viewerSteps.some((s) => s.id === 'album-upload')).toBe(true);
     expect(viewerSteps.some((s) => s.id === 'prep-bags')).toBe(true);
     expect(viewerSteps.some((s) => s.id === 'prep-add')).toBe(true);
+    expect(viewerSteps.some((s) => s.id === 'setup-install')).toBe(true);
+    expect(viewerSteps.some((s) => s.id === 'setup-notifications')).toBe(true);
+    expect(viewerSteps.find((s) => s.id === 'setup-install')?.interactiveKind).toBe('install-app');
+    expect(viewerSteps.find((s) => s.id === 'setup-notifications')?.interactiveKind).toBe(
+      'enable-notifications',
+    );
 
     const planEditorSteps = buildOnboardingTourSteps({
       isHost: false,

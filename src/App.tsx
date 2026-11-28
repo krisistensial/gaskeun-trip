@@ -2571,7 +2571,9 @@ export default function App() {
           )}
         <OnboardingTour
           open={tourOpen && route === 'hub' && !chatOpen && !activeRouteTarget}
+          tripCode={activeTrip.code}
           tripTitle={activeTrip.title}
+          activeMemberId={activeMemberId}
           memberName={activeMemberName}
           access={{
             isHost,
@@ -2582,6 +2584,7 @@ export default function App() {
           }}
           onNavigateTab={(tab) => setActiveTab(tab)}
           onRevealDock={() => setHasRevealedDock(true)}
+          onNotify={showToast}
           onFinish={() => {
             markTourCompleted(activeTrip.code, activeMemberId);
             setTourOpen(false);

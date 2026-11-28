@@ -1,20 +1,48 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, Check, Compass, ShieldCheck, Sparkles } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bell,
+  Check,
+  Compass,
+  Download,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+} from 'lucide-react';
 import { Button } from '../atoms';
 import { triggerFeedback } from '../../services/feedback';
+import {
+  getDeviceNotificationPermission,
+  getDeviceNotificationsEnabled,
+  requestDeviceNotificationPermission,
+  setDeviceNotificationsEnabled,
+  tryShowDeviceNotification,
+  type DeviceNotificationPermission,
+} from '../../services/notifications';
 import {
   buildOnboardingTourSteps,
   type OnboardingTourAccess,
   type OnboardingTourStep,
 } from '../../services/onboardingTour';
+import { ensureWebPushSubscription } from '../../services/pushNotifications';
+import {
+  canPromptNativeInstall,
+  detectPwaPlatform,
+  isAppInstalledStandalone,
+  promptNativePwaInstall,
+  subscribePwaInstallState,
+} from '../../services/pwaInstall';
 import { useBackHandler } from '../../services/pwaHistory';
 import type { DockTabId } from '../../types/trip';
 import './OnboardingTour.css';
 
 export interface OnboardingTourProps {
   open: boolean;
+  tripCode?: string;
   tripTitle: string;
+  activeMemberId?: string | null;
   memberName: string;
   /** Active user's edit permissions so the tour dynamically spotlights their unlocked edit buttons */
   access?: Partial<OnboardingTourAccess>;
@@ -23,6 +51,7 @@ export interface OnboardingTourProps {
   onNavigateTab?: (tab: DockTabId) => void;
   /** Called before measuring a step that requires the Floating Glass Dock to be revealed */
   onRevealDock?: () => void;
+  onNotify?: (message: string, tone?: 'success' | 'info' | 'error') => void;
   onFinish: () => void;
   onSkip: () => void;
 }
@@ -41,12 +70,15 @@ const EDGE_MARGIN = 14;
 
 export function OnboardingTour({
   open,
+  tripCode = '',
   tripTitle,
+  activeMemberId = null,
   memberName,
   access,
   steps,
   onNavigateTab,
   onRevealDock,
+  onNotify,
   onFinish,
   onSkip,
 }: OnboardingTourProps) {
@@ -68,12 +100,37 @@ export function OnboardingTour({
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const [tooltipHeight, setTooltipHeight] = useState(TOOLTIP_EST_HEIGHT);
 
+  const platform = useMemo(() => detectPwaPlatform(), []);
+  const [isStandalone, setIsStandalone] = useState<boolean>(() => isAppInstalledStandalone());
+  const [canNativeInstall, setCanNativeInstall] = useState<boolean>(() => canPromptNativeInstall());
+  const [installBusy, setInstallBusy] = useState(false);
+
+  const [notifPerm, setNotifPerm] = useState<DeviceNotificationPermission>(() =>
+    getDeviceNotificationPermission(),
+  );
+  const [notifOn, setNotifOn] = useState<boolean>(() => getDeviceNotificationsEnabled());
+  const [notifBusy, setNotifBusy] = useState(false);
+  const [notifFeedback, setNotifFeedback] = useState<string>('');
+
   useEffect(() => {
     if (open) {
       setStage('welcome');
       setStepIdx(0);
       setRect(null);
+      setIsStandalone(isAppInstalledStandalone());
+      setCanNativeInstall(canPromptNativeInstall());
+      setNotifPerm(getDeviceNotificationPermission());
+      setNotifOn(getDeviceNotificationsEnabled());
+      setNotifFeedback('');
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    return subscribePwaInstallState(() => {
+      setIsStandalone(isAppInstalledStandalone());
+      setCanNativeInstall(canPromptNativeInstall());
+    });
   }, [open]);
 
   const safeStepIdx = Math.min(stepIdx, Math.max(0, resolvedSteps.length - 1));
@@ -96,7 +153,7 @@ export function OnboardingTour({
   );
 
   const measureTarget = useCallback((): boolean => {
-    if (!open || stage !== 'tour' || !activeStep) {
+    if (!open || stage !== 'tour' || !activeStep || !activeStep.targetSelector) {
       setRect(null);
       return false;
     }
@@ -132,6 +189,16 @@ export function OnboardingTour({
       onRevealDock?.();
     }
     onNavigateTab?.(activeStep.tab);
+    setNotifPerm(getDeviceNotificationPermission());
+    setNotifOn(getDeviceNotificationsEnabled());
+
+    if (!activeStep.targetSelector) {
+      setRect(null);
+      if (activeStep.scrollBlock === 'start') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      return;
+    }
 
     let scrolledToTarget = false;
     const tryScrollAndMeasure = () => {
@@ -190,7 +257,77 @@ export function OnboardingTour({
     if (!tooltipRef.current) return;
     const h = tooltipRef.current.offsetHeight;
     if (h > 40) setTooltipHeight(h);
-  }, [stage, safeStepIdx, rect]);
+  }, [stage, safeStepIdx, rect, isStandalone, canNativeInstall, notifPerm, notifOn, notifFeedback]);
+
+  const handleInstallClick = async () => {
+    if (installBusy) return;
+    triggerFeedback('tap');
+    setInstallBusy(true);
+    try {
+      const outcome = await promptNativePwaInstall();
+      setIsStandalone(isAppInstalledStandalone());
+      setCanNativeInstall(canPromptNativeInstall());
+      if (outcome === 'accepted') {
+        triggerFeedback('success');
+        onNotify?.('Installing GASKEUN! to your Home Screen', 'success');
+      } else if (outcome === 'dismissed') {
+        onNotify?.('You can install anytime from your browser menu', 'info');
+      }
+    } finally {
+      setInstallBusy(false);
+    }
+  };
+
+  const handleEnableNotificationsClick = async () => {
+    if (notifBusy) return;
+    triggerFeedback('tap');
+    setNotifBusy(true);
+    setNotifFeedback('');
+    try {
+      const currentPerm = getDeviceNotificationPermission();
+      if (currentPerm === 'granted') {
+        setDeviceNotificationsEnabled(true);
+        setNotifPerm('granted');
+        setNotifOn(true);
+        if (tripCode) {
+          void ensureWebPushSubscription(tripCode, activeMemberId);
+        }
+        const testRes = await tryShowDeviceNotification({
+          title: 'GASKEUN! Alerts Ready',
+          body: `Live Crew Chat & trip alerts are active for ${tripTitle}.`,
+          tag: `gaskeun-tour-test-${Date.now()}`,
+        });
+        triggerFeedback('success');
+        const msg = testRes.ok
+          ? 'Phone notifications active!'
+          : testRes.error || 'Alerts enabled on this device';
+        setNotifFeedback(msg);
+        onNotify?.(msg, 'success');
+        return;
+      }
+
+      const res = await requestDeviceNotificationPermission();
+      setNotifPerm(res.permission);
+      setNotifOn(res.granted);
+      if (res.granted) {
+        triggerFeedback('success');
+        if (tripCode) {
+          void ensureWebPushSubscription(tripCode, activeMemberId);
+        }
+        const msg = res.shown
+          ? 'Phone notifications enabled!'
+          : res.error || 'Notifications enabled on this device';
+        setNotifFeedback(msg);
+        onNotify?.(msg, 'success');
+      } else {
+        const msg = res.error || 'Notification permission declined';
+        setNotifFeedback(msg);
+        onNotify?.(msg, 'info');
+      }
+    } finally {
+      setNotifBusy(false);
+    }
+  };
 
   if (!open || typeof document === 'undefined' || !activeStep) return null;
 
@@ -268,7 +405,8 @@ export function OnboardingTour({
             </h2>
             <p className="gk-tour-welcome-sub">
               You&apos;re in <strong>{tripTitle}</strong>. Let&apos;s walk through{' '}
-              <strong>Home, Plan, Wallet, Album, and Prep</strong> — customized for your exact access.
+              <strong>Home, Plan, Wallet, Album, Prep</strong>, plus installing the app &amp;
+              turning on phone alerts.
             </p>
             <div className="gk-tour-welcome-actions">
               <Button
@@ -350,6 +488,115 @@ export function OnboardingTour({
 
             <h3 className="gk-tour-tooltip__title">{activeStep.title}</h3>
             <p className="gk-tour-tooltip__desc">{activeStep.description}</p>
+
+            {activeStep.interactiveKind === 'install-app' && (
+              <div className="gk-tour-setup-box">
+                {isStandalone ? (
+                  <div className="gk-tour-setup-status gk-tour-setup-status--ok">
+                    <Check size={14} strokeWidth={2.6} />
+                    <span>Installed on your Home Screen</span>
+                  </div>
+                ) : (
+                  <>
+                    {canNativeInstall && (
+                      <Button
+                        variant="matcha"
+                        size="sm"
+                        fullWidth
+                        disabled={installBusy}
+                        leftIcon={<Download size={14} strokeWidth={2.2} />}
+                        onClick={() => void handleInstallClick()}
+                      >
+                        {installBusy ? 'Opening Installer...' : 'Install GASKEUN! App'}
+                      </Button>
+                    )}
+
+                    {platform === 'ios' ? (
+                      <ol className="gk-tour-setup-steps">
+                        <li className="gk-tour-setup-step">
+                          <span className="gk-tour-setup-num">1</span>
+                          <span>
+                            Tap the <strong>Share</strong> icon in Safari&apos;s bottom bar
+                          </span>
+                        </li>
+                        <li className="gk-tour-setup-step">
+                          <span className="gk-tour-setup-num">2</span>
+                          <span>
+                            Scroll down and tap <strong>Add to Home Screen</strong>
+                          </span>
+                        </li>
+                        <li className="gk-tour-setup-step">
+                          <span className="gk-tour-setup-num">3</span>
+                          <span>
+                            Open <strong>GASKEUN!</strong> from your Home Screen to enable iOS alerts
+                          </span>
+                        </li>
+                      </ol>
+                    ) : platform === 'android' ? (
+                      <ol className="gk-tour-setup-steps">
+                        <li className="gk-tour-setup-step">
+                          <span className="gk-tour-setup-num">1</span>
+                          <span>
+                            Tap <strong>⋮</strong> (top-right menu) in Chrome
+                          </span>
+                        </li>
+                        <li className="gk-tour-setup-step">
+                          <span className="gk-tour-setup-num">2</span>
+                          <span>
+                            Tap <strong>Add to Home screen</strong> → <strong>Install</strong>
+                          </span>
+                        </li>
+                      </ol>
+                    ) : (
+                      <div className="gk-tour-setup-step">
+                        <Smartphone size={15} strokeWidth={2} color="var(--brand-matcha)" style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span>
+                          Click the <strong>Install</strong> icon in your browser address bar, or open{' '}
+                          <strong>Menu → Install GASKEUN!</strong>
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {activeStep.interactiveKind === 'enable-notifications' && (
+              <div className="gk-tour-setup-box">
+                {notifPerm === 'granted' && notifOn ? (
+                  <div className="gk-tour-setup-status gk-tour-setup-status--ok">
+                    <Check size={14} strokeWidth={2.6} />
+                    <span>Phone notifications are active</span>
+                  </div>
+                ) : notifPerm === 'denied' ? (
+                  <div className="gk-tour-setup-status gk-tour-setup-status--warn">
+                    <Bell size={14} strokeWidth={2.2} />
+                    <span>Blocked in browser — allow in Site Settings</span>
+                  </div>
+                ) : notifPerm === 'unsupported' ? (
+                  <div className="gk-tour-setup-status gk-tour-setup-status--warn">
+                    <Smartphone size={14} strokeWidth={2.2} />
+                    <span>
+                      {platform === 'ios'
+                        ? 'Install via Share → Add to Home Screen first'
+                        : 'Browser does not support push alerts'}
+                    </span>
+                  </div>
+                ) : (
+                  <Button
+                    variant="matcha"
+                    size="sm"
+                    fullWidth
+                    disabled={notifBusy}
+                    leftIcon={<Bell size={14} strokeWidth={2.2} />}
+                    onClick={() => void handleEnableNotificationsClick()}
+                  >
+                    {notifBusy ? 'Enabling Alerts...' : 'Turn On Notifications'}
+                  </Button>
+                )}
+                {notifFeedback && <p className="gk-tour-setup-hint">{notifFeedback}</p>}
+              </div>
+            )}
 
             <div className="gk-tour-tooltip__footer">
               <div className="gk-tour-tooltip__progress" aria-hidden="true">

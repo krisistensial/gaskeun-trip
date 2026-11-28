@@ -16,6 +16,8 @@ export interface OnboardingTourStep {
   tabLabel: string;
   /** Optional subtle access badge shown for editor/host-only controls */
   roleTag?: 'Editor Access' | 'Host Control';
+  /** Optional interactive action widget rendered inside the tour card */
+  interactiveKind?: 'install-app' | 'enable-notifications';
   targetSelector: string;
   title: string;
   description: string;
@@ -300,6 +302,34 @@ export function buildOnboardingTourSteps(
       requiresDock: true,
       scrollBlock: 'start',
       spotlightPadding: 8,
+      spotlightRadius: 999,
+    },
+
+    // SETUP: INSTALL APP & NOTIFICATIONS
+    {
+      id: 'setup-install',
+      tab: 'home',
+      tabLabel: 'Install App',
+      interactiveKind: 'install-app',
+      targetSelector: '',
+      title: 'Add GASKEUN! to Home Screen',
+      description:
+        'Install GASKEUN! like a native app for full-screen speed, offline access on the road, and reliable background phone alerts.',
+      requiresDock: false,
+      scrollBlock: 'start',
+    },
+    {
+      id: 'setup-notifications',
+      tab: 'home',
+      tabLabel: 'Alerts',
+      interactiveKind: 'enable-notifications',
+      targetSelector: '[data-tour="home-profile"]',
+      title: 'Turn On Phone Notifications',
+      description:
+        'Enable alerts right here so new Crew Chat messages, polls, and trip updates reach your phone even when the app is closed. You can also manage alerts anytime inside your Profile menu.',
+      requiresDock: false,
+      scrollBlock: 'start',
+      spotlightPadding: 10,
       spotlightRadius: 999,
     },
   );

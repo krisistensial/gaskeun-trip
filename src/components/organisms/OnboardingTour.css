@@ -233,6 +233,79 @@
   color: var(--text-muted, #52665e);
 }
 
+/* Interactive Setup Widgets inside Tour Cards (Install App & Phone Alerts) */
+.gk-tour-setup-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: 18px;
+  background: rgba(227, 237, 230, 0.52);
+  border: 1px solid rgba(74, 116, 104, 0.16);
+}
+
+.gk-tour-setup-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gk-tour-setup-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-primary, #1f332d);
+}
+
+.gk-tour-setup-num {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-matcha, #4a7468);
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  margin-top: 1px;
+}
+
+.gk-tour-setup-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border-radius: 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.gk-tour-setup-status--ok {
+  background: rgba(43, 148, 107, 0.14);
+  color: #1f6b4e;
+  border: 1px solid rgba(43, 148, 107, 0.24);
+}
+
+.gk-tour-setup-status--warn {
+  background: rgba(217, 145, 54, 0.14);
+  color: #8f530d;
+  border: 1px solid rgba(217, 145, 54, 0.24);
+}
+
+.gk-tour-setup-hint {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--text-muted, #52665e);
+}
+
 .gk-tour-tooltip__progress {
   flex: 1;
   max-width: 108px;
