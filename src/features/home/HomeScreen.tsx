@@ -9,6 +9,8 @@ import {
   Car,
   Check,
   ChevronDown,
+  ChevronRight,
+  Clock,
   Crown,
   Images,
   LogOut,
@@ -17,6 +19,7 @@ import {
   Plus,
   Settings2,
   Sparkles,
+  Ticket,
   TrainFront,
   Users,
 } from 'lucide-react';
@@ -55,6 +58,10 @@ import { triggerFeedback } from '../../services/feedback';
 import { toDriveThumbnailWidth } from '../../services/gdriveAlbum';
 import type { CroppedImageResult } from '../../services/photoCrop';
 import { resolvePlanLiveState } from '../../services/planSchedule';
+import {
+  resolveTrainTicketDrops,
+  type TrainTicketLegDrop,
+} from '../../services/trainTickets';
 import { hasTripEnded } from '../../services/tripRecap';
 import type {
   AlbumPhoto,
@@ -79,26 +86,22 @@ import {
 import { assignOrSwapTrainSeat, TrainSeatMap } from './TrainSeatMap';
 import './home.css';
 
-interface CountdownParts {
-  days: string;
-  hours: string;
-  minutes: string;
-  seconds: string;
+function formatCompactLegCountdown(leg: TrainTicketLegDrop): string {
+  if (leg.status === 'booked') return 'Booked';
+  if (leg.status === 'open') return 'Open Now';
+  if (leg.status === 'unset') return 'Not set';
+  const { days, hours, minutes, seconds } = leg.countdown;
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  return `${hours}h ${minutes}m ${seconds}s`;
 }
 
-function getCountdownParts(targetIso: string): CountdownParts {
-  const diff = Math.max(0, new Date(targetIso).getTime() - Date.now());
-  const totalSec = Math.floor(diff / 1000);
-  const days = Math.floor(totalSec / 86400);
-  const hours = Math.floor((totalSec % 86400) / 3600);
-  const minutes = Math.floor((totalSec % 3600) / 60);
-  const seconds = totalSec % 60;
-  return {
-    days: String(days),
-    hours: String(hours).padStart(2, '0'),
-    minutes: String(minutes).padStart(2, '0'),
-    seconds: String(seconds).padStart(2, '0'),
-  };
+function formatDetailedLegCountdown(leg: TrainTicketLegDrop): string {
+  if (leg.status === 'booked') return 'Tickets Booked';
+  if (leg.status === 'open') return 'Sale Open Now';
+  if (leg.status === 'unset') return 'Date not set';
+  const { days, hours, minutes, seconds } = leg.countdown;
+  if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+  return `${hours}h ${minutes}m ${seconds}s`;
 }
 
 export interface HomeScreenProps {
@@ -160,8 +163,24 @@ export function HomeScreen({
   onOpenRoute,
   onUpdateTrip,
 }: HomeScreenProps) {
-  const [countdown, setCountdown] = useState<CountdownParts>(() =>
-    getCountdownParts(trip.departureAt),
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const countdown = useMemo(() => {
+    const diff = Math.max(0, new Date(trip.departureAt).getTime() - nowMs);
+    const totalSec = Math.floor(diff / 1000);
+    const days = Math.floor(totalSec / 86400);
+    const hours = Math.floor((totalSec % 86400) / 3600);
+    const minutes = Math.floor((totalSec % 3600) / 60);
+    const seconds = totalSec % 60;
+    return {
+      days: String(days),
+      hours: String(hours).padStart(2, '0'),
+      minutes: String(minutes).padStart(2, '0'),
+      seconds: String(seconds).padStart(2, '0'),
+    };
+  }, [trip.departureAt, nowMs]);
+  const ticketDrops = useMemo(
+    () => resolveTrainTicketDrops(trip, nowMs),
+    [trip, nowMs],
   );
   const [transportFilter, setTransportFilter] = useState<'bike' | 'train' | 'car'>('bike');
   const [editingCrew, setEditingCrew] = useState(false);
@@ -285,12 +304,12 @@ export function HomeScreen({
   }, [isDockVisible, phase]);
 
   useEffect(() => {
-    setCountdown(getCountdownParts(trip.departureAt));
+    setNowMs(Date.now());
     const id = window.setInterval(() => {
-      setCountdown(getCountdownParts(trip.departureAt));
+      setNowMs(Date.now());
     }, 1000);
     return () => window.clearInterval(id);
-  }, [trip.departureAt]);
+  }, []);
 
   useEffect(() => {
     if (!canEdit) {
@@ -386,6 +405,33 @@ export function HomeScreen({
 
   const handleSaveTrainPass = (info: TrainPassInfo) => {
     onUpdateTrip((prev) => ({ ...prev, trainPass: info }), 'Train pass saved');
+  };
+
+  const handleToggleTrainBooked = (leg: 'outbound' | 'return') => {
+    requireEdit(() => {
+      const currentPass = trip.trainPass;
+      if (!currentPass) return;
+      const nextVal =
+        leg === 'outbound' ? !currentPass.outboundBooked : !currentPass.returnBooked;
+      triggerFeedback(nextVal ? 'success' : 'toggle');
+      onUpdateTrip(
+        (prev) => {
+          if (!prev.trainPass) return prev;
+          return {
+            ...prev,
+            trainPass: {
+              ...prev.trainPass,
+              ...(leg === 'outbound'
+                ? { outboundBooked: nextVal }
+                : { returnBooked: nextVal }),
+            },
+          };
+        },
+        nextVal
+          ? `${leg === 'outbound' ? 'Outbound' : 'Return'} ticket marked booked`
+          : `${leg === 'outbound' ? 'Outbound' : 'Return'} ticket countdown resumed`,
+      );
+    });
   };
 
   const handleSaveMember = (member: TripMember, isNew: boolean) => {
@@ -1014,6 +1060,71 @@ export function HomeScreen({
           </section>
         );
       })()}
+
+      {/* Compact Ticket Drop Strip (Pre-Trip Only — Auto-Hides Once Both Tickets Are Booked) */}
+      {phase === 'pre-trip' && ticketDrops?.shouldShowHomeStrip && (
+        <section aria-label="Train ticket sale countdown">
+          <GlassCard
+            variant="clear"
+            padding="md"
+            interactive
+            className="ticket-drop-card"
+            onClick={() => {
+              triggerFeedback('tap');
+              setTrainSheetOpen(true);
+            }}
+          >
+            <div className="ticket-drop-header">
+              <div className="ticket-drop-header__left">
+                <span className="ticket-drop-header__icon" aria-hidden="true">
+                  <Ticket size={14} strokeWidth={2.1} />
+                </span>
+                <span className="ticket-drop-header__title">Ticket Drop</span>
+                <span className="ticket-drop-header__tag">
+                  {ticketDrops.hasCustomSchedule ? 'Custom' : 'KAI H-45'}
+                </span>
+              </div>
+              <span className="ticket-drop-header__action">
+                <span>Details</span>
+                <ChevronRight size={14} strokeWidth={2.1} />
+              </span>
+            </div>
+
+            <div
+              className={`ticket-drop-grid ${
+                ticketDrops.returnLeg ? '' : 'ticket-drop-grid--single'
+              }`}
+            >
+              {[ticketDrops.outbound, ...(ticketDrops.returnLeg ? [ticketDrops.returnLeg] : [])].map(
+                (leg) => (
+                  <div
+                    key={leg.leg}
+                    className={`ticket-drop-cell ticket-drop-cell--${leg.status}`}
+                  >
+                    <div className="ticket-drop-cell__top">
+                      <span className="ticket-drop-cell__leg">{leg.label}</span>
+                      <span className="ticket-drop-cell__route">{leg.route}</span>
+                    </div>
+                    <div className="ticket-drop-timer">
+                      {leg.status === 'booked' && (
+                        <Check size={14} strokeWidth={2.5} style={{ flexShrink: 0 }} />
+                      )}
+                      <span>{formatCompactLegCountdown(leg)}</span>
+                    </div>
+                    <div className="ticket-drop-cell__meta">
+                      {leg.status === 'booked'
+                        ? 'Ready to board'
+                        : leg.status === 'open'
+                          ? `Opened ${leg.formattedShortDate}`
+                          : `${leg.formattedShortDate} WIB`}
+                    </div>
+                  </div>
+                ),
+              )}
+            </div>
+          </GlassCard>
+        </section>
+      )}
 
       {/* Top Contributors Bar Chart */}
       {ledger.topContributors.length > 0 && (
@@ -1760,25 +1871,91 @@ export function HomeScreen({
                   </>
                 )}
               <div className="stay-card__fg">
-                <Badge tone="matcha">Outbound</Badge>
+                <div className="train-sheet-leg-top">
+                  <Badge tone="matcha">Outbound</Badge>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      className={`train-booked-pill tactile ${
+                        trip.trainPass.outboundBooked ? 'train-booked-pill--done' : ''
+                      }`}
+                      onClick={() => handleToggleTrainBooked('outbound')}
+                    >
+                      <Check size={12} strokeWidth={2.4} />
+                      <span>{trip.trainPass.outboundBooked ? 'Booked' : 'Mark Booked'}</span>
+                    </button>
+                  ) : (
+                    trip.trainPass.outboundBooked && <Badge tone="mint">Booked</Badge>
+                  )}
+                </div>
                 <div className="train-route-code" style={{ marginTop: 8 }}>
                   {trip.trainPass.outboundRoute}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
                   {trip.trainPass.outboundDate} · {trip.trainPass.outboundTime}
                 </div>
+                {ticketDrops?.outbound && ticketDrops.outbound.openAtIso && (
+                  <div
+                    className={`train-sheet-drop-bar train-sheet-drop-bar--${ticketDrops.outbound.status}`}
+                  >
+                    <div className="train-sheet-drop-bar__left">
+                      <Clock size={13} strokeWidth={2} />
+                      <span>
+                        {ticketDrops.outbound.booked
+                          ? 'Outbound ticket secured'
+                          : `${ticketDrops.outbound.isCustom ? 'Sale' : 'KAI H-45'} · ${ticketDrops.outbound.formattedFullDate}`}
+                      </span>
+                    </div>
+                    <strong className="train-sheet-drop-bar__time">
+                      {formatDetailedLegCountdown(ticketDrops.outbound)}
+                    </strong>
+                  </div>
+                )}
               </div>
             </GlassCard>
 
             {trip.trainPass.returnRoute && (
               <GlassCard variant="clear" padding="md">
-                <Badge tone="neutral">Return</Badge>
+                <div className="train-sheet-leg-top">
+                  <Badge tone="neutral">Return</Badge>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      className={`train-booked-pill tactile ${
+                        trip.trainPass.returnBooked ? 'train-booked-pill--done' : ''
+                      }`}
+                      onClick={() => handleToggleTrainBooked('return')}
+                    >
+                      <Check size={12} strokeWidth={2.4} />
+                      <span>{trip.trainPass.returnBooked ? 'Booked' : 'Mark Booked'}</span>
+                    </button>
+                  ) : (
+                    trip.trainPass.returnBooked && <Badge tone="mint">Booked</Badge>
+                  )}
+                </div>
                 <div className="train-route-code" style={{ marginTop: 8 }}>
                   {trip.trainPass.returnRoute}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
                   {trip.trainPass.returnDate} · {trip.trainPass.returnTime}
                 </div>
+                {ticketDrops?.returnLeg && ticketDrops.returnLeg.openAtIso && (
+                  <div
+                    className={`train-sheet-drop-bar train-sheet-drop-bar--${ticketDrops.returnLeg.status}`}
+                  >
+                    <div className="train-sheet-drop-bar__left">
+                      <Clock size={13} strokeWidth={2} />
+                      <span>
+                        {ticketDrops.returnLeg.booked
+                          ? 'Return ticket secured'
+                          : `${ticketDrops.returnLeg.isCustom ? 'Sale' : 'KAI H-45'} · ${ticketDrops.returnLeg.formattedFullDate}`}
+                      </span>
+                    </div>
+                    <strong className="train-sheet-drop-bar__time">
+                      {formatDetailedLegCountdown(ticketDrops.returnLeg)}
+                    </strong>
+                  </div>
+                )}
               </GlassCard>
             )}
           </div>

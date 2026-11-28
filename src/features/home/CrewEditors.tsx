@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   AlertCircle,
   BedDouble,
@@ -7,6 +7,8 @@ import {
   Check,
   ImagePlus,
   Plus,
+  RotateCcw,
+  Ticket,
   Trash2,
   UserPlus,
   X,
@@ -24,6 +26,12 @@ import { PhotoCropperSheet } from '../../components/organisms/PhotoCropperSheet'
 import { normalizeCarSeats, toggleStayRoomMember } from '../../services/crewSwap';
 import { uploadSharedImage } from '../../services/mediaUploader';
 import type { CroppedImageResult } from '../../services/photoCrop';
+import {
+  computeKaiBookingOpenIso,
+  datetimeLocalWibToIso,
+  formatTicketOpenWib,
+  isoToDatetimeLocalWib,
+} from '../../services/trainTickets';
 import type {
   MemberRole,
   MemberStatus,
@@ -83,9 +91,43 @@ export function TrainPassEditorSheet({
   const [trainPhotoDataUrl, setTrainPhotoDataUrl] = useState<string | undefined>(
     initial?.trainPhotoDataUrl,
   );
+  const [outboundOpenLocal, setOutboundOpenLocal] = useState<string>(() =>
+    isoToDatetimeLocalWib(initial?.outboundTicketOpenAt),
+  );
+  const [returnOpenLocal, setReturnOpenLocal] = useState<string>(() =>
+    isoToDatetimeLocalWib(initial?.returnTicketOpenAt),
+  );
+  const [outboundBooked, setOutboundBooked] = useState<boolean>(Boolean(initial?.outboundBooked));
+  const [returnBooked, setReturnBooked] = useState<boolean>(Boolean(initial?.returnBooked));
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [imageSourceOpen, setImageSourceOpen] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setTrainName(initial?.trainName ?? 'KA Bengawan (Economy)');
+    setOutboundCode(initial?.outboundCode ?? 'KA 246');
+    setOutboundRoute(initial?.outboundRoute ?? 'PSE → PWS');
+    setOutboundDate(initial?.outboundDate ?? '');
+    setOutboundTime(initial?.outboundTime ?? '09:14 – 18:20 WIB');
+    setReturnRoute(initial?.returnRoute ?? 'LPN → PSE');
+    setReturnDate(initial?.returnDate ?? '');
+    setReturnTime(initial?.returnTime ?? '00:26 – 08:20 WIB');
+    setTrainPhotoDataUrl(initial?.trainPhotoDataUrl);
+    setOutboundOpenLocal(isoToDatetimeLocalWib(initial?.outboundTicketOpenAt));
+    setReturnOpenLocal(isoToDatetimeLocalWib(initial?.returnTicketOpenAt));
+    setOutboundBooked(Boolean(initial?.outboundBooked));
+    setReturnBooked(Boolean(initial?.returnBooked));
+  }, [open, initial]);
+
+  const autoOutboundIso = useMemo(
+    () => computeKaiBookingOpenIso(outboundDate || trip.startDate),
+    [outboundDate, trip.startDate],
+  );
+  const autoReturnIso = useMemo(
+    () => computeKaiBookingOpenIso(returnDate || trip.endDate),
+    [returnDate, trip.endDate],
+  );
 
   const handleCroppedTrainPhoto = async (cropped: CroppedImageResult) => {
     setCropFile(null);
@@ -119,6 +161,10 @@ export function TrainPassEditorSheet({
       returnDate: returnDate.trim(),
       returnTime: returnTime.trim(),
       trainPhotoDataUrl,
+      outboundTicketOpenAt: datetimeLocalWibToIso(outboundOpenLocal),
+      returnTicketOpenAt: datetimeLocalWibToIso(returnOpenLocal),
+      outboundBooked,
+      returnBooked,
     });
     onClose();
   };
@@ -243,6 +289,157 @@ export function TrainPassEditorSheet({
           value={returnDate}
           onChange={(e) => setReturnDate(e.target.value)}
         />
+
+        {/* Ticket Sale Countdown (KAI H-45 Auto + Custom Override + Booked Toggles) */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            padding: 12,
+            borderRadius: 20,
+            background: 'rgba(227, 237, 230, 0.48)',
+            border: '1px solid rgba(255, 255, 255, 0.85)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12,
+                fontWeight: 700,
+                color: 'var(--brand-forest)',
+              }}
+            >
+              <Ticket size={14} strokeWidth={2} color="var(--brand-matcha)" />
+              <span>Ticket Sale Countdown</span>
+            </span>
+            <Badge tone="matcha">KAI H-45</Badge>
+          </div>
+          <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            Leave blank to auto-calculate KAI H-45 (00:00 WIB) from travel dates.
+          </p>
+
+          <div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 4,
+              }}
+            >
+              <label
+                htmlFor="tp-out-open"
+                style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-secondary)' }}
+              >
+                Outbound Sale Open (WIB)
+              </label>
+              {outboundOpenLocal && (
+                <button
+                  type="button"
+                  className="tactile"
+                  onClick={() => setOutboundOpenLocal('')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: 'var(--brand-matcha)',
+                  }}
+                >
+                  <RotateCcw size={11} strokeWidth={2.1} />
+                  <span>Auto H-45</span>
+                </button>
+              )}
+            </div>
+            <Input
+              id="tp-out-open"
+              type="datetime-local"
+              value={outboundOpenLocal}
+              onChange={(e) => setOutboundOpenLocal(e.target.value)}
+            />
+            {!outboundOpenLocal && autoOutboundIso && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                Auto H-45: {formatTicketOpenWib(autoOutboundIso).full}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 4,
+              }}
+            >
+              <label
+                htmlFor="tp-ret-open"
+                style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-secondary)' }}
+              >
+                Return Sale Open (WIB)
+              </label>
+              {returnOpenLocal && (
+                <button
+                  type="button"
+                  className="tactile"
+                  onClick={() => setReturnOpenLocal('')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: 'var(--brand-matcha)',
+                  }}
+                >
+                  <RotateCcw size={11} strokeWidth={2.1} />
+                  <span>Auto H-45</span>
+                </button>
+              )}
+            </div>
+            <Input
+              id="tp-ret-open"
+              type="datetime-local"
+              value={returnOpenLocal}
+              onChange={(e) => setReturnOpenLocal(e.target.value)}
+            />
+            {!returnOpenLocal && autoReturnIso && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                Auto H-45: {formatTicketOpenWib(autoReturnIso).full}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+            <button
+              type="button"
+              className={`mode-chip ${outboundBooked ? 'mode-chip--active' : ''}`}
+              onClick={() => setOutboundBooked((prev) => !prev)}
+            >
+              {outboundBooked ? '✓ Outbound Booked' : 'Outbound Booked'}
+            </button>
+            <button
+              type="button"
+              className={`mode-chip ${returnBooked ? 'mode-chip--active' : ''}`}
+              onClick={() => setReturnBooked((prev) => !prev)}
+            >
+              {returnBooked ? '✓ Return Booked' : 'Return Booked'}
+            </button>
+          </div>
+        </div>
 
         <Button type="submit" variant="matcha" size="lg" fullWidth disabled={uploadingPhoto}>
           Save Train Pass

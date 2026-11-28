@@ -1570,3 +1570,236 @@
 .car-picker-check--on {
   background: var(--brand-matcha);
 }
+
+/* --- Compact Ticket Drop Countdown Strip (Home Pre-Trip) & Train Pass Sheet --- */
+.ticket-drop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ticket-drop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ticket-drop-header__left {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ticket-drop-header__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: var(--brand-matcha-soft);
+  color: var(--brand-matcha);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ticket-drop-header__title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ticket-drop-header__tag {
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: rgba(227, 237, 230, 0.78);
+  border: 1px solid rgba(74, 116, 104, 0.16);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand-forest);
+}
+
+.ticket-drop-header__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ticket-drop-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ticket-drop-grid--single {
+  grid-template-columns: 1fr;
+}
+
+.ticket-drop-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 11px;
+  border-radius: 18px;
+  background: rgba(246, 248, 245, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  min-width: 0;
+}
+
+.ticket-drop-cell--soon,
+.ticket-drop-cell--open {
+  background: rgba(254, 243, 219, 0.76);
+  border-color: rgba(217, 150, 42, 0.34);
+}
+
+.ticket-drop-cell--booked {
+  background: rgba(227, 237, 230, 0.65);
+  border-color: rgba(74, 116, 104, 0.24);
+}
+
+.ticket-drop-cell__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ticket-drop-cell__leg {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.ticket-drop-cell--soon .ticket-drop-cell__leg,
+.ticket-drop-cell--open .ticket-drop-cell__leg {
+  color: #9A5F16;
+}
+
+.ticket-drop-cell__route {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ticket-drop-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--brand-forest);
+  font-variant-numeric: lining-nums tabular-nums;
+  white-space: nowrap;
+}
+
+.ticket-drop-cell--soon .ticket-drop-timer,
+.ticket-drop-cell--open .ticket-drop-timer {
+  color: #9A5F16;
+}
+
+.ticket-drop-cell--booked .ticket-drop-timer {
+  color: var(--brand-matcha);
+}
+
+.ticket-drop-cell__meta {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Train Pass Sheet — Leg Header, 1-Tap Booked Pill & Countdown Bar */
+.train-sheet-leg-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.train-booked-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(74, 116, 104, 0.22);
+  color: var(--brand-forest);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.train-booked-pill--done {
+  background: var(--brand-matcha);
+  border-color: var(--brand-matcha);
+  color: #FFFFFF;
+}
+
+.train-sheet-drop-bar {
+  margin-top: 10px;
+  padding: 9px 11px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.train-sheet-drop-bar--soon,
+.train-sheet-drop-bar--open {
+  background: rgba(254, 243, 219, 0.86);
+  border-color: rgba(217, 150, 42, 0.36);
+}
+
+.train-sheet-drop-bar--booked {
+  background: rgba(227, 237, 230, 0.82);
+  border-color: rgba(74, 116, 104, 0.25);
+}
+
+.train-sheet-drop-bar__left {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.train-sheet-drop-bar--soon .train-sheet-drop-bar__left,
+.train-sheet-drop-bar--open .train-sheet-drop-bar__left {
+  color: #9A5F16;
+}
+
+.train-sheet-drop-bar__time {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand-forest);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.train-sheet-drop-bar--soon .train-sheet-drop-bar__time,
+.train-sheet-drop-bar--open .train-sheet-drop-bar__time {
+  color: #9A5F16;
+}
+
+.train-sheet-drop-bar--booked .train-sheet-drop-bar__time {
+  color: var(--brand-matcha);
+}

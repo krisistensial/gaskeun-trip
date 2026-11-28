@@ -232,6 +232,14 @@ export interface TrainPassInfo {
   returnTime: string;
   returnDate: string;
   trainPhotoDataUrl?: string;
+  /** Optional custom ticket sale open timestamp (ISO with +07:00). Defaults to KAI H-45 00:00 WIB. */
+  outboundTicketOpenAt?: string;
+  /** Optional custom return ticket sale open timestamp (ISO with +07:00). Defaults to KAI H-45 00:00 WIB. */
+  returnTicketOpenAt?: string;
+  /** Marks outbound train ticket as purchased so its countdown retires cleanly. */
+  outboundBooked?: boolean;
+  /** Marks return train ticket as purchased so its countdown retires cleanly. */
+  returnBooked?: boolean;
 }
 
 export interface AlbumPhoto {
