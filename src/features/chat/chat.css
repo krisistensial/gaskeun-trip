@@ -368,6 +368,7 @@
 .crew-chat-col {
   display: flex;
   flex-direction: column;
+  width: 100%;
   max-width: min(76%, 340px);
   min-width: 0;
 }
@@ -378,6 +379,7 @@
 
 .crew-chat-row--other .crew-chat-col {
   align-items: flex-start;
+  max-width: min(calc(100% - 34px), 76%, 340px);
 }
 
 .crew-chat-sender {
@@ -390,9 +392,13 @@
 /* Compact Bubbles */
 .crew-chat-bubble {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  width: fit-content;
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
+  overflow: hidden;
   padding: 6px 11px 5px;
   border-radius: 17px;
   word-break: break-word;
@@ -438,6 +444,7 @@
 }
 
 .crew-chat-reply-quote {
+  display: block;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -452,9 +459,6 @@
   background: rgba(45, 74, 66, 0.08);
   color: inherit;
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
 }
 
 .crew-chat-bubble--own .crew-chat-reply-quote {
@@ -463,7 +467,9 @@
 }
 
 .crew-chat-reply-quote__author {
+  display: block;
   max-width: 100%;
+  margin-bottom: 1px;
   font-size: 0.66rem;
   font-weight: 800;
   line-height: 1.2;
@@ -534,6 +540,7 @@
 }
 
 .crew-chat-sticker-reply-pill {
+  display: block;
   max-width: min(190px, 100%);
   min-width: 0;
   box-sizing: border-box;
@@ -547,9 +554,6 @@
   background: rgba(255, 255, 255, 0.8);
   color: var(--text-primary, #1f332d);
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
 }
 
 .crew-chat-sticker-img {
